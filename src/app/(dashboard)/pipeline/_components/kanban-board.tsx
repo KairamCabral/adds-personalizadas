@@ -1,0 +1,381 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import { useQueryState, parseAsString } from "nuqs";
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+  type DragOverEvent,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ORDER_STATUSES, type OrderStatus } from "@/lib/constants";
+import { useUIStore } from "@/stores/ui.store";
+import { usePermissions } from "@/hooks/use-permissions";
+import { getOrders, getArchivedOrders, moveOrder, reorderColumn, archiveOrder, unarchiveOrder } from "@/services/orders.service";
+import { KanbanColumn } from "./kanban-column";
+import { KanbanCard } from "./kanban-card";
+import { KanbanCardSkeleton } from "./kanban-card-skeleton";
+import { OrderDetailSheet } from "./order-detail-sheet";
+import { OrderForm } from "./order-form";
+import { OrderFilters } from "./order-filters";
+import { Plus, Search, Archive, LayoutGrid } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+export function KanbanBoard() {
+  const {
+    selectedOrderId,
+    setSelectedOrderId,
+    createOrderOpen,
+    setCreateOrderOpen,
+    createOrderStatus,
+    setCreateOrderStatus,
+  } = useUIStore();
+  const { can } = usePermissions();
+  const queryClient = useQueryClient();
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const [busca, setBusca] = useQueryState("busca", parseAsString);
+  const [responsavel] = useQueryState("responsavel", parseAsString);
+  const [prioridade] = useQueryState("prioridade", parseAsString);
+  const [tipo] = useQueryState("tipo", parseAsString);
+  const [etiqueta] = useQueryState("etiqueta", parseAsString);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ordersQuery = useQuery<any[], Error>({
+    queryKey: showArchived ? ["archived-orders"] : ["orders"],
+    queryFn: showArchived ? getArchivedOrders : getOrders,
+  });
+  const orders = ordersQuery.data ?? [];
+  const { isLoading, error } = ordersQuery;
+
+  const archiveMutation = useMutation({
+    mutationFn: (orderId: string) => archiveOrder(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["archived-orders"] });
+      toast.success("Pedido arquivado.");
+    },
+    onError: () => toast.error("Erro ao arquivar pedido."),
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: (orderId: string) => unarchiveOrder(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["archived-orders"] });
+      toast.success("Pedido desarquivado.");
+    },
+    onError: () => toast.error("Erro ao desarquivar pedido."),
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: async ({
+      orderId,
+      newStatus,
+      newPosition,
+    }: {
+      orderId: string;
+      newStatus: OrderStatus;
+      newPosition: number;
+    }) => {
+      const result = await moveOrder(orderId, newStatus, newPosition);
+      return { result, orderId, newStatus };
+    },
+    onSuccess: async (data) => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+
+      if (data.newStatus === "PRODUCAO") {
+        try {
+          const res = await fetch("/api/bling/sync-on-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: data.orderId,
+              newStatus: data.newStatus,
+            }),
+          });
+          const json = await res.json();
+          if (json.results?.length) {
+            json.results.forEach(
+              (r: { success: boolean; supplierName: string; error?: string }) => {
+                if (r.success) {
+                  toast.success(`Dados enviados ao fornecedor ${r.supplierName}`);
+                } else if (r.error?.includes("termo não assinado")) {
+                  toast.warning(
+                    `Integração com ${r.supplierName} bloqueada — termo pendente`
+                  );
+                } else {
+                  toast.error(
+                    `${r.supplierName}: ${r.error ?? "Erro ao enviar"}`
+                  );
+                }
+              }
+            );
+          }
+        } catch {
+          // Silently ignore sync errors
+        }
+      }
+    },
+    onError: () => {
+      toast.error("Erro ao mover pedido.");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const getOrdersByStatus = useCallback(
+    (status: OrderStatus) => {
+      return (orders as any[])
+        .filter((o: any) => o.status === status)
+        .filter((o: any) => {
+          if (responsavel && o.assigned_to !== responsavel) return false;
+          if (prioridade && o.priority !== prioridade) return false;
+          if (tipo && o.order_type !== tipo) return false;
+          if (etiqueta) {
+            const labels = o.labels ?? [];
+            const hasLabel = labels.some((l: { label: string }) => l.label === etiqueta);
+            if (!hasLabel) return false;
+          }
+          if (busca?.trim()) {
+            const q = busca.trim().toLowerCase();
+            const title = (o.title ?? "").toLowerCase();
+            const clientName = (o.client?.name ?? "").toLowerCase();
+            const clientCompany = (o.client?.company ?? "").toLowerCase();
+            if (!title.includes(q) && !clientName.includes(q) && !clientCompany.includes(q)) {
+              return false;
+            }
+          }
+          return true;
+        })
+        .sort((a: any, b: any) => a.position - b.position);
+    },
+    [orders, busca, responsavel, prioridade, tipo, etiqueta]
+  );
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(event.active.id as string);
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    // Visual feedback only -- actual move happens on drag end
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (showArchived || !over) return;
+
+    const activeOrder = (orders as any[]).find((o: any) => o.id === active.id);
+    if (!activeOrder) return;
+
+    const overStatus = ORDER_STATUSES.find((s) => s.key === over.id);
+    const overOrder = (orders as any[]).find((o: any) => o.id === over.id);
+
+    const targetStatus = overStatus?.key ?? overOrder?.status;
+    if (!targetStatus) return;
+
+    const targetOrders = (orders as any[])
+      .filter((o: any) => o.status === targetStatus && o.id !== active.id)
+      .sort((a: any, b: any) => a.position - b.position);
+
+    const newPosition = targetOrders.length;
+
+    if (
+      activeOrder.status !== targetStatus ||
+      activeOrder.position !== newPosition
+    ) {
+      moveMutation.mutate({
+        orderId: active.id as string,
+        newStatus: targetStatus as OrderStatus,
+        newPosition,
+      });
+    }
+  }
+
+  function handleAddOrder(status: OrderStatus) {
+    setCreateOrderStatus(status);
+    setCreateOrderOpen(true);
+  }
+
+  const activeOrder = activeId
+    ? (orders as any[]).find((o: any) => o.id === activeId)
+    : null;
+
+  const filteredCount = ORDER_STATUSES.reduce(
+    (acc, s) => acc + getOrdersByStatus(s.key).length,
+    0
+  );
+  const hasActiveFilters = !!busca || !!responsavel || !!prioridade || !!tipo || !!etiqueta;
+
+  return (
+    <div className="flex h-[calc(100vh-60px)] flex-col">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between border-b border-border px-6 py-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-bold text-foreground">
+            {showArchived ? "Arquivados" : "Pipeline"}
+          </h1>
+          <div className="flex h-6 items-center rounded-full bg-primary/10 px-2.5">
+            <span className="text-xs font-semibold text-primary">
+              {hasActiveFilters ? filteredCount : (orders as any[]).length}{" "}
+              {showArchived ? "arquivados" : "pedidos"}
+              {hasActiveFilters && ` de ${(orders as any[]).length}`}
+            </span>
+          </div>
+          {can("orders.archive") && (
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors",
+                showArchived
+                  ? "border-primary/30 bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
+              )}
+            >
+              {showArchived ? (
+                <>
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  Ver ativos
+                </>
+              ) : (
+                <>
+                  <Archive className="h-3.5 w-3.5" />
+                  Ver arquivados
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search
+              className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <input
+              type="text"
+              aria-label="Buscar por cliente"
+              placeholder="Buscar por cliente..."
+              value={busca ?? ""}
+              onChange={(e) => setBusca(e.target.value || null)}
+              className="h-8 w-52 rounded-lg border border-border bg-secondary/50 pl-8 pr-3 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/30 focus:bg-card"
+            />
+          </div>
+
+          <OrderFilters />
+
+          {can("orders.create") && !showArchived && (
+            <button
+              onClick={() => {
+                setCreateOrderStatus("FAZER");
+                setCreateOrderOpen(true);
+              }}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Novo Pedido
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Kanban board */}
+      <div className="kanban-scroll flex-1 overflow-x-auto overflow-y-hidden">
+        {isLoading ? (
+          <div className="flex h-full gap-3 p-4">
+            {ORDER_STATUSES.map((status) => (
+              <div
+                key={status.key}
+                className="flex w-[280px] min-w-[280px] flex-col gap-2"
+              >
+                <div className="mb-2 h-8 rounded-md bg-muted/50" />
+                <KanbanCardSkeleton />
+                <KanbanCardSkeleton />
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-muted-foreground">
+              Erro ao carregar pedidos. Verifique sua conexão.
+            </p>
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex h-full gap-3 p-4">
+              {ORDER_STATUSES.map((status, index) => (
+                <KanbanColumn
+                  key={status.key}
+                  status={status}
+                  orders={getOrdersByStatus(status.key)}
+                  canAddOrder={can("orders.create") && !showArchived}
+                  onAddOrder={() => handleAddOrder(status.key)}
+                  onOrderClick={(id) => setSelectedOrderId(id)}
+                  index={index}
+                  readOnly={showArchived || !can("orders.change_status")}
+                  onArchive={
+                    can("orders.archive") && !showArchived
+                      ? (id) => archiveMutation.mutate(id)
+                      : undefined
+                  }
+                  onUnarchive={
+                    can("orders.archive") && showArchived
+                      ? (id) => unarchiveMutation.mutate(id)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+
+            <DragOverlay dropAnimation={null}>
+              {activeOrder ? (
+                <KanbanCard
+                  order={activeOrder}
+                  onClick={() => {}}
+                  isDragging
+                />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
+      </div>
+
+      {/* Order detail sheet */}
+      <OrderDetailSheet />
+
+      {/* Order form dialog (wizard de 3 passos) */}
+      <OrderForm
+        open={createOrderOpen}
+        onOpenChange={setCreateOrderOpen}
+      />
+    </div>
+  );
+}

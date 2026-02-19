@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ===== ADDS Brand Colors ===== */
+    --adds-blue: 199 82% 48%;
+    --adds-orange: 30 100% 47%;
+    --adds-navy: 207 79% 23%;
+
+    /* ===== Light Theme ===== */
+    --background: 210 20% 98%;
+    --foreground: 207 79% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 207 79% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 207 79% 12%;
+    --primary: 199 82% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 18% 95%;
+    --secondary-foreground: 207 79% 15%;
+    --muted: 210 18% 95%;
+    --muted-foreground: 215 14% 46%;
+    --accent: 30 100% 47%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 20% 91%;
+    --input: 214 20% 91%;
+    --ring: 199 82% 48%;
+    --radius: 0.625rem;
+
+    /* ===== Kanban Status Colors ===== */
+    --status-fazer: 215 20% 94%;
+    --status-ajuste: 38 100% 94%;
+    --status-aprovacao: 199 80% 94%;
+    --status-aguardando: 262 55% 94%;
+    --status-aprovado: 142 55% 93%;
+    --status-arte-aprovada: 142 72% 88%;
+    --status-producao: 30 95% 93%;
+    --status-expedicao: 24 75% 93%;
+    --status-finalizado: 199 80% 91%;
+    --status-entregue: 160 55% 91%;
+    --status-faturado: 207 75% 91%;
+    --status-arquivado: 215 12% 93%;
+
+    /* ===== Label Colors ===== */
+    --label-boleto: 210 60% 55%;
+    --label-aguardando-pagamento: 38 90% 55%;
+    --label-cancelado: 0 84% 60%;
+    --label-aprov-aguardando: 30 100% 50%;
+    --label-amostras: 262 60% 55%;
+    --label-pago: 142 72% 38%;
+    --label-orcamento: 199 82% 48%;
+
+    /* ===== Sidebar ===== */
+    --sidebar-width: 260px;
+    --sidebar-collapsed-width: 68px;
+    --header-height: 60px;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 20% 96%;
+    --card: 222 47% 10%;
+    --card-foreground: 210 20% 96%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 199 82% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 15%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 217 33% 15%;
+    --muted-foreground: 215 14% 65%;
+    --accent: 30 100% 47%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 199 82% 48%;
+
+    /* Kanban dark variants */
+    --status-fazer: 215 25% 16%;
+    --status-ajuste: 38 50% 14%;
+    --status-aprovacao: 199 40% 14%;
+    --status-aguardando: 262 30% 16%;
+    --status-aprovado: 142 30% 14%;
+    --status-arte-aprovada: 142 40% 14%;
+    --status-producao: 30 45% 14%;
+    --status-expedicao: 24 40% 14%;
+    --status-finalizado: 199 40% 13%;
+    --status-entregue: 160 30% 13%;
+    --status-faturado: 207 40% 13%;
+    --status-arquivado: 215 15% 14%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border hover:bg-muted-foreground/30;
+  }
+
+  /* Kanban horizontal scroll */
+  .kanban-scroll::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .kanban-scroll::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+}
+
+@layer utilities {
+  /* Glass effect */
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl dark:bg-card/70;
+  }
+
+  /* Gradient border */
+  .gradient-border {
+    @apply relative;
+  }
+
+  .gradient-border::before {
+    content: "";
+    @apply absolute inset-0 rounded-[inherit] p-[1px];
+    background: linear-gradient(
+      135deg,
+      hsl(var(--adds-blue)),
+      hsl(var(--adds-orange))
+    );
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    pointer-events: none;
+  }
+
+  /* Stagger animation children */
+  .stagger-children > * {
+    @apply animate-fade-in opacity-0;
+  }
+
+  .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+  .stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+  .stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+  .stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+  .stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+  .stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+  .stagger-children > *:nth-child(8) { animation-delay: 350ms; }
+  .stagger-children > *:nth-child(9) { animation-delay: 400ms; }
+  .stagger-children > *:nth-child(10) { animation-delay: 450ms; }
+  .stagger-children > *:nth-child(11) { animation-delay: 500ms; }
+  .stagger-children > *:nth-child(12) { animation-delay: 550ms; }
+
+  .stagger-children > * {
+    animation-fill-mode: forwards;
+  }
+}
+
+/* Sonner toast - garantir contraste legível em todos os temas */
+[data-sonner-toast] {
+  color: hsl(var(--foreground)) !important;
+}
+
+[data-sonner-toast] [data-title],
+[data-sonner-toast] [data-description],
+[data-sonner-toast] [data-content] {
+  color: inherit !important;
+}
+
+[data-sonner-toast] [data-close-button] {
+  color: hsl(var(--foreground)) !important;
+  background: hsl(var(--card)) !important;
+  border-color: hsl(var(--border)) !important;
+  opacity: 0.9;
+}
+
+[data-sonner-toast] [data-close-button]:hover {
+  opacity: 1;
+  background: hsl(var(--muted)) !important;
+}
