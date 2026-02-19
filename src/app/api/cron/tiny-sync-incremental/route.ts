@@ -13,7 +13,7 @@ export const maxDuration = 120;
  * - Processa até 5 páginas (500 contatos) por execução
  *
  * Configurar no Vercel Cron (vercel.json):
- *   "crons": [{ "path": "/api/cron/tiny-sync-incremental", "schedule": "*/5 8-17 * * 1-5" }]
+ *   "crons": [{ "path": "/api/cron/tiny-sync-incremental", "schedule": "0 9 * * 1-5" }]
  *
  * Env opcionais:
  *   TINY_SYNC_START_HOUR=8
