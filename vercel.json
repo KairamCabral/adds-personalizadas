@@ -5,7 +5,7 @@
   "crons": [
     {
       "path": "/api/cron/tiny-sync-incremental",
-      "schedule": "*/5 8-17 * * 1-5"
+      "schedule": "0 9 * * 1-5"
     }
   ]
 }
