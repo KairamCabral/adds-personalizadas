@@ -48,7 +48,7 @@ export default async function ArtApprovalPage({ params }: PageProps) {
   const variations = rows.map((r) => ({
     id: r.artwork_id,
     url: r.artwork_url ?? "",
-    variationIndex: r.variation_index ?? 1,
+    variationIndex: (r as { variation_index?: number }).variation_index ?? 1,
   }));
 
   return (

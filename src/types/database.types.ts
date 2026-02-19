@@ -1288,6 +1288,10 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      get_dashboard_clientes_data: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
       validate_approval_token: {
         Args: { p_token: string }
         Returns: {

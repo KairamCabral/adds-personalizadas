@@ -309,9 +309,11 @@ export async function markCommentAsRead(commentId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.id) throw new Error("Usuário não autenticado");
 
+  const readAt = new Date().toISOString();
   const { data, error } = await supabase
     .from("comments")
-    .update({ read_at: new Date().toISOString(), read_by: user.id })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- read_at/read_by em schema futuro
+    .update({ read_at: readAt, read_by: user.id } as any)
     .eq("id", commentId)
     .select()
     .single();
@@ -320,7 +322,7 @@ export async function markCommentAsRead(commentId: string) {
 
   await logAction("UPDATE", "comment_marked_read", commentId, undefined, {
     read_by: user.id,
-    read_at: data.read_at,
+    read_at: readAt,
   });
 
   return data;

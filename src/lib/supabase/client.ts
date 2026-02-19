@@ -13,7 +13,10 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       auth: {
-        lock: (_acquire: unknown, _release: unknown, fn: () => void) => fn(),
+        lock: (_acquire: unknown, _release: unknown, fn: () => unknown) => {
+          const result = fn();
+          return result instanceof Promise ? result : Promise.resolve(result);
+        },
       },
     }
   );

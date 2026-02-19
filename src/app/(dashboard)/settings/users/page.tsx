@@ -22,7 +22,14 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { UserInviteForm } from "./_components/user-invite-form";
 import { UserEditSheet } from "./_components/user-edit-sheet";
 
-type UserRow = Awaited<ReturnType<typeof getUsers>>[number];
+type UserRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  role: string | null;
+  is_active: boolean | null;
+  last_login_at: string | null;
+};
 
 export default function SettingsUsersPage() {
   const router = useRouter();
@@ -31,10 +38,11 @@ export default function SettingsUsersPage() {
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
 
-  const { data: users = [], isLoading } = useQuery({
+  const { data: usersData = [], isLoading } = useQuery({
     queryKey: ["users"],
     queryFn: getUsers,
   });
+  const users = usersData as UserRow[];
 
   useEffect(() => {
     if (!permissionsLoading && !can("settings.users")) {
