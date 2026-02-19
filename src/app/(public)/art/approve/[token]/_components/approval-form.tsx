@@ -30,12 +30,12 @@ const approvalSchema = z.object({
 }).refine(
   (data) => {
     if (data.decision === "revision") {
-      return !!data.feedback?.trim() && data.feedback.trim().length >= 10;
+      return !!data.feedback?.trim() && data.feedback.trim().length >= 5;
     }
     return true;
   },
   {
-    message: "Descreva o ajuste necessário (mínimo 10 caracteres)",
+    message: "Descreva o ajuste necessário (mínimo 5 caracteres)",
     path: ["feedback"],
   }
 );
@@ -72,7 +72,7 @@ export function ApprovalForm({
     resolver: zodResolver(approvalSchema),
     defaultValues: {
       approverName: "",
-      decision: undefined,
+      decision: hasMultiple ? "revision" : undefined,
       feedback: "",
     },
   });
@@ -82,6 +82,7 @@ export function ApprovalForm({
   }, [hasMultiple, form]);
 
   const decision = form.watch("decision");
+  const feedback = form.watch("feedback");
 
   async function submitDecision(data: ApprovalFormData, approvedArtworkId?: string) {
     setIsLoading(true);
@@ -207,16 +208,26 @@ export function ApprovalForm({
       </div>
 
       <div className="flex shrink-0 flex-col rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5 lg:min-w-[320px] lg:max-w-md">
-        <form
+          <form
           onSubmit={form.handleSubmit((d) => {
             if (d.decision === "approve" && !hasMultiple) {
               setShowApproveConfirm(true);
             } else {
-              submitDecision({ ...d, decision: "revision" });
+              submitDecision(
+                { ...d, decision: "revision" as const },
+                undefined
+              );
             }
           })}
           className="flex flex-1 flex-col gap-4"
         >
+          {hasMultiple && (
+            <input
+              type="hidden"
+              {...form.register("decision")}
+              defaultValue="revision"
+            />
+          )}
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="approverName">Seu nome</Label>
@@ -284,6 +295,20 @@ export function ApprovalForm({
                   disabled={isLoading}
                   {...form.register("feedback")}
                 />
+                {(decision === "revision" || hasMultiple) &&
+                  feedback !== undefined && (
+                    <p
+                      className={
+                        feedback?.trim().length >= 5
+                          ? "text-xs text-muted-foreground"
+                          : "text-xs text-amber-600 dark:text-amber-500"
+                      }
+                    >
+                      {feedback?.trim().length >= 5
+                        ? `${feedback.trim().length} caracteres`
+                        : `Digite pelo menos 5 caracteres (${feedback?.trim().length ?? 0}/5)`}
+                    </p>
+                  )}
                 {form.formState.errors.feedback && (
                   <p className="text-xs text-destructive">
                     {form.formState.errors.feedback.message}
@@ -303,8 +328,12 @@ export function ApprovalForm({
             {decision === "revision" || hasMultiple ? (
               <Button
                 type="submit"
-                disabled={isLoading || (hasMultiple && !form.getValues().feedback?.trim())}
-                className="w-full bg-[#f07d00] transition-all hover:bg-[#f07d00]/90 hover:shadow-lg sm:flex-1"
+                disabled={
+                  isLoading ||
+                  ((decision === "revision" || hasMultiple) &&
+                    (!feedback?.trim() || feedback.trim().length < 5))
+                }
+                className="w-full bg-[#f07d00] transition-all hover:bg-[#f07d00]/90 hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed sm:flex-1"
               >
                 {isLoading ? (
                   <>

@@ -60,7 +60,6 @@ const ACTIVE_STATUSES = [
   "FAZER",
   "AJUSTE",
   "APROVACAO",
-  "AGUARDANDO_APROVACAO",
   "APROVADO",
   "ARTE_APROVADA",
   "PRODUCAO",
@@ -313,9 +312,8 @@ const STATUS_LABELS: Record<string, string> = {
   FAZER: "Fazer",
   AJUSTE: "Ajuste",
   APROVACAO: "Aprovação",
-  AGUARDANDO_APROVACAO: "Aguard. Aprov.",
-  APROVADO: "Aprovado",
-  ARTE_APROVADA: "Arte OK",
+  APROVADO: "Confirmação",
+  ARTE_APROVADA: "Aprovado",
   PRODUCAO: "Produção",
   EXPEDICAO: "Expedição",
   FINALIZADO: "Finalizado",
@@ -448,7 +446,7 @@ export interface OperacoesPersonalizadasData {
 }
 
 const FUNIL_ETAPAS: { statuses: string[]; label: string }[] = [
-  { statuses: ["FAZER", "AJUSTE", "APROVACAO", "AGUARDANDO_APROVACAO", "APROVADO", "ARTE_APROVADA"], label: "Fazer / Aprovação" },
+  { statuses: ["FAZER", "AJUSTE", "APROVACAO", "APROVADO", "ARTE_APROVADA"], label: "Fazer / Aprovação" },
   { statuses: ["PRODUCAO"], label: "Produção" },
   { statuses: ["EXPEDICAO"], label: "Expedição" },
   { statuses: ["FINALIZADO", "ENTREGUE", "FATURADO"], label: "Entregue" },

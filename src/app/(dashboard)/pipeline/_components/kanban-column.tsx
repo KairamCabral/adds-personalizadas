@@ -20,6 +20,7 @@ interface KanbanColumnProps {
   orders: (Order & {
     client_name?: string;
     assigned_user?: Pick<Profile, "full_name" | "avatar_url">;
+    created_user?: Pick<Profile, "full_name" | "avatar_url">;
     labels: Pick<OrderLabel, "label">[];
   })[];
   onAddOrder: () => void;

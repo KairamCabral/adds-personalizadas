@@ -69,6 +69,7 @@ import { OrderLabels } from "./order-labels";
 import { OrderAttachments } from "./order-attachments";
 import { OrderArtwork } from "./order-artwork";
 import { OrderActivityPanel } from "./order-activity-panel";
+import { OrderEditSheet } from "./order-edit-sheet";
 
 const PRODUCAO_AND_AFTER = [
   "PRODUCAO",
@@ -84,6 +85,7 @@ export function OrderDetailSheet() {
   const { can } = usePermissions();
   const queryClient = useQueryClient();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editOrderId, setEditOrderId] = useState<string | null>(null);
   const [sendingToSupplier, setSendingToSupplier] = useState<string | null>(
     null
   );
@@ -241,7 +243,12 @@ export function OrderDetailSheet() {
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {can("orders.edit") && (
-                      <Button variant="default" size="sm" className="gap-1.5">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => setEditOrderId(order.id)}
+                      >
                         <Pencil className="h-3.5 w-3.5" />
                         Editar
                       </Button>
@@ -597,6 +604,12 @@ export function OrderDetailSheet() {
         variant="destructive"
         onConfirm={() => deleteMutation.mutate()}
         loading={deleteMutation.isPending}
+      />
+
+      <OrderEditSheet
+        orderId={editOrderId}
+        open={!!editOrderId}
+        onOpenChange={(open) => !open && setEditOrderId(null)}
       />
     </>
   );

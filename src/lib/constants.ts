@@ -2,7 +2,6 @@ import {
   Clock,
   Pencil,
   Send,
-  Hourglass,
   ThumbsUp,
   Image,
   Factory,
@@ -22,7 +21,6 @@ export type OrderStatus =
   | "FAZER"
   | "AJUSTE"
   | "APROVACAO"
-  | "AGUARDANDO_APROVACAO"
   | "APROVADO"
   | "ARTE_APROVADA"
   | "PRODUCAO"
@@ -75,19 +73,9 @@ export const ORDER_STATUSES: StatusConfig[] = [
     dotColor: "bg-sky-400",
   },
   {
-    key: "AGUARDANDO_APROVACAO",
-    label: "Aguardando Aprovação",
-    shortLabel: "Aguardando",
-    icon: Hourglass,
-    color: "text-violet-600 dark:text-violet-400",
-    bgColor: "bg-violet-50 dark:bg-violet-900/20",
-    borderColor: "border-violet-200 dark:border-violet-800",
-    dotColor: "bg-violet-400",
-  },
-  {
     key: "APROVADO",
-    label: "Aprovado",
-    shortLabel: "Aprovado",
+    label: "Confirmação",
+    shortLabel: "Confirmação",
     icon: ThumbsUp,
     color: "text-emerald-600 dark:text-emerald-400",
     bgColor: "bg-emerald-50 dark:bg-emerald-900/20",
@@ -96,8 +84,8 @@ export const ORDER_STATUSES: StatusConfig[] = [
   },
   {
     key: "ARTE_APROVADA",
-    label: "Arte Aprovada",
-    shortLabel: "Arte Aprovada",
+    label: "Aprovado",
+    shortLabel: "Aprovado",
     icon: Image,
     color: "text-green-600 dark:text-green-400",
     bgColor: "bg-green-50 dark:bg-green-900/20",

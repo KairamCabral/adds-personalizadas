@@ -16,6 +16,7 @@ export async function getOrders() {
       *,
       client:clients(id, name, company, logo_url),
       assigned_user:profiles!orders_assigned_to_fkey(id, full_name, avatar_url),
+      created_user:profiles!orders_created_by_fkey(id, full_name, avatar_url),
       labels:order_labels(id, label),
       watchers:order_watchers(user_id, profile:profiles(id, full_name, avatar_url)),
       bling_logs:supplier_data_logs(sent_at, suppliers(name)),
@@ -37,6 +38,7 @@ export async function getArchivedOrders() {
       *,
       client:clients(id, name, company, logo_url),
       assigned_user:profiles!orders_assigned_to_fkey(id, full_name, avatar_url),
+      created_user:profiles!orders_created_by_fkey(id, full_name, avatar_url),
       labels:order_labels(id, label),
       items:order_items(product_name, quantity),
       attachments:attachments(id)

@@ -36,6 +36,7 @@ interface KanbanCardProps {
   order: Order & {
     client_name?: string;
     assigned_user?: Pick<Profile, "full_name" | "avatar_url">;
+    created_user?: Pick<Profile, "full_name" | "avatar_url">;
     labels: Pick<OrderLabel, "label">[];
     bling_logs?: BlingLog[];
     items?: OrderItem[];
@@ -218,16 +219,31 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
               </Tooltip>
             </TooltipProvider>
           )}
-          {order.assigned_user && (
-            <div
-              className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-semibold text-white",
-                generateAvatarColor(order.assigned_user.full_name)
-              )}
-              title={order.assigned_user.full_name}
-            >
-              {getInitials(order.assigned_user.full_name)}
-            </div>
+          {(order.assigned_user ?? order.created_user) && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white",
+                      "shadow-[0_0_0_1px_rgba(255,255,255,0.15)_inset]",
+                      generateAvatarColor(
+                        (order.assigned_user ?? order.created_user)!.full_name
+                      )
+                    )}
+                  >
+                    {getInitials(
+                      (order.assigned_user ?? order.created_user)!.full_name
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {order.assigned_user
+                    ? `Responsável: ${order.assigned_user.full_name}`
+                    : `Criado por: ${order.created_user!.full_name}`}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       </div>
