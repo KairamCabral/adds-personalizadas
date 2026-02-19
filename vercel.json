@@ -1,4 +1,7 @@
 {
+  "framework": "nextjs",
+  "buildCommand": "pnpm run build",
+  "installCommand": "pnpm install",
   "crons": [
     {
       "path": "/api/cron/tiny-sync-incremental",
