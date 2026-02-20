@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
 import {
-  getQuotes,
+  getQuotesViaApi,
   getQuoteCounts,
   type QuoteStatus,
 } from "@/services/quotes.service";
@@ -41,9 +41,9 @@ export default function QuotesPage() {
   const [page, setPage] = useState(1);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["quotes", statusFilter, search, page],
-    queryFn: () => getQuotes({ status: statusFilter, search, page }),
+    queryFn: () => getQuotesViaApi({ status: statusFilter, search, page }),
   });
 
   const { data: counts } = useQuery({
@@ -179,13 +179,21 @@ export default function QuotesPage() {
           ))}
         </div>
       ) : error ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <p className="text-destructive text-lg font-medium">
-            Erro ao carregar orçamentos
-          </p>
-          <p className="text-muted-foreground text-sm mt-1">
-            {error instanceof Error ? error.message : "Tente novamente"}
-          </p>
+        <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+          <div>
+            <p className="text-destructive text-lg font-medium">
+              Erro ao carregar orçamentos
+            </p>
+            <p className="text-muted-foreground text-sm mt-1">
+              {error instanceof Error ? error.message : "Tente novamente"}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => refetch()}
+          >
+            Tentar novamente
+          </Button>
         </div>
       ) : (
         <QuotesTable

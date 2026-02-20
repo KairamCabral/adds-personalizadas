@@ -10,13 +10,13 @@ import {
   ChevronRight,
   CreditCard,
   Hash,
+  ListOrdered,
   Minus,
   Palette,
   Plus,
   Trash2,
   Loader2,
   Package,
-  Sliders,
   Truck,
   Check,
   X,
@@ -36,7 +36,22 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
 const DEFAULT_QTY_PER_COLOR = 100;
+const MIN_QTY_PER_COLOR = 8;
 const QUICK_QUANTITIES = [24, 36, 72, 120];
+
+function distributeTotalAcrossColors(total: number, colorKeys: string[]): Record<string, number> {
+  const n = colorKeys.length;
+  if (n === 0) return {};
+  const minTotal = MIN_QTY_PER_COLOR * n;
+  const safeTotal = Math.max(minTotal, total);
+  const perColor = Math.floor(safeTotal / n);
+  const remainder = safeTotal % n;
+  const out: Record<string, number> = {};
+  colorKeys.forEach((k, i) => {
+    out[k] = perColor + (i < remainder ? 1 : 0);
+  });
+  return out;
+}
 
 interface ColorOption {
   key: string;
@@ -72,13 +87,12 @@ function getQuantityPerColorOrFallback(item: WizardProductItem, colorKeys: strin
   const qpc = item.quantity_per_color;
   if (qpc && Object.keys(qpc).length > 0) {
     const out: Record<string, number> = {};
-    colorKeys.forEach((k) => { out[k] = Math.max(0, qpc[k] ?? DEFAULT_QTY_PER_COLOR); });
-    return out;
+    colorKeys.forEach((k) => { out[k] = Math.max(0, qpc[k] ?? 0); });
+    const sum = Object.values(out).reduce((a, b) => a + b, 0);
+    if (sum > 0) return out;
   }
-  const single = item.quantity > 0 ? item.quantity : DEFAULT_QTY_PER_COLOR;
-  const out: Record<string, number> = {};
-  colorKeys.forEach((k) => { out[k] = single; });
-  return out;
+  const total = item.quantity > 0 ? item.quantity : DEFAULT_QTY_PER_COLOR;
+  return distributeTotalAcrossColors(total, colorKeys);
 }
 
 export function StepProducts({
@@ -158,40 +172,30 @@ export function StepProducts({
     const catalog = productList.find((p) => p.id === productId);
     if (!product || !catalog) return;
 
-    const availableColors = catalog.available_colors ?? [];
     const hasColor = product.colors.includes(colorKey);
     const newColors = hasColor
       ? product.colors.filter((c) => c !== colorKey)
       : [...product.colors, colorKey];
 
-    const defaultQty = DEFAULT_QTY_PER_COLOR;
-    const currentQpc = product.quantity_per_color && Object.keys(product.quantity_per_color).length > 0
-      ? product.quantity_per_color
-      : null;
-    const firstQty = currentQpc && Object.keys(currentQpc).length > 0
-      ? Object.values(currentQpc)[0] ?? defaultQty
-      : product.quantity || defaultQty;
-
-    const newQpc: Record<string, number> = {};
-    newColors.forEach((k) => {
-      newQpc[k] = currentQpc?.[k] ?? (k === colorKey && !hasColor ? firstQty : (currentQpc?.[k] ?? defaultQty));
-    });
+    const currentTotal = getTotalQuantity(product) || DEFAULT_QTY_PER_COLOR;
+    const newQpc = newColors.length > 0 ? distributeTotalAcrossColors(currentTotal, newColors) : undefined;
+    const newTotal = newQpc ? Object.values(newQpc).reduce((a, b) => a + b, 0) : 0;
 
     updateProduct(productId, {
       colors: newColors,
-      quantity_per_color: Object.keys(newQpc).length > 0 ? newQpc : undefined,
-      quantity: Object.values(newQpc).reduce((a, b) => a + b, 0) || product.quantity,
+      quantity_per_color: newQpc,
+      quantity: newTotal,
     });
   };
 
-  const setSameQuantityForAllColors = (productId: string, value: number) => {
+  const setTotalQuantity = (productId: string, total: number) => {
     const product = selectedProducts.find((p) => p.product_id === productId);
     if (!product || product.colors.length === 0) return;
-    const qpc: Record<string, number> = {};
-    product.colors.forEach((k) => { qpc[k] = Math.max(0, value); });
+    const qpc = distributeTotalAcrossColors(total, product.colors);
+    const actualTotal = Object.values(qpc).reduce((a, b) => a + b, 0);
     updateProduct(productId, {
       quantity_per_color: qpc,
-      quantity: value * product.colors.length,
+      quantity: actualTotal,
     });
   };
 
@@ -199,7 +203,7 @@ export function StepProducts({
     const product = selectedProducts.find((p) => p.product_id === productId);
     if (!product) return;
     const qpc = getQuantityPerColorOrFallback(product, product.colors);
-    qpc[colorKey] = Math.max(0, value);
+    qpc[colorKey] = Math.max(MIN_QTY_PER_COLOR, value);
     const total = Object.values(qpc).reduce((a, b) => a + b, 0);
     updateProduct(productId, {
       quantity_per_color: qpc,
@@ -406,7 +410,7 @@ export function StepProducts({
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 lg:gap-8 items-start">
                     {hasColors && (
                       <div className="space-y-3">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
@@ -491,113 +495,117 @@ export function StepProducts({
                   ) : hasColors && item.colors.length > 0 ? (
                     <div className="space-y-3">
                       {!expanded ? (
-                        <div className="flex flex-col sm:flex-row gap-4 rounded-xl border border-border/60 bg-muted/10 p-3 sm:p-4">
-                          {catalogProduct?.image_url && (
-                            <div className="flex flex-col items-center gap-2 shrink-0">
-                              <div className="rounded-xl overflow-hidden border border-border/50 bg-muted/30">
-                                <img
-                                  src={catalogProduct.image_url}
-                                  alt={item.product_name}
-                                  className="h-20 w-20 sm:h-24 sm:w-24 object-contain"
-                                />
-                              </div>
-                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                                <Hash className="h-3 w-3" />
-                                2. Quantidade
-                              </p>
-                            </div>
-                          )}
-                          <div className={cn("flex-1 min-w-0 space-y-3", !catalogProduct?.image_url && "sm:pl-0")}>
-                            {!catalogProduct?.image_url && (
-                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                                <Hash className="h-3.5 w-3.5" />
-                                2. Quantidade por cor
-                              </p>
-                            )}
-                            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3">
-                              <p className="text-sm text-muted-foreground shrink-0 w-full sm:w-auto">Mesma quantidade em cada cor:</p>
-                              <div className="flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-10 w-10 shrink-0"
-                                  onClick={() => {
-                                    const first = Object.values(qpc ?? {})[0] ?? DEFAULT_QTY_PER_COLOR;
-                                    setSameQuantityForAllColors(item.product_id, Math.max(1, first - 1));
-                                  }}
-                                  title={`Diminuir ${item.colors.length} un. (1 por cor)`}
+                        <div className="rounded-xl border border-border/60 bg-muted/10 p-3 sm:p-4 lg:p-5">
+                          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 lg:gap-8 items-start">
+                            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 min-w-0">
+                              {catalogProduct?.image_url && (
+                                <div className="flex flex-col items-center gap-2 shrink-0">
+                                  <div className="rounded-xl overflow-hidden border border-border/50 bg-muted/30">
+                                    <img
+                                      src={catalogProduct.image_url}
+                                      alt={item.product_name}
+                                      className="h-20 w-20 sm:h-24 sm:w-24 object-contain"
+                                    />
+                                  </div>
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                                    <Hash className="h-3 w-3" />
+                                    2. Quantidade
+                                  </p>
+                                </div>
+                              )}
+                              <div className={cn("flex-1 min-w-0 space-y-3", !catalogProduct?.image_url && "sm:pl-0")}>
+                                {!catalogProduct?.image_url && (
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                                    <Hash className="h-3.5 w-3.5" />
+                                    2. Quantidade total
+                                  </p>
+                                )}
+                                <div>
+                                  <p className="text-sm font-medium text-foreground mb-2">Quantidade total de escovas</p>
+                                  <p className="text-xs text-muted-foreground mb-1.5">Dividida igualmente entre as cores (mín. 8 por cor)</p>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-11 w-11 shrink-0"
+                                      onClick={() => {
+                                        const minTotal = MIN_QTY_PER_COLOR * item.colors.length;
+                                        setTotalQuantity(item.product_id, Math.max(minTotal, totalQty - 1));
+                                      }}
+                                      title="Diminuir 1 un."
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </Button>
+                                    <Input
+                                      type="number"
+                                      min={MIN_QTY_PER_COLOR * item.colors.length}
+                                      value={totalQty || ""}
+                                      onChange={(e) => {
+                                        const v = parseInt(e.target.value, 10) || 0;
+                                        setTotalQuantity(item.product_id, v);
+                                      }}
+                                      className="h-11 w-28 text-center text-lg font-semibold tabular-nums bg-background"
+                                    />
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-11 w-11 shrink-0"
+                                      onClick={() => setTotalQuantity(item.product_id, totalQty + 1)}
+                                      title="Aumentar 1 un."
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-1.5">Ou escolha:</p>
+                                  <div className="flex flex-wrap gap-2 mt-1">
+                                    {QUICK_QUANTITIES.map((q) => {
+                                      const isActive = totalQty === q;
+                                      return (
+                                        <Button
+                                          key={q}
+                                          variant="outline"
+                                          size="sm"
+                                          className={cn(
+                                            "min-w-9 px-3 tabular-nums rounded-md border transition-all duration-200",
+                                            isActive
+                                              ? "h-8 text-sm font-bold border-primary bg-primary/15 text-primary"
+                                              : "h-7 text-xs font-medium border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
+                                          )}
+                                          onClick={() => setTotalQuantity(item.product_id, q)}
+                                        >
+                                          {q}
+                                        </Button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setPerColorExpanded((prev) => ({ ...prev, [item.product_id]: true }))}
+                                  className="text-xs text-orange-500 dark:text-orange-400 hover:text-orange-600 dark:hover:text-orange-300 transition-colors flex items-center gap-1.5 font-medium"
                                 >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  value={Object.values(qpc ?? {})[0] ?? ""}
-                                  onChange={(e) => {
-                                    const v = parseInt(e.target.value, 10) || 0;
-                                    setSameQuantityForAllColors(item.product_id, v);
-                                  }}
-                                  className="h-10 w-24 text-center text-base font-semibold tabular-nums"
-                                />
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-10 w-10 shrink-0"
-                                  onClick={() => {
-                                    const first = Object.values(qpc ?? {})[0] ?? DEFAULT_QTY_PER_COLOR;
-                                    setSameQuantityForAllColors(item.product_id, first + 1);
-                                  }}
-                                  title={`Aumentar ${item.colors.length} un. (1 por cor)`}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
+                                  <ListOrdered className="h-3.5 w-3.5" />
+                                  Preciso de quantidades diferentes por cor
+                                </button>
                               </div>
                             </div>
-                            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
-                              <span className="text-xs text-muted-foreground shrink-0 pt-1 sm:pt-0">Mais pedidas:</span>
-                              <div className="flex flex-wrap gap-2">
-                              {QUICK_QUANTITIES.map((q) => {
-                                const current = Object.values(qpc ?? {})[0] ?? 0;
-                                const isActive = current === q;
-                                return (
-                                  <Button
-                                    key={q}
-                                    variant="outline"
-                                    size="sm"
-                                    className={cn(
-                                      "min-w-10 px-4 tabular-nums rounded-md border transition-all duration-200",
-                                      isActive
-                                        ? "h-9 text-base font-bold border-primary bg-primary/15 text-primary shadow-md"
-                                        : "h-8 text-xs font-medium border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
-                                    )}
-                                    onClick={() => setSameQuantityForAllColors(item.product_id, q)}
-                                  >
-                                    {q}
-                                  </Button>
-                                );
-                              })}
+                            <div className="lg:justify-self-end w-full lg:w-auto">
+                              <div className="rounded-xl bg-orange-500/15 border-2 border-orange-500/30 px-6 py-5 min-w-[200px] lg:min-w-[300px]">
+                                <p className="text-sm font-medium text-muted-foreground mb-1">Total</p>
+                                <p className="text-3xl lg:text-4xl font-bold text-orange-600 dark:text-orange-400 tabular-nums">
+                                  {totalQty} unidades
+                                </p>
+                                <p className="text-sm text-muted-foreground mt-2">
+                                  {item.colors.length} {item.colors.length === 1 ? "cor" : "cores"} × {item.colors.length > 0 ? Math.floor(totalQty / item.colors.length) : 0} por cor
+                                </p>
                               </div>
-                            </div>
-                            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 pt-3 sm:pt-2 border-t border-border/50">
-                              <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-2 sm:py-1.5 inline-flex items-baseline gap-2 flex-wrap justify-center sm:justify-start">
-                                <span className="text-xs font-medium text-muted-foreground">Total</span>
-                                <span className="text-xl font-bold text-orange-600 dark:text-orange-400 tabular-nums">{totalQty}</span>
-                                <span className="text-xs text-muted-foreground">unidades selecionadas ({item.colors.length} {item.colors.length === 1 ? "cor" : "cores"})</span>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-2 text-sm font-medium border-primary/30 text-foreground hover:bg-primary/5 hover:border-primary/50 shrink-0 w-full sm:w-auto"
-                                onClick={() => setPerColorExpanded((prev) => ({ ...prev, [item.product_id]: true }))}
-                              >
-                                <Sliders className="h-4 w-4 opacity-70" />
-                                Quantidades diferentes
-                              </Button>
                             </div>
                           </div>
                         </div>
                       ) : (
-                        <div className="flex flex-col sm:flex-row gap-4 rounded-xl border border-border/60 bg-muted/10 p-3 sm:p-4">
+                        <div className="rounded-xl border border-border/60 bg-muted/10 p-3 sm:p-4 lg:p-5">
+                          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4 lg:gap-6 items-start">
+                          <div className="flex flex-col sm:flex-row gap-4 min-w-0">
                           {catalogProduct?.image_url && (
                             <div className="flex flex-col items-center gap-2 shrink-0">
                               <div className="rounded-xl overflow-hidden border border-border/50 bg-muted/30">
@@ -610,28 +618,20 @@ export function StepProducts({
                             </div>
                           )}
                           <div className="flex-1 min-w-0 space-y-4">
-                            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2">
+                            <div className="space-y-2">
                               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                                <Sliders className="h-3.5 w-3.5" />
+                                <ListOrdered className="h-3.5 w-3.5" />
                                 Quantidade por cor
                               </p>
-                              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
-                                <span className="text-xs text-muted-foreground shrink-0">Aplicar a todas:</span>
-                                <div className="flex flex-wrap gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs text-muted-foreground shrink-0">Definir total:</span>
                                 {QUICK_QUANTITIES.map((q) => (
                                   <Button
                                     key={q}
                                     variant="outline"
                                     size="sm"
                                     className="h-8 min-w-9 px-3 text-xs font-medium tabular-nums rounded-md border border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5 transition-all duration-200"
-                                    onClick={() => {
-                                      const next: Record<string, number> = {};
-                                      item.colors.forEach((k) => { next[k] = q; });
-                                      updateProduct(item.product_id, {
-                                        quantity_per_color: next,
-                                        quantity: q * item.colors.length,
-                                      });
-                                    }}
+                                    onClick={() => setTotalQuantity(item.product_id, q)}
                                   >
                                     {q}
                                   </Button>
@@ -639,12 +639,11 @@ export function StepProducts({
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10 w-full sm:w-auto"
+                                  className="gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10"
                                   onClick={() => setPerColorExpanded((prev) => ({ ...prev, [item.product_id]: false }))}
                                 >
                                   Igual para todas
                                 </Button>
-                                </div>
                               </div>
                             </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
@@ -675,19 +674,19 @@ export function StepProducts({
                                       variant="outline"
                                       size="icon"
                                       className="h-8 w-8"
-                                      onClick={() => setQuantityForColor(item.product_id, colorKey, Math.max(0, qty - 1))}
+                                      onClick={() => setQuantityForColor(item.product_id, colorKey, Math.max(MIN_QTY_PER_COLOR, qty - 1))}
                                     >
                                       <Minus className="h-3 w-3" />
                                     </Button>
                                     <Input
                                       type="number"
-                                      min={0}
+                                      min={MIN_QTY_PER_COLOR}
                                       value={qty}
                                       onChange={(e) =>
                                         setQuantityForColor(
                                           item.product_id,
                                           colorKey,
-                                          Math.max(0, parseInt(e.target.value, 10) || 0)
+                                          Math.max(MIN_QTY_PER_COLOR, parseInt(e.target.value, 10) || MIN_QTY_PER_COLOR)
                                         )
                                       }
                                       className="h-8 w-20 text-center text-sm"
@@ -705,20 +704,23 @@ export function StepProducts({
                               );
                             })}
                           </div>
-                          <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 sm:px-4 py-2 inline-flex items-baseline gap-2 flex-wrap justify-center sm:justify-start w-full sm:w-auto">
-                            <span className="text-sm font-medium text-muted-foreground">Total</span>
-                            <span className="text-xl sm:text-2xl font-bold text-orange-600 dark:text-orange-400 tabular-nums">{totalQty}</span>
-                            <span className="text-xs sm:text-sm text-muted-foreground">unidades selecionadas ({item.colors.length} {item.colors.length === 1 ? "cor" : "cores"})</span>
+                          </div>
+                          </div>
+                          <div className="lg:justify-self-end w-full lg:w-auto">
+                            <div className="rounded-xl bg-orange-500/15 border-2 border-orange-500/30 px-6 py-5 min-w-[200px] lg:min-w-[300px]">
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Total</p>
+                              <p className="text-3xl lg:text-4xl font-bold text-orange-600 dark:text-orange-400 tabular-nums">{totalQty} unidades</p>
+                            </div>
                           </div>
                           </div>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-3">
-                        <p className="text-xs text-muted-foreground shrink-0">Quantidade:</p>
-                        <div className="flex items-center gap-2 justify-center sm:justify-start">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground mb-2">Quantidade</p>
+                        <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
                             size="icon"
@@ -742,7 +744,7 @@ export function StepProducts({
                                 quantity: Math.max(1, parseInt(e.target.value, 10) || 1),
                               })
                             }
-                            className="h-11 w-28 text-center text-lg font-semibold tabular-nums"
+                            className="h-11 w-28 text-center text-lg font-semibold tabular-nums bg-background"
                           />
                           <Button
                             variant="outline"
@@ -759,10 +761,8 @@ export function StepProducts({
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
-                      </div>
-                      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
-                        <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0">Quantidades mais compradas:</span>
-                        <div className="flex flex-wrap gap-2">
+                        <p className="text-xs text-muted-foreground mt-1.5">Ou escolha:</p>
+                        <div className="flex flex-wrap gap-2 mt-1">
                         {QUICK_QUANTITIES.map((q) => {
                           const isActive = item.quantity === q;
                           return (
@@ -771,10 +771,10 @@ export function StepProducts({
                               variant="outline"
                               size="sm"
                               className={cn(
-                                "min-w-10 px-4 tabular-nums rounded-md border transition-all duration-200",
+                                "min-w-9 px-3 tabular-nums rounded-md border transition-all duration-200",
                                 isActive
-                                  ? "h-10 text-base font-bold border-primary bg-primary/15 text-primary shadow-md"
-                                  : "h-8 text-xs font-medium border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
+                                  ? "h-8 text-sm font-bold border-primary bg-primary/15 text-primary"
+                                  : "h-7 text-xs font-medium border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
                               )}
                               onClick={() => updateProduct(item.product_id, { quantity: q })}
                             >
@@ -795,8 +795,17 @@ export function StepProducts({
 
       {selectedProducts.length > 0 && (() => {
         const catalog = productList as unknown as ProductCatalogItem[];
+        const validProducts = selectedProducts.filter((p) => {
+          const catalogItem = catalog.find((c) => c.id === p.product_id);
+          const hasColors = (catalogItem?.available_colors?.length ?? 0) > 0;
+          const totalQty = getTotalQuantity(p);
+          if (hasColors && p.colors.length === 0) return false;
+          if (totalQty <= 0) return false;
+          return true;
+        });
+        if (validProducts.length === 0) return null;
         const quote = recalculateQuote(
-          selectedProducts.map((p) => ({
+          validProducts.map((p) => ({
             product_id: p.product_id,
             product_name: p.product_name,
             quantity: p.quantity,

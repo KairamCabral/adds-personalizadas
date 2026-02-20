@@ -59,6 +59,31 @@ export interface QuoteUpdateData {
 
 const PAGE_SIZE = 20;
 
+/**
+ * Busca orçamentos via API (usa admin client no servidor).
+ * Evita erro 400 do PostgREST quando a query é feita direto do cliente.
+ */
+export async function getQuotesViaApi(filters: QuoteFilters = {}) {
+  const { status = "ALL", search, page = 1, limit = PAGE_SIZE } = filters;
+  const params = new URLSearchParams({
+    status: String(status),
+    search: search ?? "",
+    page: String(page),
+    limit: String(limit),
+  });
+  const res = await fetch(`/api/quotes?${params}`);
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(json.error ?? "Erro ao carregar orçamentos");
+  }
+  return res.json() as Promise<{
+    quotes: PublicQuote[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }>;
+}
+
 // ============================================
 // LISTAR ORÇAMENTOS COM FILTROS E PAGINAÇÃO
 // ============================================
@@ -68,13 +93,7 @@ export async function getQuotes(filters: QuoteFilters = {}) {
 
   let query = supabase
     .from("public_quotes")
-    .select(
-      `
-      *,
-      assigned_profile:profiles!public_quotes_assigned_to_fkey(id, full_name, avatar_url)
-    `,
-      { count: "exact" }
-    )
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false });
 
   if (status && status !== "ALL") {
@@ -86,8 +105,9 @@ export async function getQuotes(filters: QuoteFilters = {}) {
   }
 
   if (search && search.trim().length >= 2) {
+    const sanitized = search.trim().replace(/%/g, "\\%").replace(/_/g, "\\_");
     query = query.or(
-      `client_name.ilike.%${search}%,client_email.ilike.%${search}%,client_phone.ilike.%${search}%,client_document.ilike.%${search}%`
+      `client_name.ilike.%${sanitized}%,client_email.ilike.%${sanitized}%,client_phone.ilike.%${sanitized}%,client_document.ilike.%${sanitized}%`
     );
   }
 
@@ -99,8 +119,29 @@ export async function getQuotes(filters: QuoteFilters = {}) {
 
   if (error) throw error;
 
+  const quotes = (data ?? []) as unknown as PublicQuote[];
+
+  const assignedIds = [...new Set(quotes.map((q) => q.assigned_to).filter(Boolean))] as string[];
+  let profilesMap: Record<string, { id: string; full_name: string; avatar_url: string | null }> = {};
+  if (assignedIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url")
+      .in("id", assignedIds);
+    if (profiles) {
+      profilesMap = Object.fromEntries(profiles.map((p) => [p.id, p]));
+    }
+  }
+
+  const quotesWithProfile = quotes.map((q) => ({
+    ...q,
+    assigned_profile: q.assigned_to && profilesMap[q.assigned_to]
+      ? profilesMap[q.assigned_to]
+      : null,
+  }));
+
   return {
-    quotes: (data ?? []) as unknown as PublicQuote[],
+    quotes: quotesWithProfile,
     total: count ?? 0,
     page,
     totalPages: Math.ceil((count ?? 0) / limit),
@@ -115,17 +156,22 @@ export async function getQuoteById(id: string): Promise<PublicQuote> {
 
   const { data, error } = await supabase
     .from("public_quotes")
-    .select(
-      `
-      *,
-      assigned_profile:profiles!public_quotes_assigned_to_fkey(id, full_name, avatar_url)
-    `
-    )
+    .select("*")
     .eq("id", id)
     .single();
 
   if (error) throw error;
-  return data as unknown as PublicQuote;
+  const quote = data as unknown as PublicQuote;
+
+  if (quote.assigned_to) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url")
+      .eq("id", quote.assigned_to)
+      .single();
+    return { ...quote, assigned_profile: profile ?? null };
+  }
+  return { ...quote, assigned_profile: null };
 }
 
 // ============================================
