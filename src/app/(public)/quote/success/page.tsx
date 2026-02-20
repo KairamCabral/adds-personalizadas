@@ -1,24 +1,28 @@
-"use client";
-
-import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export default function QuoteSuccessPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-16">
-      <div className="flex max-w-md flex-col items-center text-center">
-        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-          <CheckCircle2 className="h-12 w-12 text-emerald-600 dark:text-emerald-400" />
-        </div>
-        <h1 className="text-2xl font-bold text-foreground">
-          Obrigado! Seu orçamento foi enviado com sucesso.
-        </h1>
-        <p className="mt-3 text-muted-foreground">
-          Nossa equipe entrará em contato em breve.
+    <div className="text-center py-20 space-y-8 max-w-md mx-auto">
+      <div className="h-24 w-24 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+        <CheckCircle2 className="h-12 w-12 text-primary" />
+      </div>
+
+      <div className="space-y-3">
+        <h1 className="text-3xl font-bold tracking-tight">Orçamento Enviado!</h1>
+        <p className="text-muted-foreground text-lg">
+          Recebemos sua solicitação. Nossa equipe vai analisar e entrar em
+          contato pelo WhatsApp em breve.
         </p>
-        <Button asChild className="mt-8">
-          <Link href="/">Voltar ao início</Link>
+      </div>
+
+      <div className="pt-4">
+        <Button asChild variant="outline" className="gap-2 h-11 font-semibold">
+          <Link href="/quote">
+            <ArrowLeft className="h-4 w-4" />
+            Enviar outro orçamento
+          </Link>
         </Button>
       </div>
     </div>

@@ -12,7 +12,7 @@ CLÁUSULA 1 — OBJETO
 O presente termo regula o compartilhamento de dados de clientes da ADDS Brasil LTDA ("ADDS") com o FORNECEDOR para fins exclusivos de execução de pedidos de produção.
 
 CLÁUSULA 2 — DADOS COMPARTILHADOS
-Serão compartilhados exclusivamente: nome do cliente, telefone, cidade, estado, CEP, produtos do pedido, quantidades, dados de personalização e prazo de entrega. Nenhum outro dado será fornecido.
+Serão compartilhados exclusivamente: nome do cliente, CPF/CNPJ, endereço completo (logradouro, número, complemento, bairro, cidade, estado, CEP), produtos do pedido, quantidades, dados de personalização e prazo de entrega. E-mail e telefone do cliente não serão compartilhados.
 
 CLÁUSULA 3 — RESTRIÇÕES DE USO
 O FORNECEDOR se compromete a:
@@ -35,7 +35,6 @@ CLÁUSULA 7 — PENALIDADES
 O descumprimento de qualquer cláusula deste termo sujeitará o FORNECEDOR a:
 a) Rescisão imediata da relação comercial
 b) Responsabilização civil e criminal conforme legislação aplicável
-c) Multa de R$ 50.000,00 (cinquenta mil reais) por infração
 
 CLÁUSULA 8 — VIGÊNCIA
 Este termo entra em vigor na data da assinatura e permanece válido enquanto a relação comercial entre as partes estiver ativa.

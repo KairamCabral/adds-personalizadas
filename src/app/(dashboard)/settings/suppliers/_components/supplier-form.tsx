@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -14,7 +14,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { testConnection } from "@/services/bling.service";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import type { Supplier } from "@/types/database.types";
 
@@ -50,13 +49,25 @@ export function SupplierForm({
   const form = useForm<SupplierFormData>({
     resolver: zodResolver(supplierSchema),
     defaultValues: {
-      name: supplier?.name ?? "",
-      contact_name: supplier?.contact_name ?? "",
-      contact_email: supplier?.contact_email ?? "",
-      contact_phone: supplier?.contact_phone ?? "",
-      bling_api_token: supplier?.bling_api_token ?? "",
+      name: "",
+      contact_name: "",
+      contact_email: "",
+      contact_phone: "",
+      bling_api_token: "",
     },
   });
+
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        name: supplier?.name ?? "",
+        contact_name: supplier?.contact_name ?? "",
+        contact_email: supplier?.contact_email ?? "",
+        contact_phone: supplier?.contact_phone ?? "",
+        bling_api_token: supplier?.bling_api_token ?? "",
+      });
+    }
+  }, [open, supplier, form]);
 
   const token = form.watch("bling_api_token");
 
@@ -68,8 +79,15 @@ export function SupplierForm({
     setIsTesting(true);
     setTestResult(null);
     try {
-      const result = await testConnection(token);
-      setTestResult(result);
+      const res = await fetch("/api/bling/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiToken: token.trim() }),
+      });
+      const data = await res.json();
+      setTestResult({ success: data.success, message: data.message });
+    } catch {
+      setTestResult({ success: false, message: "Erro de conexão" });
     } finally {
       setIsTesting(false);
     }

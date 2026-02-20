@@ -1,86 +1,372 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database.types";
 
-const supabase = createClient();
+export type QuoteStatus =
+  | "PENDENTE"
+  | "CONTACTADO"
+  | "CONCLUIDO"
+  | "APROVADO"
+  | "REJEITADO";
+
+export interface QuoteItem {
+  product_id?: string;
+  product_name: string;
+  quantity: number;
+  colors?: string[];
+  custom_color?: string | null;
+  /** Quantidade por cor (corKey -> quantidade). Quando presente, total = soma dos valores. */
+  quantity_per_color?: Record<string, number>;
+}
+
+export interface QuotePersonalization {
+  print_color?: string;
+  custom_color?: string | null;
+  notes?: string;
+  /** Campos enviados pelo formulário público */
+  cor_impressao?: string;
+  notas_especiais?: string;
+}
 
 type PublicQuoteRow = Database["public"]["Tables"]["public_quotes"]["Row"];
 type PublicQuoteInsert = Database["public"]["Tables"]["public_quotes"]["Insert"];
-type PublicQuoteUpdate = Database["public"]["Tables"]["public_quotes"]["Update"];
 
-export type QuoteStatus = "PENDENTE" | "CONTACTADO" | "CONCLUIDO" | "APROVADO" | "REJEITADO";
-
-export interface QuoteListItem {
-  id: string;
-  client_name: string;
-  client_email: string | null;
-  client_phone: string | null;
-  items: unknown;
-  estimated_value: number | null;
-  status: QuoteStatus;
-  created_at: string;
+export interface PublicQuote extends Omit<PublicQuoteRow, "items" | "personalization"> {
+  items: QuoteItem[];
+  personalization: QuotePersonalization | null;
+  assigned_profile?: {
+    id: string;
+    full_name: string;
+    avatar_url: string | null;
+  } | null;
 }
 
-export interface GetQuotesParams {
-  status?: QuoteStatus;
+export interface QuoteFilters {
+  status?: QuoteStatus | "ALL";
+  search?: string;
   page?: number;
   limit?: number;
 }
 
-export interface GetQuotesResult {
-  data: PublicQuoteRow[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+export interface QuoteUpdateData {
+  status?: QuoteStatus;
+  assigned_to?: string | null;
+  internal_notes?: string | null;
+  estimated_value?: number | null;
 }
 
-export async function getQuotes(
-  params?: GetQuotesParams
-): Promise<GetQuotesResult> {
-  const page = params?.page ?? 1;
-  const limit = params?.limit ?? 20;
+const PAGE_SIZE = 20;
+
+// ============================================
+// LISTAR ORÇAMENTOS COM FILTROS E PAGINAÇÃO
+// ============================================
+export async function getQuotes(filters: QuoteFilters = {}) {
+  const supabase = createClient();
+  const { status = "ALL", search, page = 1, limit = PAGE_SIZE } = filters;
 
   let query = supabase
     .from("public_quotes")
-    .select("*", { count: "exact" })
+    .select(
+      `
+      *,
+      assigned_profile:profiles!public_quotes_assigned_to_fkey(id, full_name, avatar_url)
+    `,
+      { count: "exact" }
+    )
     .order("created_at", { ascending: false });
 
-  if (params?.status) {
-    query = query.eq("status", params.status);
+  if (status && status !== "ALL") {
+    query = query.eq("status", status);
+  }
+
+  if (search && search.trim().length >= 2) {
+    query = query.or(
+      `client_name.ilike.%${search}%,client_email.ilike.%${search}%,client_phone.ilike.%${search}%,client_document.ilike.%${search}%`
+    );
   }
 
   const from = (page - 1) * limit;
   const to = from + limit - 1;
-  const { data, error, count } = await query.range(from, to);
+  query = query.range(from, to);
+
+  const { data, error, count } = await query;
 
   if (error) throw error;
 
-  const total = count ?? 0;
-  const totalPages = Math.ceil(total / limit);
-
   return {
-    data: data ?? [],
-    total,
+    quotes: (data ?? []) as unknown as PublicQuote[],
+    total: count ?? 0,
     page,
-    limit,
-    totalPages,
+    totalPages: Math.ceil((count ?? 0) / limit),
   };
 }
 
-export async function getQuoteById(id: string) {
+// ============================================
+// BUSCAR ORÇAMENTO POR ID
+// ============================================
+export async function getQuoteById(id: string): Promise<PublicQuote> {
+  const supabase = createClient();
+
   const { data, error } = await supabase
     .from("public_quotes")
-    .select(`
+    .select(
+      `
       *,
-      assigned_user:profiles!public_quotes_assigned_to_fkey(id, full_name, avatar_url, email)
-    `)
+      assigned_profile:profiles!public_quotes_assigned_to_fkey(id, full_name, avatar_url)
+    `
+    )
     .eq("id", id)
     .single();
 
   if (error) throw error;
-  return data;
+  return data as unknown as PublicQuote;
 }
 
+// ============================================
+// ATUALIZAR ORÇAMENTO (status, notas, responsável, valor)
+// ============================================
+export async function updateQuote(
+  id: string,
+  data: QuoteUpdateData
+): Promise<PublicQuote> {
+  const supabase = createClient();
+
+  const { data: updated, error } = await supabase
+    .from("public_quotes")
+    .update({
+      ...data,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return updated as unknown as PublicQuote;
+}
+
+// ============================================
+// APROVAR ORÇAMENTO → CRIAR PEDIDO NO KANBAN
+// ============================================
+export async function approveQuote(quoteId: string) {
+  const supabase = createClient();
+
+  const { data: quote, error: fetchError } = await supabase
+    .from("public_quotes")
+    .select("*")
+    .eq("id", quoteId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id ?? null;
+
+  const personalization = quote.personalization as QuotePersonalization | null;
+  let clientId = quote.existing_client_id;
+
+  if (!clientId) {
+    const { data: newClient, error: clientError } = await supabase
+      .from("clients")
+      .insert({
+        person_type: "FISICA",
+        name: quote.client_name,
+        email: quote.client_email,
+        phone: quote.client_phone ?? quote.client_whatsapp,
+        document: quote.client_document,
+        city: quote.client_city,
+        state: quote.client_state,
+        zip_code: quote.client_zip_code,
+        street: quote.client_street,
+        number: quote.client_number,
+        complement: quote.client_complement,
+        neighborhood: quote.client_neighborhood,
+        logo_url: quote.client_logo_url,
+        created_by: userId,
+      })
+      .select()
+      .single();
+
+    if (clientError) throw clientError;
+    clientId = newClient.id;
+  }
+
+  const { data: maxPos } = await supabase
+    .from("orders")
+    .select("position")
+    .eq("status", "FAZER")
+    .order("position", { ascending: false })
+    .limit(1)
+    .single();
+
+  const position = (maxPos?.position ?? 0) + 1;
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .insert({
+      title: quote.client_name,
+      description: personalization?.notes ?? null,
+      client_id: clientId,
+      status: "FAZER",
+      order_type: "ORCAMENTO_PUBLICO",
+      priority: "NORMAL",
+      start_date: new Date().toISOString().split("T")[0],
+      position,
+      assigned_to: quote.assigned_to ?? userId,
+      created_by: userId,
+    })
+    .select()
+    .single();
+
+  if (orderError) throw orderError;
+
+  const items = (quote.items as unknown as QuoteItem[]) ?? [];
+  if (Array.isArray(items) && items.length > 0) {
+    const orderItems: {
+      order_id: string;
+      product_id: string | null;
+      product_name: string;
+      quantity: number;
+      personalization: { colors: string[]; custom_color: string | null; notes: string };
+      unit_price: null;
+      total_price: null;
+    }[] = [];
+
+    for (const item of items) {
+      const qpc = item.quantity_per_color && Object.keys(item.quantity_per_color).length > 0
+        ? item.quantity_per_color
+        : null;
+
+      if (qpc) {
+        for (const [colorKey, qty] of Object.entries(qpc)) {
+          if (qty > 0) {
+            orderItems.push({
+              order_id: order.id,
+              product_id: item.product_id ?? null,
+              product_name: item.product_name,
+              quantity: qty,
+              personalization: {
+                colors: [colorKey],
+                custom_color: item.custom_color ?? null,
+                notes: personalization?.notes ?? "",
+              },
+              unit_price: null,
+              total_price: null,
+            });
+          }
+        }
+      } else {
+        orderItems.push({
+          order_id: order.id,
+          product_id: item.product_id ?? null,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          personalization: {
+            colors: item.colors ?? [],
+            custom_color: item.custom_color ?? null,
+            notes: personalization?.notes ?? "",
+          },
+          unit_price: null,
+          total_price: null,
+        });
+      }
+    }
+
+    const { error: itemsError } = await supabase
+      .from("order_items")
+      .insert(orderItems);
+
+    if (itemsError) throw itemsError;
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    status: "APROVADO",
+    order_id: order.id,
+    updated_at: new Date().toISOString(),
+  };
+  if (clientId && !quote.existing_client_id) {
+    updatePayload.existing_client_id = clientId;
+  }
+
+  const { error: updateError } = await supabase
+    .from("public_quotes")
+    .update(updatePayload)
+    .eq("id", quoteId);
+
+  if (updateError) throw updateError;
+
+  await supabase.from("order_labels").insert({
+    order_id: order.id,
+    label: "ORCAMENTO_PUBLICO",
+    added_by: userId,
+  });
+
+  return order;
+}
+
+// ============================================
+// REJEITAR ORÇAMENTO
+// ============================================
+export async function rejectQuote(
+  quoteId: string,
+  reason?: string
+): Promise<PublicQuote> {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("public_quotes")
+    .update({
+      status: "REJEITADO",
+      internal_notes: reason ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", quoteId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as PublicQuote;
+}
+
+// ============================================
+// MARCAR COMO CONTACTADO
+// ============================================
+export async function markAsContacted(quoteId: string): Promise<PublicQuote> {
+  return updateQuote(quoteId, { status: "CONTACTADO" });
+}
+
+// ============================================
+// CONTAGEM POR STATUS (para badges)
+// ============================================
+export async function getQuoteCounts() {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("public_quotes")
+    .select("status");
+
+  if (error) throw error;
+
+  const counts = {
+    PENDENTE: 0,
+    CONTACTADO: 0,
+    CONCLUIDO: 0,
+    APROVADO: 0,
+    REJEITADO: 0,
+    TOTAL: data?.length ?? 0,
+  };
+
+  data?.forEach((q) => {
+    if (q.status in counts) {
+      counts[q.status as keyof typeof counts]++;
+    }
+  });
+
+  return counts;
+}
+
+// ============================================
+// CRIAR ORÇAMENTO (formulário público)
+// ============================================
 export interface CreatePublicQuoteData {
   client_name: string;
   client_email?: string | null;
@@ -96,172 +382,73 @@ export interface CreatePublicQuoteData {
   client_neighborhood?: string | null;
   client_social_media?: string | null;
   client_logo_url?: string | null;
-  items: unknown;
-  personalization?: unknown;
+  is_existing_client?: boolean;
+  existing_client_id?: string | null;
+  items: QuoteItem[] | unknown;
+  personalization?: QuotePersonalization | null;
   estimated_value?: number | null;
 }
 
+/**
+ * Envia o orçamento do formulário público via API (service role no servidor),
+ * evitando 401 por uso da anon key no cliente.
+ */
 export async function createPublicQuote(data: CreatePublicQuoteData) {
-  const { data: quote, error } = await supabase
-    .from("public_quotes")
-    .insert({
-      client_name: data.client_name,
-      client_email: data.client_email ?? null,
-      client_phone: data.client_phone ?? null,
-      client_whatsapp: data.client_whatsapp ?? null,
-      client_document: data.client_document ?? null,
-      client_city: data.client_city ?? null,
-      client_state: data.client_state ?? null,
-      client_zip_code: data.client_zip_code ?? null,
-      client_street: data.client_street ?? null,
-      client_number: data.client_number ?? null,
-      client_complement: data.client_complement ?? null,
-      client_neighborhood: data.client_neighborhood ?? null,
-      client_social_media: data.client_social_media ?? null,
-      client_logo_url: data.client_logo_url ?? null,
-      items: data.items,
-      personalization: data.personalization ?? null,
-      estimated_value: data.estimated_value ?? null,
-      status: "PENDENTE",
-    } as PublicQuoteInsert)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return quote;
-}
-
-export async function updateQuote(id: string, data: PublicQuoteUpdate) {
-  const { data: quote, error } = await supabase
-    .from("public_quotes")
-    .update(data)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return quote;
-}
-
-export async function approveQuote(id: string) {
-  const { data: quote, error: quoteError } = await supabase
-    .from("public_quotes")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (quoteError || !quote) throw quoteError ?? new Error("Orçamento não encontrado");
-
-  const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id ?? null;
-
-  const { data: client } = await supabase
-    .from("clients")
-    .insert({
-      person_type: "FISICA",
-      name: quote.client_name,
-      email: quote.client_email,
-      phone: quote.client_phone ?? quote.client_whatsapp,
-      document: quote.client_document,
-      zip_code: quote.client_zip_code,
-      street: quote.client_street,
-      number: quote.client_number,
-      complement: quote.client_complement,
-      neighborhood: quote.client_neighborhood,
-      city: quote.client_city,
-      state: quote.client_state,
-      logo_url: quote.client_logo_url,
-      created_by: userId,
-    })
-    .select()
-    .single();
-
-  if (!client) throw new Error("Erro ao criar cliente");
-
-  const items = (quote.items as { product_id: string; product_name: string; quantity: number; unit_price: number }[]) ?? [];
-  const totalValue = items.reduce((sum, i) => sum + (i.unit_price ?? 0) * i.quantity, 0);
-
-  const { data: maxPos } = await supabase
-    .from("orders")
-    .select("position")
-    .eq("status", "FAZER")
-    .order("position", { ascending: false })
-    .limit(1)
-    .single();
-
-  const position = (maxPos?.position ?? 0) + 1;
-
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      title: `Orçamento - ${quote.client_name}`,
-      description: `Convertido do orçamento público em ${new Date().toLocaleDateString("pt-BR")}`,
-      client_id: client.id,
-      status: "FAZER",
-      order_type: "ORCAMENTO_PUBLICO",
-      priority: "NORMAL",
-      assigned_to: quote.assigned_to ?? userId,
-      created_by: userId,
-      position,
-    })
-    .select()
-    .single();
-
-  if (orderError || !order) throw orderError ?? new Error("Erro ao criar pedido");
-
-  for (const item of items) {
-    await supabase.from("order_items").insert({
-      order_id: order.id,
-      product_id: item.product_id,
-      product_name: item.product_name,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      total_price: item.unit_price * item.quantity,
-      personalization: quote.personalization,
-    });
-  }
-
-  await supabase.from("order_labels").insert({
-    order_id: order.id,
-    label: "ORCAMENTO_PUBLICO",
-    added_by: userId,
+  const res = await fetch("/api/quote/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   });
 
-  await supabase
-    .from("public_quotes")
-    .update({
-      status: "APROVADO",
-      order_id: order.id,
-      existing_client_id: client.id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
+  const json = (await res.json().catch(() => ({}))) as {
+    quote?: PublicQuoteRow;
+    error?: string;
+  };
 
-  return { order, client };
+  if (!res.ok) {
+    throw new Error(json.error ?? "Erro ao enviar orçamento");
+  }
+
+  if (!json.quote) {
+    throw new Error("Resposta inválida do servidor");
+  }
+
+  return json.quote;
 }
 
-export async function rejectQuote(id: string, reason?: string) {
-  const { data: existing } = await supabase
-    .from("public_quotes")
-    .select("internal_notes")
-    .eq("id", id)
-    .single();
+// ============================================
+// BUSCAR PRODUTOS ATIVOS (formulário público, sem auth)
+// ============================================
+export async function getActiveProducts() {
+  const supabase = createClient();
 
-  const updatedNotes = reason
-    ? (existing?.internal_notes ?? "") + (existing?.internal_notes ? "\n\n" : "") + `Rejeitado: ${reason}`
-    : existing?.internal_notes ?? null;
-
-  const { data: quote, error } = await supabase
-    .from("public_quotes")
-    .update({
-      status: "REJEITADO",
-      ...(reason && { internal_notes: updatedNotes }),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select()
-    .single();
+  const { data, error } = await supabase
+    .from("products")
+    .select(
+      "id, name, description, price, image_url, category, available_colors, allows_custom_color"
+    )
+    .eq("is_active", true)
+    .order("name");
 
   if (error) throw error;
-  return quote;
+  return data ?? [];
+}
+
+// ============================================
+// UPLOAD DE LOGO (via API route existente)
+// ============================================
+export async function uploadQuoteLogo(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/quote/upload-logo", {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? "Falha no upload");
+  }
+  const { url } = (await res.json()) as { url?: string };
+  if (!url) throw new Error("URL não retornada");
+  return url;
 }

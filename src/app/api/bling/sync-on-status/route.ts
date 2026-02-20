@@ -21,10 +21,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (newStatus !== "PRODUCAO") {
+    if (newStatus !== "ARTE_APROVADA") {
       return NextResponse.json({
         success: true,
-        message: "Status não é PRODUCAO, nenhum envio necessário.",
+        message: "Status não é APROVADO, nenhum envio necessário.",
         results: [],
       });
     }

@@ -1,18 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { FileText } from "lucide-react";
 import {
   getQuotes,
-  approveQuote,
-  rejectQuote,
+  getQuoteCounts,
   type QuoteStatus,
 } from "@/services/quotes.service";
-import { PageHeader } from "@/components/shared/page-header";
-import { DataTable } from "@/components/shared/data-table";
-import { LoadingSpinner } from "@/components/shared/loading-spinner";
-import { Button } from "@/components/ui/button";
+import { QuotesTable } from "./_components/quotes-table";
+import { QuoteDetailSheet } from "./_components/quote-detail-sheet";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -20,255 +19,177 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { QuoteDetailSheet } from "./_components/quote-detail-sheet";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
-import type { PublicQuote } from "@/types/database.types";
-import {
-  MoreHorizontal,
-  Eye,
-  CheckCircle,
-  XCircle,
-} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
-const QUOTE_STATUSES: { value: QuoteStatus | "all"; label: string }[] = [
-  { value: "all", label: "Todos" },
-  { value: "PENDENTE", label: "Pendente" },
-  { value: "CONTACTADO", label: "Contactado" },
-  { value: "CONCLUIDO", label: "Concluído" },
-  { value: "APROVADO", label: "Aprovado" },
-  { value: "REJEITADO", label: "Rejeitado" },
-];
-
-const STATUS_VARIANTS: Record<QuoteStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  PENDENTE: "secondary",
-  CONTACTADO: "outline",
-  CONCLUIDO: "default",
-  APROVADO: "default",
-  REJEITADO: "destructive",
-};
+const STATUS_OPTIONS = [
+  { value: "ALL", label: "Todos" },
+  { value: "PENDENTE", label: "Pendentes" },
+  { value: "CONTACTADO", label: "Contactados" },
+  { value: "CONCLUIDO", label: "Concluídos" },
+  { value: "APROVADO", label: "Aprovados" },
+  { value: "REJEITADO", label: "Rejeitados" },
+] as const;
 
 export default function QuotesPage() {
-  const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<QuoteStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<QuoteStatus | "ALL">(
+    "ALL"
+  );
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
-  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["quotes", statusFilter === "all" ? undefined : statusFilter],
-    queryFn: () =>
-      getQuotes({
-        status: statusFilter === "all" ? undefined : statusFilter,
-      }),
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["quotes", statusFilter, search, page],
+    queryFn: () => getQuotes({ status: statusFilter, search, page }),
   });
 
-  const approveMutation = useMutation({
-    mutationFn: approveQuote,
-    onSuccess: () => {
-      toast.success("Orçamento aprovado. Pedido criado no Kanban.");
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      setSelectedQuoteId(null);
-    },
-    onError: () => {
-      toast.error("Erro ao aprovar orçamento.");
-    },
+  const { data: counts } = useQuery({
+    queryKey: ["quote-counts"],
+    queryFn: getQuoteCounts,
   });
 
-  const rejectMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
-      rejectQuote(id, reason),
-    onSuccess: () => {
-      toast.success("Orçamento rejeitado.");
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      setRejectTargetId(null);
-      setSelectedQuoteId(null);
-    },
-    onError: () => {
-      toast.error("Erro ao rejeitar orçamento.");
-    },
-  });
+  const handleSearch = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
 
-  const quotes = data?.data ?? [];
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value as QuoteStatus | "ALL");
+    setPage(1);
+  };
 
-  const columns = [
-    {
-      accessorKey: "client_name" as const,
-      header: "Cliente",
-      cell: ({ row }: { row: { original: PublicQuote } }) => (
-        <div>
-          <p className="font-medium">{row.original.client_name}</p>
-          {row.original.client_email && (
-            <p className="text-xs text-muted-foreground">
-              {row.original.client_email}
-            </p>
-          )}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "items" as const,
-      header: "Produtos",
-      cell: ({ row }: { row: { original: PublicQuote } }) => {
-        const items = (row.original.items as { product_name: string }[]) ?? [];
-        const names = items.slice(0, 2).map((i) => i.product_name);
-        const extra = items.length > 2 ? ` +${items.length - 2}` : "";
-        return (
-          <div className="flex flex-wrap gap-1">
-            {names.map((n) => (
-              <Badge key={n} variant="outline" className="text-xs">
-                {n}
-              </Badge>
-            ))}
-            {extra && (
-              <span className="text-xs text-muted-foreground">{extra}</span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "estimated_value" as const,
-      header: "Valor",
-      cell: ({ row }: { row: { original: PublicQuote } }) => (
-        <span className="font-medium">
-          {row.original.estimated_value != null
-            ? formatCurrency(row.original.estimated_value)
-            : "—"}
-        </span>
-      ),
-    },
-    {
-      accessorKey: "status" as const,
-      header: "Status",
-      cell: ({ row }: { row: { original: PublicQuote } }) => (
-        <Badge variant={STATUS_VARIANTS[row.original.status as QuoteStatus]}>
-          {row.original.status}
-        </Badge>
-      ),
-    },
-    {
-      accessorKey: "created_at" as const,
-      header: "Data",
-      cell: ({ row }: { row: { original: PublicQuote } }) => (
-        <span className="text-muted-foreground text-sm">
-          {formatDateTime(row.original.created_at)}
-        </span>
-      ),
-    },
-    {
-      id: "actions" as const,
-      header: "",
-      cell: ({ row }: { row: { original: PublicQuote } }) => {
-        const quote = row.original;
-        const canApprove = quote.status === "PENDENTE" || quote.status === "CONTACTADO";
-        const canReject = quote.status !== "APROVADO" && quote.status !== "REJEITADO";
-
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="sr-only">Ações</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setSelectedQuoteId(quote.id)}>
-                <Eye className="mr-2 h-4 w-4" />
-                Ver detalhes
-              </DropdownMenuItem>
-              {canApprove && (
-                <DropdownMenuItem
-                  onClick={() => approveMutation.mutate(quote.id)}
-                  disabled={approveMutation.isPending}
-                >
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Aprovar
-                </DropdownMenuItem>
-              )}
-              {canReject && (
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => setRejectTargetId(quote.id)}
-                >
-                  <XCircle className="mr-2 h-4 w-4" />
-                  Rejeitar
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
-    },
-  ];
+  const handleCopyFormLink = () => {
+    const url =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/quote`
+        : "/quote";
+    navigator.clipboard.writeText(url);
+    toast.success("Link copiado!", {
+      description: "O link do formulário de orçamento foi copiado para a área de transferência.",
+    });
+  };
 
   return (
-    <div className="space-y-6 p-6">
-      <PageHeader
-        title="Orçamentos Públicos"
-        description="Gerencie orçamentos enviados pelo formulário público"
-      />
+    <div className="flex-1 space-y-6 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">
+              Orçamentos Públicos
+            </h1>
+            {counts && counts.PENDENTE > 0 && (
+              <Badge variant="default" className="bg-amber-500 text-white">
+                {counts.PENDENTE} pendente{counts.PENDENTE > 1 ? "s" : ""}
+              </Badge>
+            )}
+          </div>
+          <p className="text-muted-foreground mt-1">
+            Gerencie orçamentos enviados pelo formulário público
+          </p>
+        </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v as QuoteStatus | "all")}
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={handleCopyFormLink}
         >
+          <FileText className="h-4 w-4" />
+          Link do formulário
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <Select value={statusFilter} onValueChange={handleStatusChange}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filtrar por status" />
           </SelectTrigger>
           <SelectContent>
-            {QUOTE_STATUSES.map((s) => (
-              <SelectItem key={s.value} value={s.value}>
-                {s.label}
+            {STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <div className="flex items-center gap-2">
+                  {option.label}
+                  {option.value !== "ALL" &&
+                    counts &&
+                    counts[option.value as QuoteStatus] > 0 && (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs px-1.5 py-0"
+                      >
+                        {counts[option.value as QuoteStatus]}
+                      </Badge>
+                    )}
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        <div className="relative flex-1 max-w-sm">
+          <Input
+            placeholder="Buscar por nome, e-mail, telefone ou documento..."
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="pl-9"
+          />
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+        </div>
+
+        {counts && (
+          <div className="hidden lg:flex items-center gap-2 text-sm text-muted-foreground ml-auto">
+            <span>{counts.TOTAL} total</span>
+            <span>·</span>
+            <span className="text-amber-500">{counts.PENDENTE} pendentes</span>
+            <span>·</span>
+            <span className="text-green-500">{counts.APROVADO} aprovados</span>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center rounded-xl border border-dashed border-border p-12">
-          <LoadingSpinner text="Carregando orçamentos..." />
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <p className="text-destructive text-lg font-medium">
+            Erro ao carregar orçamentos
+          </p>
+          <p className="text-muted-foreground text-sm mt-1">
+            {error instanceof Error ? error.message : "Tente novamente"}
+          </p>
         </div>
       ) : (
-        <DataTable
-          columns={columns}
-          data={quotes}
-          emptyMessage="Nenhum orçamento encontrado"
+        <QuotesTable
+          quotes={data?.quotes ?? []}
+          total={data?.total ?? 0}
+          page={page}
+          totalPages={data?.totalPages ?? 0}
+          onPageChange={setPage}
+          onSelectQuote={setSelectedQuoteId}
         />
       )}
 
       <QuoteDetailSheet
         quoteId={selectedQuoteId}
+        open={!!selectedQuoteId}
         onClose={() => setSelectedQuoteId(null)}
-        onApprove={(id) => approveMutation.mutate(id)}
-        onReject={(id, reason) => rejectMutation.mutate({ id, reason })}
-        isApproving={approveMutation.isPending}
-        isRejecting={rejectMutation.isPending}
-      />
-
-      <ConfirmDialog
-        open={!!rejectTargetId}
-        onOpenChange={(open) => !open && setRejectTargetId(null)}
-        title="Rejeitar orçamento"
-        description="Deseja rejeitar este orçamento? Você pode informar um motivo (opcional)."
-        confirmLabel="Rejeitar"
-        cancelLabel="Cancelar"
-        variant="destructive"
-        onConfirm={() => {
-          if (rejectTargetId) {
-            rejectMutation.mutate({ id: rejectTargetId });
-            setRejectTargetId(null);
-          }
-        }}
       />
     </div>
   );

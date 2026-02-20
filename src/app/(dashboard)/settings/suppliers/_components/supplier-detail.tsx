@@ -42,7 +42,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { formatDate } from "@/lib/utils";
-import type { SharedFields } from "@/services/bling.service";
+import { normalizeSharedFields } from "@/services/bling.service";
 import type { Supplier, SupplierAgreement, SupplierDataLog } from "@/types/database.types";
 
 interface SupplierDetailProps {
@@ -174,7 +174,7 @@ export function SupplierDetail({
                   <div>
                     <Label className="mb-2 block">Campos compartilhados</Label>
                     <SharedFieldsConfig
-                      value={(supplier.shared_fields ?? {}) as SharedFields}
+                      value={normalizeSharedFields(supplier.shared_fields)}
                       onChange={(v) =>
                         updateMutation.mutate({
                           id: supplierId,
@@ -257,7 +257,9 @@ export function SupplierDetail({
         onOpenChange={setFormOpen}
         supplier={supplier}
         onSubmit={async (data) => {
-          await updateSupplier(supplierId, data);
+          const payload = { ...data };
+          if (!payload.bling_api_token?.trim()) delete payload.bling_api_token;
+          await updateSupplier(supplierId, payload);
           toast.success("Fornecedor atualizado.");
           queryClient.invalidateQueries({ queryKey: ["supplier", supplierId] });
           queryClient.invalidateQueries({ queryKey: ["suppliers"] });

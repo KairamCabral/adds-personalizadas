@@ -95,7 +95,7 @@ export function KanbanBoard() {
     onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
 
-      if (data.newStatus === "PRODUCAO") {
+      if (data.newStatus === "ARTE_APROVADA") {
         try {
           const res = await fetch("/api/bling/sync-on-status", {
             method: "POST",

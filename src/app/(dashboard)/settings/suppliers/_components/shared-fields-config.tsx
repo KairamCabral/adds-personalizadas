@@ -6,7 +6,11 @@ import type { SharedFields } from "@/services/bling.service";
 
 const FIELD_LABELS: Record<keyof SharedFields, string> = {
   client_name: "Nome do cliente",
-  client_phone: "Telefone",
+  client_document: "CPF/CNPJ",
+  client_street: "Logradouro",
+  client_number: "Número",
+  client_complement: "Complemento",
+  client_neighborhood: "Bairro",
   client_city: "Cidade",
   client_state: "Estado (UF)",
   client_zip_code: "CEP",

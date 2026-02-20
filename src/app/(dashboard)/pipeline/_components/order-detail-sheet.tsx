@@ -71,7 +71,8 @@ import { OrderArtwork } from "./order-artwork";
 import { OrderActivityPanel } from "./order-activity-panel";
 import { OrderEditSheet } from "./order-edit-sheet";
 
-const PRODUCAO_AND_AFTER = [
+const APROVADO_AND_AFTER = [
+  "ARTE_APROVADA",
   "PRODUCAO",
   "EXPEDICAO",
   "FINALIZADO",
@@ -82,7 +83,7 @@ const PRODUCAO_AND_AFTER = [
 
 export function OrderDetailSheet() {
   const { selectedOrderId, setSelectedOrderId } = useUIStore();
-  const { can } = usePermissions();
+  const { can, canAny } = usePermissions();
   const queryClient = useQueryClient();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editOrderId, setEditOrderId] = useState<string | null>(null);
@@ -244,6 +245,70 @@ export function OrderDetailSheet() {
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {canAny("suppliers.send_data", "suppliers.manage") &&
+                      order.client_id &&
+                      APROVADO_AND_AFTER.includes(order.status) &&
+                      (activeSuppliers.length > 0 ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="gap-1.5"
+                              disabled={!!sendingToSupplier}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              Enviar ao Fornecedor
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {activeSuppliers.map(
+                              (s: { id: string; name: string }) => (
+                                <DropdownMenuItem
+                                  key={s.id}
+                                  onClick={async () => {
+                                    setSendingToSupplier(s.id);
+                                    try {
+                                      const res = await fetch("/api/bling/sync", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                          supplierId: s.id,
+                                          orderId: order.id,
+                                        }),
+                                      });
+                                      const json = await res.json();
+                                      if (json.success) {
+                                        toast.success(`Dados enviados ao fornecedor ${s.name}`);
+                                        queryClient.invalidateQueries({ queryKey: ["orders"] });
+                                      } else {
+                                        toast.error(json.error ?? "Erro ao enviar");
+                                      }
+                                    } catch {
+                                      toast.error("Erro ao enviar dados.");
+                                    } finally {
+                                      setSendingToSupplier(null);
+                                    }
+                                  }}
+                                >
+                                  {s.name}
+                                </DropdownMenuItem>
+                              )
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          disabled
+                          title="Ative um fornecedor em Configurações → Fornecedores"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          Enviar ao Fornecedor
+                        </Button>
+                      ))}
                     {can("orders.edit") && (
                       <Button
                         variant="default"
@@ -312,6 +377,95 @@ export function OrderDetailSheet() {
                   }
                   canEdit={can("labels.add_to_order")}
                 />
+
+                {/* Enviar ao fornecedor — visível quando pedido aprovado e com cliente */}
+                {canAny("suppliers.send_data", "suppliers.manage") &&
+                  order.client_id &&
+                  APROVADO_AND_AFTER.includes(order.status) &&
+                  (activeSuppliers.length > 0 ? (
+                    <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                      <p className="mb-2 text-sm font-medium text-foreground">
+                        Enviar ao fornecedor
+                      </p>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            disabled={!!sendingToSupplier}
+                            className="gap-2"
+                          >
+                            <Send className="h-4 w-4" />
+                            {sendingToSupplier
+                              ? "Enviando..."
+                              : "Enviar ao Fornecedor"}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          {activeSuppliers.map(
+                            (supplier: { id: string; name: string }) => (
+                              <DropdownMenuItem
+                                key={supplier.id}
+                                onClick={async () => {
+                                  setSendingToSupplier(supplier.id);
+                                  try {
+                                    const res = await fetch("/api/bling/sync", {
+                                      method: "POST",
+                                      headers: {
+                                        "Content-Type": "application/json",
+                                      },
+                                      body: JSON.stringify({
+                                        supplierId: supplier.id,
+                                        orderId: order.id,
+                                      }),
+                                    });
+                                    const json = await res.json();
+                                    if (json.success) {
+                                      toast.success(
+                                        `Dados enviados ao fornecedor ${supplier.name}`
+                                      );
+                                      queryClient.invalidateQueries({
+                                        queryKey: ["orders"],
+                                      });
+                                    } else {
+                                      toast.error(
+                                        json.error ?? "Erro ao enviar"
+                                      );
+                                    }
+                                  } catch {
+                                    toast.error("Erro ao enviar dados.");
+                                  } finally {
+                                    setSendingToSupplier(null);
+                                  }
+                                }}
+                              >
+                                {supplier.name}
+                              </DropdownMenuItem>
+                            )
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ) : suppliers.length > 0 ? (
+                    <div className="mt-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                        Enviar ao fornecedor
+                      </p>
+                      <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
+                        Ative um fornecedor e assine o termo em{" "}
+                        <span className="font-semibold">Configurações → Fornecedores</span>{" "}
+                        para habilitar o envio.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-lg border border-muted p-3">
+                      <p className="text-sm text-muted-foreground">
+                        Cadastre um fornecedor em{" "}
+                        <span className="font-medium">Configurações → Fornecedores</span>{" "}
+                        para enviar os dados do pedido.
+                      </p>
+                    </div>
+                  ))}
               </div>
 
               {/* Cards: Datas, Produtos */}
@@ -382,76 +536,6 @@ export function OrderDetailSheet() {
                 </TabsList>
 
                 <TabsContent value="details" className="mt-4 space-y-4">
-                  {can("suppliers.send_data") &&
-                    order.client_id &&
-                    PRODUCAO_AND_AFTER.includes(order.status) &&
-                    activeSuppliers.length > 0 && (
-                      <div className="rounded-lg border border-border p-3">
-                        <p className="mb-2 text-sm font-medium text-muted-foreground">
-                          Enviar ao fornecedor
-                        </p>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={!!sendingToSupplier}
-                            >
-                              <Send className="mr-2 h-4 w-4" />
-                              {sendingToSupplier
-                                ? "Enviando..."
-                                : "Enviar ao Fornecedor"}
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            {activeSuppliers.map(
-                              (supplier: { id: string; name: string }) => (
-                                <DropdownMenuItem
-                                  key={supplier.id}
-                                  onClick={async () => {
-                                    setSendingToSupplier(supplier.id);
-                                    try {
-                                      const res = await fetch(
-                                        "/api/bling/sync",
-                                        {
-                                          method: "POST",
-                                          headers: {
-                                            "Content-Type": "application/json",
-                                          },
-                                          body: JSON.stringify({
-                                            supplierId: supplier.id,
-                                            orderId: order.id,
-                                          }),
-                                        }
-                                      );
-                                      const json = await res.json();
-                                      if (json.success) {
-                                        toast.success(
-                                          `Dados enviados ao fornecedor ${supplier.name}`
-                                        );
-                                        queryClient.invalidateQueries({
-                                          queryKey: ["orders"],
-                                        });
-                                      } else {
-                                        toast.error(
-                                          json.error ?? "Erro ao enviar"
-                                        );
-                                      }
-                                    } catch {
-                                      toast.error("Erro ao enviar dados.");
-                                    } finally {
-                                      setSendingToSupplier(null);
-                                    }
-                                  }}
-                                >
-                                  {supplier.name}
-                                </DropdownMenuItem>
-                              )
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    )}
                   {order.items && (order.items as unknown[]).length > 0 && (
                       <Card>
                         <CardHeader className="pb-2">

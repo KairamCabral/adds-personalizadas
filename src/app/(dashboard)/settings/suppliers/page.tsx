@@ -101,7 +101,12 @@ export default function SettingsSuppliersPage() {
         title="Fornecedores"
         description="Gestão de fornecedores com integração Bling"
       >
-        <Button onClick={() => setFormOpen(true)}>
+        <Button
+          onClick={() => {
+            setEditingSupplier(null);
+            setFormOpen(true);
+          }}
+        >
           <Plus className="mr-2 h-4 w-4" />
           Novo Fornecedor
         </Button>
@@ -245,7 +250,11 @@ export default function SettingsSuppliersPage() {
             const { updateSupplier } = await import(
               "@/services/suppliers.service"
             );
-            await updateSupplier(editingSupplier.id, data);
+            const payload = { ...data };
+            if (!payload.bling_api_token?.trim()) {
+              delete payload.bling_api_token;
+            }
+            await updateSupplier(editingSupplier.id, payload);
             toast.success("Fornecedor atualizado.");
           } else {
             await createMutation.mutateAsync(data);

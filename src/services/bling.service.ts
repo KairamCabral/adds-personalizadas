@@ -6,7 +6,11 @@ const supabase = createClient();
 
 export type SharedFields = Record<
   | "client_name"
-  | "client_phone"
+  | "client_document"
+  | "client_street"
+  | "client_number"
+  | "client_complement"
+  | "client_neighborhood"
   | "client_city"
   | "client_state"
   | "client_zip_code"
@@ -17,10 +21,33 @@ export type SharedFields = Record<
   boolean
 >;
 
+const SHARED_FIELDS_KEYS: (keyof SharedFields)[] = [
+  "client_name", "client_document", "client_street", "client_number",
+  "client_complement", "client_neighborhood", "client_city", "client_state",
+  "client_zip_code", "order_products", "order_quantities",
+  "order_personalization", "order_due_date",
+];
+
+const DEFAULT_SHARED_FIELDS: SharedFields = Object.fromEntries(
+  SHARED_FIELDS_KEYS.map((k) => [k, true])
+) as SharedFields;
+
+/** Normaliza shared_fields removendo campos obsoletos (ex: client_phone) e garantindo todos os atuais. */
+export function normalizeSharedFields(raw: unknown): SharedFields {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, boolean>;
+  return Object.fromEntries(
+    SHARED_FIELDS_KEYS.map((k) => [k, obj[k] ?? DEFAULT_SHARED_FIELDS[k] ?? true])
+  ) as SharedFields;
+}
+
 interface ClientData {
   id?: string;
   name?: string | null;
-  phone?: string | null;
+  document?: string | null;
+  street?: string | null;
+  number?: string | null;
+  complement?: string | null;
+  neighborhood?: string | null;
   city?: string | null;
   state?: string | null;
   zip_code?: string | null;
@@ -56,19 +83,40 @@ export function buildBlingPayload(
     fieldsSent.push("client_name");
   }
 
-  if (sharedFields.client_phone && client?.phone) {
-    payload.telefone = client.phone;
-    fieldsSent.push("client_phone");
+  if (sharedFields.client_document && client?.document) {
+    payload.cpfCnpj = client.document;
+    fieldsSent.push("client_document");
   }
 
-  if (
+  const hasAddressFields =
+    sharedFields.client_street ||
+    sharedFields.client_number ||
+    sharedFields.client_complement ||
+    sharedFields.client_neighborhood ||
     sharedFields.client_city ||
     sharedFields.client_state ||
-    sharedFields.client_zip_code
-  ) {
+    sharedFields.client_zip_code;
+
+  if (hasAddressFields) {
     payload.endereco = payload.endereco ?? {};
     const endereco = payload.endereco as Record<string, string>;
 
+    if (sharedFields.client_street && client?.street) {
+      endereco.logradouro = client.street;
+      fieldsSent.push("client_street");
+    }
+    if (sharedFields.client_number && client?.number) {
+      endereco.numero = client.number;
+      fieldsSent.push("client_number");
+    }
+    if (sharedFields.client_complement && client?.complement) {
+      endereco.complemento = client.complement;
+      fieldsSent.push("client_complement");
+    }
+    if (sharedFields.client_neighborhood && client?.neighborhood) {
+      endereco.bairro = client.neighborhood;
+      fieldsSent.push("client_neighborhood");
+    }
     if (sharedFields.client_city && client?.city) {
       endereco.municipio = client.city;
       fieldsSent.push("client_city");
@@ -199,7 +247,7 @@ export async function sendClientToBling(
   }
 
   const client = orderData.client as ClientData;
-  const sharedFields = (supplier.shared_fields ?? {}) as SharedFields;
+  const sharedFields = normalizeSharedFields(supplier.shared_fields);
 
   const { payload, fieldsSent } = buildBlingPayload(
     client,
