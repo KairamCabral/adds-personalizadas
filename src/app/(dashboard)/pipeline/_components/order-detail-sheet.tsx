@@ -114,7 +114,9 @@ export function OrderDetailSheet() {
       setSelectedOrderId(null);
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     }
-  }, [isLoading, isError, order, selectedOrderId, setSelectedOrderId, queryClient]);
+    // Evita loop: não incluir queryClient/setSelectedOrderId (estáveis) para reduzir re-execuções
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, isError, order, selectedOrderId]);
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteOrder(selectedOrderId!),

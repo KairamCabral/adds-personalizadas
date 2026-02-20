@@ -91,7 +91,9 @@ export function OrderEditSheet({
         assigned_to: order.assigned_to ?? "",
       });
     }
-  }, [order, form]);
+    // form é estável; incluir nas deps pode causar loop de re-renders (#310)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order]);
 
   const updateMutation = useMutation({
     mutationFn: (data: EditOrderFormData) =>
