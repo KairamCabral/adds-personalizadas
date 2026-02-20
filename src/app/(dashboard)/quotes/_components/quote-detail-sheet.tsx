@@ -86,14 +86,6 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-function formatCurrency(value: number | null) {
-  if (!value) return "—";
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
-}
-
 function formatDocument(doc: string | null) {
   if (!doc) return null;
   const clean = doc.replace(/\D/g, "");
@@ -127,7 +119,7 @@ export function QuoteDetailSheet({
 }: QuoteDetailSheetProps) {
   const queryClient = useQueryClient();
   const [internalNotes, setInternalNotes] = useState("");
-  const [estimatedValue, setEstimatedValue] = useState("");
+  const [orcamentoGerado, setOrcamentoGerado] = useState("");
   const [rejectReason, setRejectReason] = useState("");
 
   const { data: quote, isLoading } = useQuery({
@@ -139,7 +131,7 @@ export function QuoteDetailSheet({
   useEffect(() => {
     if (quote) {
       setInternalNotes(quote.internal_notes || "");
-      setEstimatedValue(quote.estimated_value?.toString() ?? "");
+      setOrcamentoGerado(quote.estimated_value != null ? String(quote.estimated_value) : "");
     }
   }, [quote]);
 
@@ -200,7 +192,7 @@ export function QuoteDetailSheet({
     mutationFn: () =>
       updateQuote(quoteId!, {
         internal_notes: internalNotes || null,
-        estimated_value: estimatedValue ? parseFloat(estimatedValue) : null,
+        estimated_value: orcamentoGerado ? parseFloat(orcamentoGerado.replace(",", ".")) : null,
       }),
     onSuccess: () => {
       toast.success("Notas salvas");
@@ -374,20 +366,6 @@ export function QuoteDetailSheet({
                       <span>{quote.client_social_media}</span>
                     </div>
                   )}
-
-                  {quote.client_logo_url && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                      <a
-                        href={quote.client_logo_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        Ver logo do cliente
-                      </a>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -399,67 +377,105 @@ export function QuoteDetailSheet({
                 </h3>
                 <div className="space-y-2">
                   {(Array.isArray(quote.items) ? quote.items : []).map(
-                    (item: QuoteItem, index: number) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center">
-                            <Package className="h-4 w-4 text-primary" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">
-                              {item.product_name}
-                            </p>
-                            {item.colors && item.colors.length > 0 && (
-                              <p className="text-xs text-muted-foreground">
-                                Cores: {item.colors.join(", ")}
+                    (item: QuoteItem, index: number) => {
+                      const qpc = item.quantity_per_color && Object.keys(item.quantity_per_color).length > 0
+                        ? item.quantity_per_color
+                        : null;
+                      const colorsText = qpc
+                        ? Object.entries(qpc)
+                            .filter(([, q]) => q > 0)
+                            .map(([cor, q]) => `${cor}: ${q}`)
+                            .join(", ")
+                        : item.colors && item.colors.length > 0
+                          ? item.colors.join(", ")
+                          : null;
+                      return (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center">
+                              <Package className="h-4 w-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">
+                                {item.product_name}
                               </p>
-                            )}
+                              {colorsText && (
+                                <p className="text-xs text-muted-foreground">
+                                  Cores: {colorsText}
+                                </p>
+                              )}
+                            </div>
                           </div>
+                          <Badge variant="secondary" className="tabular-nums">
+                            {item.quantity} un
+                          </Badge>
                         </div>
-                        <Badge variant="secondary" className="tabular-nums">
-                          {item.quantity} un
-                        </Badge>
-                      </div>
-                    )
+                      );
+                    }
                   )}
                 </div>
               </div>
 
-              {quote.personalization && (
+              {(quote.personalization || quote.client_logo_url) && (
                 <>
                   <Separator />
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                       Personalização
                     </h3>
-                    <div className="p-3 rounded-lg bg-muted/30 border border-border">
-                      {quote.personalization.print_color && (
-                        <p className="text-sm mb-1">
-                          <span className="text-muted-foreground">
-                            Cor de impressão:
-                          </span>{" "}
-                          {quote.personalization.print_color}
-                        </p>
+                    <div className="p-3 rounded-lg bg-muted/30 border border-border space-y-2">
+                      {quote.personalization?.artwork_mode === "use_last" && (
+                        <p className="text-sm font-medium">Usar última arte</p>
                       )}
-                      {quote.personalization.custom_color && (
-                        <p className="text-sm mb-1">
-                          <span className="text-muted-foreground">
-                            Cor personalizada:
-                          </span>{" "}
-                          {quote.personalization.custom_color}
-                        </p>
+                      {quote.personalization?.artwork_mode === "request_creation" && (
+                        <p className="text-sm font-medium">Solicitar criação da arte</p>
                       )}
-                      {quote.personalization.notes && (
+                      {quote.personalization?.artwork_mode === "do_it_yourself" && (
+                        <p className="text-sm font-medium">Faça você mesmo</p>
+                      )}
+                      {quote.personalization?.notes && (
                         <p className="text-sm">
-                          <span className="text-muted-foreground">
-                            Observações:
-                          </span>{" "}
+                          <span className="text-muted-foreground">Informações:</span>{" "}
                           {quote.personalization.notes}
                         </p>
                       )}
+                      {quote.personalization?.print_color && (
+                        <p className="text-sm">
+                          <span className="text-muted-foreground">Cor de impressão:</span>{" "}
+                          {quote.personalization.print_color}
+                        </p>
+                      )}
+                      {quote.personalization?.custom_color && (
+                        <p className="text-sm">
+                          <span className="text-muted-foreground">Cor personalizada:</span>{" "}
+                          {quote.personalization.custom_color}
+                        </p>
+                      )}
+                      {quote.client_logo_url && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <ImageIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <a
+                            href={quote.client_logo_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline"
+                          >
+                            Ver logo do cliente
+                          </a>
+                        </div>
+                      )}
+                      {!quote.personalization?.artwork_mode &&
+                        !quote.personalization?.notes &&
+                        !quote.personalization?.print_color &&
+                        !quote.personalization?.custom_color &&
+                        !quote.client_logo_url && (
+                          <p className="text-sm text-muted-foreground italic">
+                            Nenhuma personalização informada
+                          </p>
+                        )}
                     </div>
                   </div>
                 </>
@@ -473,17 +489,26 @@ export function QuoteDetailSheet({
                 </h3>
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="estimated_value" className="text-sm">
-                      Valor Estimado
+                    <Label htmlFor="orcamento_gerado" className="text-sm">
+                      Orçamento gerado
                     </Label>
-                    <Input
-                      id="estimated_value"
-                      type="number"
-                      step="0.01"
-                      placeholder="R$ 0,00"
-                      value={estimatedValue}
-                      onChange={(e) => setEstimatedValue(e.target.value)}
-                    />
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        R$
+                      </span>
+                      <Input
+                        id="orcamento_gerado"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        className="pl-10"
+                        value={orcamentoGerado}
+                        onChange={(e) => setOrcamentoGerado(e.target.value.replace(/[^\d,.-]/g, ""))}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Valor do orçamento para registro interno (não é enviado ao pedido)
+                    </p>
                   </div>
 
                   <div className="space-y-1.5">

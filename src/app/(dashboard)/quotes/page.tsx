@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 const STATUS_OPTIONS = [
+  { value: "PENDENTE_CONTACTADO", label: "Pendentes e Contactados" },
   { value: "ALL", label: "Todos" },
   { value: "PENDENTE", label: "Pendentes" },
   { value: "CONTACTADO", label: "Contactados" },
@@ -33,8 +34,8 @@ const STATUS_OPTIONS = [
 ] as const;
 
 export default function QuotesPage() {
-  const [statusFilter, setStatusFilter] = useState<QuoteStatus | "ALL">(
-    "PENDENTE"
+  const [statusFilter, setStatusFilter] = useState<QuoteStatus | "ALL" | "PENDENTE_CONTACTADO">(
+    "PENDENTE_CONTACTADO"
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -56,7 +57,7 @@ export default function QuotesPage() {
   };
 
   const handleStatusChange = (value: string) => {
-    setStatusFilter(value as QuoteStatus | "ALL");
+    setStatusFilter(value as QuoteStatus | "ALL" | "PENDENTE_CONTACTADO");
     setPage(1);
   };
 
@@ -111,7 +112,18 @@ export default function QuotesPage() {
               <SelectItem key={option.value} value={option.value}>
                 <div className="flex items-center gap-2">
                   {option.label}
+                  {option.value === "PENDENTE_CONTACTADO" &&
+                    counts &&
+                    (counts.PENDENTE + counts.CONTACTADO) > 0 && (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs px-1.5 py-0"
+                      >
+                        {counts.PENDENTE + counts.CONTACTADO}
+                      </Badge>
+                    )}
                   {option.value !== "ALL" &&
+                    option.value !== "PENDENTE_CONTACTADO" &&
                     counts &&
                     counts[option.value as QuoteStatus] > 0 && (
                       <Badge

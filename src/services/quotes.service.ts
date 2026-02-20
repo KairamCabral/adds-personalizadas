@@ -44,7 +44,7 @@ export interface PublicQuote extends Omit<PublicQuoteRow, "items" | "personaliza
 }
 
 export interface QuoteFilters {
-  status?: QuoteStatus | "ALL";
+  status?: QuoteStatus | "ALL" | "PENDENTE_CONTACTADO";
   search?: string;
   page?: number;
   limit?: number;
@@ -78,7 +78,11 @@ export async function getQuotes(filters: QuoteFilters = {}) {
     .order("created_at", { ascending: false });
 
   if (status && status !== "ALL") {
-    query = query.eq("status", status);
+    if (status === "PENDENTE_CONTACTADO") {
+      query = query.in("status", ["PENDENTE", "CONTACTADO"]);
+    } else {
+      query = query.eq("status", status);
+    }
   }
 
   if (search && search.trim().length >= 2) {

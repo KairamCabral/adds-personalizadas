@@ -8,7 +8,10 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
+  Hash,
   Minus,
+  Palette,
   Plus,
   Trash2,
   Loader2,
@@ -35,11 +38,18 @@ const formatCurrency = (value: number) =>
 const DEFAULT_QTY_PER_COLOR = 100;
 const QUICK_QUANTITIES = [24, 36, 72, 120];
 
+interface ColorOption {
+  key: string;
+  label: string;
+  hex?: string;
+  image_url?: string | null;
+}
+
 interface ProductRecord {
   id: string;
   name: string;
   image_url: string | null;
-  available_colors?: { key: string; label: string; hex?: string }[];
+  available_colors?: ColorOption[];
   allows_custom_color?: boolean | null;
 }
 
@@ -248,7 +258,7 @@ export function StepProducts({
   };
 
   return (
-    <div className="space-y-8 w-full max-w-5xl mx-auto min-w-0">
+    <div className="space-y-8 w-full max-w-5xl mx-auto min-w-0 px-3 sm:px-4">
       <div className="space-y-2">
         <h2 className="text-2xl font-bold tracking-tight">Produtos</h2>
         <p className="text-muted-foreground">
@@ -319,7 +329,7 @@ export function StepProducts({
                 <Button
                   variant="outline"
                   size="icon"
-                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 h-10 w-10 rounded-full border-2 bg-background/95 shadow-md z-10 disabled:opacity-40"
+                  className="absolute left-1 sm:left-0 top-1/2 -translate-y-1/2 sm:-translate-x-2 h-9 w-9 sm:h-10 sm:w-10 rounded-full border-2 bg-background/95 shadow-md z-10 disabled:opacity-40"
                   onClick={scrollPrev}
                   disabled={prevBtnDisabled}
                 >
@@ -328,7 +338,7 @@ export function StepProducts({
                 <Button
                   variant="outline"
                   size="icon"
-                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 h-10 w-10 rounded-full border-2 bg-background/95 shadow-md z-10 disabled:opacity-40"
+                  className="absolute right-1 sm:right-0 top-1/2 -translate-y-1/2 sm:translate-x-2 h-9 w-9 sm:h-10 sm:w-10 rounded-full border-2 bg-background/95 shadow-md z-10 disabled:opacity-40"
                   onClick={scrollNext}
                   disabled={nextBtnDisabled}
                 >
@@ -374,45 +384,83 @@ export function StepProducts({
 
             return (
               <Card key={item.product_id} className="rounded-xl border-2 border-primary/20 overflow-hidden">
-                <CardContent className="p-4 md:p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">{item.product_name}</p>
+                <CardContent className="p-3 sm:p-4 md:p-5 space-y-4 sm:space-y-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <p className="font-bold text-lg truncate">{item.product_name}</p>
+                      {(totalQty > 0) && (!hasColors || item.colors.length > 0) && (
+                        <Badge variant="secondary" className="shrink-0 text-orange-600 dark:text-orange-400 bg-orange-500/15 border-orange-500/30">
+                          <Hash className="h-3 w-3 mr-1" />
+                          {totalQty} un
+                        </Badge>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-destructive shrink-0"
+                      className="h-8 w-8 text-destructive shrink-0 hover:bg-destructive/10"
                       onClick={() => removeProduct(item.product_id)}
+                      title="Remover produto"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-start">
                     {hasColors && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">Cores</p>
-                        <div className="flex flex-wrap gap-2">
-                          {availableColors.map((color) => (
-                            <button
-                              key={color.key}
-                              type="button"
-                              onClick={() => toggleColor(item.product_id, color.key)}
-                              className={cn(
-                                "flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium border-2 transition-colors",
-                                item.colors.includes(color.key)
-                                  ? "border-primary bg-primary/10 text-primary"
-                                  : "border-border hover:border-primary/50"
-                              )}
-                            >
-                              {color.hex && (
-                                <span
-                                  className="h-3.5 w-3.5 rounded-full border border-border/50"
-                                  style={{ backgroundColor: color.hex }}
-                                />
-                              )}
-                              {color.label}
-                            </button>
-                          ))}
+                      <div className="space-y-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                          <Palette className="h-3.5 w-3.5" />
+                          1. Escolha as cores
+                        </p>
+                        <p className="text-xs text-muted-foreground -mt-2">
+                          Clique para selecionar ou remover
+                        </p>
+                        <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                              {availableColors.map((color) => {
+                                const colorWithImg = color as ColorOption;
+                                const imgUrl = colorWithImg.image_url ?? null;
+                                const isSelected = item.colors.includes(color.key);
+                                return (
+                                  <button
+                                    key={color.key}
+                                    type="button"
+                                    onClick={() => toggleColor(item.product_id, color.key)}
+                                    className={cn(
+                                      "relative flex flex-col items-center gap-1.5 p-2 sm:p-2.5 rounded-xl border-2 transition-all min-w-[64px] sm:min-w-[72px]",
+                                      isSelected
+                                        ? "border-primary bg-primary/10 text-primary shadow-sm ring-2 ring-primary/20"
+                                        : "border-border hover:border-primary/40 hover:bg-muted/30"
+                                    )}
+                                  >
+                                    {isSelected && (
+                                      <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                                        <Check className="h-2.5 w-2.5" />
+                                      </span>
+                                    )}
+                                    {imgUrl ? (
+                                      <span className="h-10 w-10 rounded-lg overflow-hidden border border-border/50 shrink-0">
+                                        <img
+                                          src={imgUrl}
+                                          alt={color.label}
+                                          className="h-full w-full object-cover"
+                                        />
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className={cn(
+                                          "h-10 w-10 rounded-lg border-2 shrink-0 ring-1 ring-black/5",
+                                          !color.hex && "bg-gradient-to-r from-red-400 via-yellow-400 to-blue-400"
+                                        )}
+                                        style={color.hex ? { backgroundColor: color.hex } : undefined}
+                                      />
+                                    )}
+                                    <span className="text-xs font-medium leading-tight text-center">
+                                      {color.label}
+                                    </span>
+                                  </button>
+                                );
+                              })}
                         </div>
                       </div>
                     )}
@@ -434,18 +482,45 @@ export function StepProducts({
                     )}
                   </div>
 
-                  {hasColors && item.colors.length > 0 ? (
+                  {hasColors && item.colors.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Selecione pelo menos uma cor acima para definir a quantidade
+                      </p>
+                    </div>
+                  ) : hasColors && item.colors.length > 0 ? (
                     <div className="space-y-3">
                       {!expanded ? (
-                        <div className="flex flex-col gap-4 p-3 rounded-lg bg-muted/20 border border-border/50">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <p className="text-xs text-muted-foreground shrink-0">Quantidade por cor (igual para todas):</p>
-                              <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row gap-4 rounded-xl border border-border/60 bg-muted/10 p-3 sm:p-4">
+                          {catalogProduct?.image_url && (
+                            <div className="flex flex-col items-center gap-2 shrink-0">
+                              <div className="rounded-xl overflow-hidden border border-border/50 bg-muted/30">
+                                <img
+                                  src={catalogProduct.image_url}
+                                  alt={item.product_name}
+                                  className="h-20 w-20 sm:h-24 sm:w-24 object-contain"
+                                />
+                              </div>
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                                <Hash className="h-3 w-3" />
+                                2. Quantidade
+                              </p>
+                            </div>
+                          )}
+                          <div className={cn("flex-1 min-w-0 space-y-3", !catalogProduct?.image_url && "sm:pl-0")}>
+                            {!catalogProduct?.image_url && (
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                                <Hash className="h-3.5 w-3.5" />
+                                2. Quantidade por cor
+                              </p>
+                            )}
+                            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3">
+                              <p className="text-sm text-muted-foreground shrink-0 w-full sm:w-auto">Mesma quantidade em cada cor:</p>
+                              <div className="flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start">
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="h-11 w-11 shrink-0"
+                                  className="h-10 w-10 shrink-0"
                                   onClick={() => {
                                     const first = Object.values(qpc ?? {})[0] ?? DEFAULT_QTY_PER_COLOR;
                                     setSameQuantityForAllColors(item.product_id, Math.max(1, first - 1));
@@ -462,12 +537,12 @@ export function StepProducts({
                                     const v = parseInt(e.target.value, 10) || 0;
                                     setSameQuantityForAllColors(item.product_id, v);
                                   }}
-                                  className="h-11 w-28 text-center text-lg font-semibold tabular-nums"
+                                  className="h-10 w-24 text-center text-base font-semibold tabular-nums"
                                 />
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="h-11 w-11 shrink-0"
+                                  className="h-10 w-10 shrink-0"
                                   onClick={() => {
                                     const first = Object.values(qpc ?? {})[0] ?? DEFAULT_QTY_PER_COLOR;
                                     setSameQuantityForAllColors(item.product_id, first + 1);
@@ -478,97 +553,123 @@ export function StepProducts({
                                 </Button>
                               </div>
                             </div>
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                              <p className="text-sm text-muted-foreground flex items-baseline gap-1.5 flex-wrap">
-                                Total: <span className="text-xl font-bold text-foreground tabular-nums">{totalQty}</span> un
-                                {item.colors.length > 1 && (
-                                  <span className="text-xs"> ({item.colors.length} cores × {Object.values(qpc ?? {})[0] ?? 0})</span>
-                                )}
-                              </p>
+                            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                              <span className="text-xs text-muted-foreground shrink-0 pt-1 sm:pt-0">Mais pedidas:</span>
+                              <div className="flex flex-wrap gap-2">
+                              {QUICK_QUANTITIES.map((q) => {
+                                const current = Object.values(qpc ?? {})[0] ?? 0;
+                                const isActive = current === q;
+                                return (
+                                  <Button
+                                    key={q}
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(
+                                      "min-w-10 px-4 tabular-nums rounded-md border transition-all duration-200",
+                                      isActive
+                                        ? "h-9 text-base font-bold border-primary bg-primary/15 text-primary shadow-md"
+                                        : "h-8 text-xs font-medium border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
+                                    )}
+                                    onClick={() => setSameQuantityForAllColors(item.product_id, q)}
+                                  >
+                                    {q}
+                                  </Button>
+                                );
+                              })}
+                              </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 pt-3 sm:pt-2 border-t border-border/50">
+                              <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-2 sm:py-1.5 inline-flex items-baseline gap-2 flex-wrap justify-center sm:justify-start">
+                                <span className="text-xs font-medium text-muted-foreground">Total</span>
+                                <span className="text-xl font-bold text-orange-600 dark:text-orange-400 tabular-nums">{totalQty}</span>
+                                <span className="text-xs text-muted-foreground">unidades selecionadas ({item.colors.length} {item.colors.length === 1 ? "cor" : "cores"})</span>
+                              </div>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="gap-2 text-sm font-medium border-primary/30 text-foreground hover:bg-primary/5 hover:border-primary/50 w-full sm:w-auto shrink-0"
+                                className="gap-2 text-sm font-medium border-primary/30 text-foreground hover:bg-primary/5 hover:border-primary/50 shrink-0 w-full sm:w-auto"
                                 onClick={() => setPerColorExpanded((prev) => ({ ...prev, [item.product_id]: true }))}
                               >
                                 <Sliders className="h-4 w-4 opacity-70" />
-                                Definir quantidade por cor
+                                Quantidades diferentes
                               </Button>
                             </div>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[10px] sm:text-xs text-muted-foreground mr-0.5">Quantidades mais compradas:</span>
-                            {QUICK_QUANTITIES.map((q) => {
-                              const current = Object.values(qpc ?? {})[0] ?? 0;
-                              const isActive = current === q;
-                              return (
-                                <Button
-                                  key={q}
-                                  variant="outline"
-                                  size="sm"
-                                  className={cn(
-                                    "min-w-10 px-4 tabular-nums rounded-md border transition-all duration-200",
-                                    isActive
-                                      ? "h-10 text-base font-bold border-primary bg-primary/15 text-primary shadow-md"
-                                      : "h-8 text-xs font-medium border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
-                                  )}
-                                  onClick={() => setSameQuantityForAllColors(item.product_id, q)}
-                                >
-                                  {q}
-                                </Button>
-                              );
-                            })}
                           </div>
                         </div>
                       ) : (
-                        <>
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-medium text-muted-foreground">Quantidade por cor</p>
-                            <div className="flex flex-wrap items-center gap-2">
-                              {QUICK_QUANTITIES.map((q) => (
+                        <div className="flex flex-col sm:flex-row gap-4 rounded-xl border border-border/60 bg-muted/10 p-3 sm:p-4">
+                          {catalogProduct?.image_url && (
+                            <div className="flex flex-col items-center gap-2 shrink-0">
+                              <div className="rounded-xl overflow-hidden border border-border/50 bg-muted/30">
+                                <img
+                                  src={catalogProduct.image_url}
+                                  alt={item.product_name}
+                                  className="h-20 w-20 sm:h-24 sm:w-24 object-contain"
+                                />
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                                <Sliders className="h-3.5 w-3.5" />
+                                Quantidade por cor
+                              </p>
+                              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                                <span className="text-xs text-muted-foreground shrink-0">Aplicar a todas:</span>
+                                <div className="flex flex-wrap gap-2">
+                                {QUICK_QUANTITIES.map((q) => (
+                                  <Button
+                                    key={q}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 min-w-9 px-3 text-xs font-medium tabular-nums rounded-md border border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5 transition-all duration-200"
+                                    onClick={() => {
+                                      const next: Record<string, number> = {};
+                                      item.colors.forEach((k) => { next[k] = q; });
+                                      updateProduct(item.product_id, {
+                                        quantity_per_color: next,
+                                        quantity: q * item.colors.length,
+                                      });
+                                    }}
+                                  >
+                                    {q}
+                                  </Button>
+                                ))}
                                 <Button
-                                  key={q}
                                   variant="outline"
                                   size="sm"
-                                  className="h-8 min-w-9 px-3 text-xs font-medium tabular-nums rounded-md border border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5 transition-all duration-200"
-                                  onClick={() => {
-                                    const next: Record<string, number> = {};
-                                    item.colors.forEach((k) => { next[k] = q; });
-                                    updateProduct(item.product_id, {
-                                      quantity_per_color: next,
-                                      quantity: q * item.colors.length,
-                                    });
-                                  }}
+                                  className="gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10 w-full sm:w-auto"
+                                  onClick={() => setPerColorExpanded((prev) => ({ ...prev, [item.product_id]: false }))}
                                 >
-                                  {q}
+                                  Igual para todas
                                 </Button>
-                              ))}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs h-7 ml-1"
-                                onClick={() => setPerColorExpanded((prev) => ({ ...prev, [item.product_id]: false }))}
-                              >
-                                Usar mesma para todas
-                              </Button>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
                             {item.colors.map((colorKey) => {
-                              const color = availableColors.find((c) => c.key === colorKey);
+                              const color = availableColors.find((c) => c.key === colorKey) as ColorOption | undefined;
                               const qty = (qpc ?? {})[colorKey] ?? 0;
+                              const colorImg = color && "image_url" in color ? color.image_url : null;
                               return (
                                 <div
                                   key={colorKey}
-                                  className="flex items-center gap-3 p-2 rounded-lg bg-muted/20 border border-border/50"
+                                  className="flex items-center gap-2 sm:gap-3 p-2 rounded-lg bg-muted/20 border border-border/50 min-w-0"
                                 >
-                                  {color?.hex && (
+                                  {colorImg ? (
+                                    <span className="h-8 w-8 rounded-lg overflow-hidden border border-border/50 shrink-0">
+                                      <img src={colorImg} alt="" className="h-full w-full object-cover" />
+                                    </span>
+                                  ) : color?.hex ? (
                                     <span
-                                      className="h-4 w-4 rounded-full border border-border shrink-0"
+                                      className="h-8 w-8 rounded-lg border border-border shrink-0"
                                       style={{ backgroundColor: color.hex }}
                                     />
+                                  ) : (
+                                    <span className="h-8 w-8 rounded-lg border border-border shrink-0 bg-muted" />
                                   )}
-                                  <span className="text-sm min-w-0 truncate flex-1">{color?.label ?? colorKey}</span>
+                                  <span className="text-sm min-w-0 truncate flex-1 font-medium">{color?.label ?? colorKey}</span>
                                   <div className="flex items-center gap-1 shrink-0">
                                     <Button
                                       variant="outline"
@@ -604,17 +705,20 @@ export function StepProducts({
                               );
                             })}
                           </div>
-                          <p className="text-sm text-muted-foreground flex items-baseline gap-1.5">
-                            Total: <span className="text-xl font-bold text-foreground tabular-nums">{totalQty}</span> unidades
-                          </p>
-                        </>
+                          <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 sm:px-4 py-2 inline-flex items-baseline gap-2 flex-wrap justify-center sm:justify-start w-full sm:w-auto">
+                            <span className="text-sm font-medium text-muted-foreground">Total</span>
+                            <span className="text-xl sm:text-2xl font-bold text-orange-600 dark:text-orange-400 tabular-nums">{totalQty}</span>
+                            <span className="text-xs sm:text-sm text-muted-foreground">unidades selecionadas ({item.colors.length} {item.colors.length === 1 ? "cor" : "cores"})</span>
+                          </div>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <p className="text-xs text-muted-foreground">Quantidade:</p>
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-3">
+                        <p className="text-xs text-muted-foreground shrink-0">Quantidade:</p>
+                        <div className="flex items-center gap-2 justify-center sm:justify-start">
                           <Button
                             variant="outline"
                             size="icon"
@@ -656,8 +760,9 @@ export function StepProducts({
                           </Button>
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] sm:text-xs text-muted-foreground mr-0.5">Quantidades mais compradas:</span>
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                        <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0">Quantidades mais compradas:</span>
+                        <div className="flex flex-wrap gap-2">
                         {QUICK_QUANTITIES.map((q) => {
                           const isActive = item.quantity === q;
                           return (
@@ -677,6 +782,7 @@ export function StepProducts({
                             </Button>
                           );
                         })}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -702,9 +808,9 @@ export function StepProducts({
         );
         if (quote.items.length === 0) return null;
         return (
-          <Card className="rounded-xl border-2 border-primary/20 bg-muted/20">
-            <CardContent className="p-4 md:p-5 space-y-3">
-              <p className="text-sm font-semibold text-muted-foreground">
+          <Card className="rounded-xl border-2 border-primary/20 bg-muted/20 overflow-hidden">
+            <CardContent className="p-3 sm:p-4 md:p-5 space-y-4">
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                 Resultado do orçamento
               </p>
               <div className="space-y-2">
@@ -718,12 +824,24 @@ export function StepProducts({
                     -{formatCurrency(quote.pixDiscountValue)}
                   </span>
                 </div>
-                <div className="flex justify-between text-base font-semibold pt-2">
-                  <span>Total à vista (PIX/Boleto)</span>
-                  <span className="tabular-nums text-primary">{formatCurrency(quote.totalPix)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div className="rounded-lg bg-primary/10 border border-primary/20 p-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">À vista</p>
+                  <p className="text-lg font-bold tabular-nums text-primary">
+                    {formatCurrency(quote.totalPix)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">PIX ou Boleto</p>
                 </div>
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>ou 4x de {formatCurrency(quote.installment4x)} no cartão</span>
+                <div className="rounded-lg bg-muted/50 border border-border p-3 flex flex-col justify-between">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-xs font-medium text-muted-foreground">Cartão</p>
+                  </div>
+                  <p className="text-base font-semibold tabular-nums">
+                    4x de {formatCurrency(quote.installment4x)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">sem juros</p>
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap pt-1">
@@ -751,12 +869,12 @@ export function StepProducts({
         );
       })()}
 
-      <div className="flex justify-between pt-4">
-        <Button variant="ghost" onClick={onBack} className="gap-2">
+      <div className="flex flex-col-reverse sm:flex-row justify-between gap-3 pt-4">
+        <Button variant="ghost" onClick={onBack} className="gap-2 w-full sm:w-auto order-2 sm:order-1">
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Button>
-        <Button onClick={handleNext} className="gap-2 h-11 font-semibold">
+        <Button onClick={handleNext} className="gap-2 h-11 font-semibold w-full sm:w-auto order-1 sm:order-2">
           Próximo
           <ArrowRight className="h-4 w-4" />
         </Button>

@@ -10,6 +10,7 @@ import {
   Truck,
   Check,
   X,
+  CreditCard,
   Palette,
   Copy,
   Image as ImageIcon,
@@ -130,7 +131,7 @@ export function StepReview({
             );
           })}
           {quote.items.length > 0 && (
-            <div className="mt-4 pt-4 border-t space-y-2">
+            <div className="mt-4 pt-4 border-t space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium tabular-nums">{formatCurrency(quote.subtotal)}</span>
@@ -141,12 +142,24 @@ export function StepReview({
                   -{formatCurrency(quote.pixDiscountValue)}
                 </span>
               </div>
-              <div className="flex justify-between text-base font-semibold pt-2">
-                <span>Total à vista (PIX/Boleto)</span>
-                <span className="tabular-nums text-primary">{formatCurrency(quote.totalPix)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>ou 4x de {formatCurrency(quote.installment4x)} no cartão</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div className="rounded-lg bg-primary/10 border border-primary/20 p-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">À vista</p>
+                  <p className="text-lg font-bold tabular-nums text-primary">
+                    {formatCurrency(quote.totalPix)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">PIX ou Boleto</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 border border-border p-3 flex flex-col justify-between">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-xs font-medium text-muted-foreground">Cartão</p>
+                  </div>
+                  <p className="text-base font-semibold tabular-nums">
+                    4x de {formatCurrency(quote.installment4x)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">sem juros</p>
+                </div>
               </div>
               <div className="flex gap-2 mt-2 flex-wrap">
                 {quote.freteGratis ? (

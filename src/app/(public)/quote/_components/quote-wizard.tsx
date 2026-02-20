@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { recalculateQuote } from "@/lib/pricing";
 import {
   createPublicQuote,
   uploadQuoteLogo,
@@ -162,6 +163,25 @@ export function QuoteWizard() {
         logoUrl = await uploadQuoteLogo(personalization.logo_file);
       }
 
+      const itemsForSubmit = products.map((p) => {
+        const total = p.quantity_per_color && Object.keys(p.quantity_per_color).length > 0
+          ? Object.values(p.quantity_per_color).reduce((a, b) => a + b, 0)
+          : p.quantity;
+        return {
+          product_id: p.product_id,
+          product_name: p.product_name,
+          quantity: total,
+          colors: p.colors,
+          custom_color: p.custom_color,
+          ...(p.quantity_per_color && Object.keys(p.quantity_per_color).length > 0
+            ? { quantity_per_color: p.quantity_per_color }
+            : {}),
+        };
+      });
+
+      const catalog = productCatalog as { id: string; name: string; price: number | null; category?: string | null }[];
+      const quoteCalc = recalculateQuote(itemsForSubmit, catalog);
+
       const quoteData: CreatePublicQuoteData = {
         client_name: clientData.client_name,
         client_email: clientData.client_email || undefined,
@@ -179,21 +199,8 @@ export function QuoteWizard() {
         client_logo_url: logoUrl,
         is_existing_client: clientData.is_existing_client,
         existing_client_id: clientData.existing_client_id || undefined,
-        items: products.map((p) => {
-          const total = p.quantity_per_color && Object.keys(p.quantity_per_color).length > 0
-            ? Object.values(p.quantity_per_color).reduce((a, b) => a + b, 0)
-            : p.quantity;
-          return {
-            product_id: p.product_id,
-            product_name: p.product_name,
-            quantity: total,
-            colors: p.colors,
-            custom_color: p.custom_color,
-            ...(p.quantity_per_color && Object.keys(p.quantity_per_color).length > 0
-              ? { quantity_per_color: p.quantity_per_color }
-              : {}),
-          };
-        }),
+        items: itemsForSubmit,
+        estimated_value: quoteCalc.totalPix,
         personalization: {
           artwork_mode: personalization.artwork_mode ?? undefined,
           print_color: personalization.print_color || undefined,
