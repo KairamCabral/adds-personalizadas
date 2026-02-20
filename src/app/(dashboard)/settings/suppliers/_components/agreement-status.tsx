@@ -29,7 +29,7 @@ export function AgreementStatus({
     );
   }
 
-  if (status === "pending" && linkUrl) {
+  if (status === "pending") {
     return (
       <div className="flex items-center gap-2">
         <Badge
@@ -39,7 +39,7 @@ export function AgreementStatus({
           <Clock className="mr-1 h-3 w-3" />
           Aguardando assinatura
         </Badge>
-        {onCopyLink && (
+        {onCopyLink && linkUrl && (
           <button
             type="button"
             onClick={onCopyLink}

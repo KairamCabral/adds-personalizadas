@@ -224,6 +224,20 @@ export function SupplierDetail({
                         <span className="text-muted-foreground">Data:</span>{" "}
                         {formatDate(activeAgreement.signed_at!)}
                       </p>
+                      {activeAgreement.signer_ip && (
+                        <p>
+                          <span className="text-muted-foreground">IP:</span>{" "}
+                          <code className="text-xs">{activeAgreement.signer_ip}</code>
+                        </p>
+                      )}
+                      {activeAgreement.signer_user_agent && (
+                        <p>
+                          <span className="text-muted-foreground">Dispositivo:</span>{" "}
+                          <span className="text-xs text-muted-foreground break-all">
+                            {activeAgreement.signer_user_agent}
+                          </span>
+                        </p>
+                      )}
                       <p>
                         <span className="text-muted-foreground">Hash:</span>{" "}
                         <code className="text-xs">
