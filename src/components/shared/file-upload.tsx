@@ -12,6 +12,7 @@ interface FileUploadProps {
   onUpload: (files: File[]) => void;
   className?: string;
   disabled?: boolean;
+  isUploading?: boolean;
 }
 
 export function FileUpload({
@@ -21,6 +22,7 @@ export function FileUpload({
   onUpload,
   className,
   disabled = false,
+  isUploading = false,
 }: FileUploadProps) {
   const [dragActive, setDragActive] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -87,8 +89,14 @@ export function FileUpload({
       >
         <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
         <p className="text-sm font-medium text-foreground">
-          Arraste arquivos aqui ou{" "}
-          <span className="text-primary underline">selecione</span>
+          {isUploading ? (
+            "Enviando..."
+          ) : (
+            <>
+              Arraste arquivos aqui ou{" "}
+              <span className="text-primary underline">selecione</span>
+            </>
+          )}
         </p>
         <input
           ref={inputRef}
@@ -116,13 +124,14 @@ export function FileUpload({
               <FileIcon className="h-4 w-4 text-muted-foreground" />
               <span className="flex-1 truncate text-sm">{file.name}</span>
               <span className="text-xs text-muted-foreground">
-                {formatFileSize(file.size)}
+                {isUploading ? "Enviando..." : formatFileSize(file.size)}
               </span>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
                 onClick={() => removeFile(i)}
+                disabled={isUploading}
               >
                 <X className="h-3 w-3" />
               </Button>

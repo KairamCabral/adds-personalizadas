@@ -94,6 +94,7 @@ async function deleteAttachment(id: string, fileUrl: string): Promise<void> {
 export function OrderAttachments({ orderId }: OrderAttachmentsProps) {
   const queryClient = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<Attachment | null>(null);
+  const [uploadKey, setUploadKey] = useState(0);
 
   const { data: attachments = [], isLoading } = useQuery({
     queryKey: ["attachments", orderId],
@@ -104,10 +105,12 @@ export function OrderAttachments({ orderId }: OrderAttachmentsProps) {
     mutationFn: (files: File[]) =>
       Promise.all(files.map((f) => uploadAttachment(orderId, f))),
     onSuccess: () => {
+      setUploadKey((k) => k + 1);
       queryClient.invalidateQueries({ queryKey: ["attachments", orderId] });
       toast.success("Anexos adicionados com sucesso.");
     },
     onError: () => {
+      setUploadKey((k) => k + 1);
       toast.error("Erro ao enviar anexos.");
     },
   });
@@ -140,10 +143,12 @@ export function OrderAttachments({ orderId }: OrderAttachmentsProps) {
   return (
     <div className="space-y-4">
       <FileUpload
+        key={uploadKey}
         multiple
         accept="image/jpeg,image/jpg,image/png,image/svg+xml,application/pdf,.cdr,.ai,.eps,.svg"
         onUpload={handleUpload}
         disabled={uploadMutation.isPending}
+        isUploading={uploadMutation.isPending}
       />
 
       {attachments.length === 0 ? (
