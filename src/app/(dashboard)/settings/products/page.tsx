@@ -31,33 +31,23 @@ import { toast } from "sonner";
 export default function SettingsProductsPage() {
   const router = useRouter();
   const { can, isLoading: permissionsLoading } = usePermissions();
+  const hasPermission = can("products.manage");
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!permissionsLoading && !can("products.manage")) {
-      router.replace("/pipeline");
-    }
-  }, [permissionsLoading, router, can]);
-
-  if (permissionsLoading) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center p-6">
-        <p className="text-sm text-muted-foreground">Carregando...</p>
-      </div>
-    );
-  }
-
-  if (!can("products.manage")) {
-    return null;
-  }
-
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["products"],
     queryFn: getProducts,
+    enabled: !permissionsLoading && hasPermission,
   });
+
+  useEffect(() => {
+    if (!permissionsLoading && !hasPermission) {
+      router.replace("/pipeline");
+    }
+  }, [permissionsLoading, hasPermission, router]);
 
   const createMutation = useMutation({
     mutationFn: createProduct,
@@ -166,6 +156,18 @@ export default function SettingsProductsPage() {
     ];
     return cols;
   }, []);
+
+  if (permissionsLoading) {
+    return (
+      <div className="flex min-h-[200px] items-center justify-center p-6">
+        <p className="text-sm text-muted-foreground">Carregando...</p>
+      </div>
+    );
+  }
+
+  if (!hasPermission) {
+    return null;
+  }
 
   return (
     <div className="space-y-6 p-6">

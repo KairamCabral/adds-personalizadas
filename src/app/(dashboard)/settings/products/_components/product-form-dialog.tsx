@@ -93,7 +93,9 @@ export function ProductFormDialog({
         is_active: true,
       });
     }
-  }, [open, initialData, form]);
+    // form é estável; incluir nas deps pode causar loop de re-renders (#310)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialData]);
 
   const uploadImage = useCallback(async (file: File) => {
     const ext = "." + (file.name.split(".").pop()?.toLowerCase() || "");
