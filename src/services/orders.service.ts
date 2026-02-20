@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { logAction } from "@/services/audit.service";
 import type { Order } from "@/types/database.types";
@@ -51,8 +53,12 @@ export async function getArchivedOrders() {
   return data;
 }
 
-export async function getOrderById(id: string) {
-  const { data, error } = await supabase
+export async function getOrderById(
+  id: string,
+  supabaseClient?: SupabaseClient<Database>
+) {
+  const db = supabaseClient ?? supabase;
+  const { data, error } = await db
     .from("orders")
     .select(`
       *,

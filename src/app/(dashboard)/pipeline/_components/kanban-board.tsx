@@ -94,39 +94,7 @@ export function KanbanBoard() {
     },
     onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
-
-      if (data.newStatus === "ARTE_APROVADA") {
-        try {
-          const res = await fetch("/api/bling/sync-on-status", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              orderId: data.orderId,
-              newStatus: data.newStatus,
-            }),
-          });
-          const json = await res.json();
-          if (json.results?.length) {
-            json.results.forEach(
-              (r: { success: boolean; supplierName: string; error?: string }) => {
-                if (r.success) {
-                  toast.success(`Dados enviados ao fornecedor ${r.supplierName}`);
-                } else if (r.error?.includes("termo não assinado")) {
-                  toast.warning(
-                    `Integração com ${r.supplierName} bloqueada — termo pendente`
-                  );
-                } else {
-                  toast.error(
-                    `${r.supplierName}: ${r.error ?? "Erro ao enviar"}`
-                  );
-                }
-              }
-            );
-          }
-        } catch {
-          // Silently ignore sync errors
-        }
-      }
+      // Envio ao fornecedor é apenas manual (botão "Enviar ao Fornecedor"), não ao arrastar para Aprovado/Arte Aprovada
     },
     onError: () => {
       toast.error("Erro ao mover pedido.");

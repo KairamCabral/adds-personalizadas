@@ -20,12 +20,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const token = String(apiToken).trim();
+    if (!token) {
+      return NextResponse.json(
+        { success: false, message: "Token é obrigatório." },
+        { status: 400 }
+      );
+    }
+
     const url = baseUrl ?? process.env.BLING_API_URL ?? "https://api.bling.com.br/Api/v3";
     const finalUrl = url.replace(/\/$/, "");
 
     const res = await fetch(`${finalUrl}/contatos?limite=1`, {
       headers: {
-        Authorization: `Bearer ${apiToken}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
     });

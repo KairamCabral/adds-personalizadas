@@ -34,7 +34,7 @@ const STATUS_OPTIONS = [
 
 export default function QuotesPage() {
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | "ALL">(
-    "ALL"
+    "PENDENTE"
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);

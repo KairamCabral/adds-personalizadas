@@ -33,7 +33,10 @@ export interface WizardProductItem {
   quantity_per_color?: Record<string, number>;
 }
 
+export type ArtworkMode = "use_last" | "request_creation" | "do_it_yourself";
+
 export interface WizardPersonalization {
+  artwork_mode: ArtworkMode | null;
   print_color: string;
   custom_color: string;
   notes: string;

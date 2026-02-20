@@ -7,21 +7,31 @@ import {
   Pencil,
   Package,
   User,
+  Truck,
+  Check,
+  X,
   Palette,
+  Copy,
   Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { recalculateQuote } from "@/lib/pricing";
 import type {
   WizardClientData,
   WizardProductItem,
   WizardPersonalization,
 } from "./quote-wizard-types";
+import type { ProductCatalogItem } from "@/lib/pricing";
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
 interface StepReviewProps {
   clientData: WizardClientData;
   products: WizardProductItem[];
+  productCatalog: ProductCatalogItem[];
   personalization: WizardPersonalization;
   onSubmit: () => void;
   isSubmitting: boolean;
@@ -34,6 +44,7 @@ interface StepReviewProps {
 export function StepReview({
   clientData,
   products,
+  productCatalog,
   personalization,
   onSubmit,
   isSubmitting,
@@ -42,6 +53,8 @@ export function StepReview({
   onEditProducts,
   onEditPersonalization,
 }: StepReviewProps) {
+  const quote = recalculateQuote(products, productCatalog);
+
   return (
     <div className="space-y-8 w-full max-w-5xl mx-auto min-w-0">
       <div className="text-center space-y-2">
@@ -51,11 +64,193 @@ export function StepReview({
         </p>
       </div>
 
+      {/* 1. Produtos e orçamento */}
+      <Card className="rounded-xl border-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Package className="h-4 w-4" />
+            Produtos e orçamento
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onEditProducts}
+            className="gap-1.5 text-xs"
+          >
+            <Pencil className="h-3 w-3" /> Editar
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {quote.items.map((line) => {
+            const orig = products.find((p) => p.product_id === line.product_id);
+            const qpc = orig?.quantity_per_color && Object.keys(orig.quantity_per_color).length > 0
+              ? orig.quantity_per_color
+              : null;
+            return (
+              <div
+                key={line.product_id}
+                className="flex flex-col gap-1 p-3 rounded-lg bg-muted/30"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{line.product_name}</p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {formatCurrency(line.unitPrice)}/un
+                    </span>
+                    <Badge variant="default" className="tabular-nums">
+                      {line.quantity} un
+                    </Badge>
+                    <span className="text-sm font-semibold tabular-nums min-w-[4.5rem] text-right">
+                      {formatCurrency(line.subtotal)}
+                    </span>
+                  </div>
+                </div>
+                {qpc ? (
+                  <p className="text-xs text-muted-foreground">
+                    {Object.entries(qpc)
+                      .filter(([, q]) => q > 0)
+                      .map(([cor, q]) => `${cor}: ${q}`)
+                      .join(" · ")}
+                  </p>
+                ) : orig && (
+                  <div className="flex gap-1 mt-0.5 flex-wrap">
+                    {orig.colors.map((c) => (
+                      <Badge key={c} variant="secondary" className="text-xs">
+                        {c}
+                      </Badge>
+                    ))}
+                    {orig.custom_color && (
+                      <Badge variant="outline" className="text-xs">
+                        {orig.custom_color}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {quote.items.length > 0 && (
+            <div className="mt-4 pt-4 border-t space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="font-medium tabular-nums">{formatCurrency(quote.subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Desconto PIX/Boleto (5%)</span>
+                <span className="text-green-600 dark:text-green-400 tabular-nums">
+                  -{formatCurrency(quote.pixDiscountValue)}
+                </span>
+              </div>
+              <div className="flex justify-between text-base font-semibold pt-2">
+                <span>Total à vista (PIX/Boleto)</span>
+                <span className="tabular-nums text-primary">{formatCurrency(quote.totalPix)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>ou 4x de {formatCurrency(quote.installment4x)} no cartão</span>
+              </div>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {quote.freteGratis ? (
+                  <Badge variant="secondary" className="gap-1 bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30">
+                    <Check className="h-3 w-3" /> Frete grátis
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 text-amber-600 dark:text-amber-400 border-amber-500/50">
+                    <Truck className="h-3 w-3" /> Mín. 12 un ou R$ 200 para frete grátis
+                  </Badge>
+                )}
+                {quote.personalizacaoDisponivel ? (
+                  <Badge variant="secondary" className="gap-1 bg-primary/10 text-primary border-primary/30">
+                    <Check className="h-3 w-3" /> Personalização grátis
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 text-muted-foreground">
+                    <X className="h-3 w-3" /> Mín. 24 un ou R$ 480 para personalizar
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 2. Personalização */}
+      <Card className="rounded-xl border-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Palette className="h-4 w-4" />
+            Personalização
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onEditPersonalization}
+            className="gap-1.5 text-xs"
+          >
+            <Pencil className="h-3 w-3" /> Editar
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {personalization.artwork_mode === "use_last" && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30">
+              <Copy className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
+              <div>
+                <p className="font-medium">Usar última arte</p>
+                {personalization.notes && (
+                  <p className="text-muted-foreground mt-1">
+                    {personalization.notes}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          {personalization.artwork_mode === "request_creation" && (
+            <>
+              {personalization.print_color && (
+                <p>
+                  <span className="text-muted-foreground">Cor de impressão:</span>{" "}
+                  {personalization.print_color}
+                </p>
+              )}
+              {personalization.custom_color && (
+                <p>
+                  <span className="text-muted-foreground">Cor personalizada:</span>{" "}
+                  {personalization.custom_color}
+                </p>
+              )}
+              {personalization.notes && (
+                <p>
+                  <span className="text-muted-foreground">Observações:</span>{" "}
+                  {personalization.notes}
+                </p>
+              )}
+              {personalization.logo_file && (
+                <div className="flex items-center gap-2 mt-2">
+                  <ImageIcon className="h-4 w-4 text-green-500" />
+                  <span className="text-green-500 text-sm">
+                    {personalization.logo_file.name} ({(personalization.logo_file.size / 1024).toFixed(0)} KB)
+                  </span>
+                </div>
+              )}
+              {!personalization.print_color &&
+                !personalization.custom_color &&
+                !personalization.notes &&
+                !personalization.logo_file && (
+                  <p className="text-muted-foreground italic">Solicitar criação da arte</p>
+                )}
+            </>
+          )}
+          {!personalization.artwork_mode && (
+            <p className="text-muted-foreground italic">Nenhuma personalização informada</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 3. Dados */}
       <Card className="rounded-xl border-2">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <User className="h-4 w-4" />
-            Seus Dados
+            Dados
           </CardTitle>
           <Button
             variant="ghost"
@@ -107,124 +302,11 @@ export function StepReview({
         </CardContent>
       </Card>
 
-      <Card className="rounded-xl border-2">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Package className="h-4 w-4" />
-            Produtos
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onEditProducts}
-            className="gap-1.5 text-xs"
-          >
-            <Pencil className="h-3 w-3" /> Editar
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {products.map((item, index) => {
-            const qpc = item.quantity_per_color && Object.keys(item.quantity_per_color).length > 0
-              ? item.quantity_per_color
-              : null;
-            const total = qpc
-              ? Object.values(qpc).reduce((a, b) => a + b, 0)
-              : item.quantity;
-            return (
-              <div
-                key={index}
-                className="flex flex-col gap-1 p-3 rounded-lg bg-muted/30"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{item.product_name}</p>
-                  <Badge variant="default" className="tabular-nums">
-                    {total} un
-                  </Badge>
-                </div>
-                {qpc ? (
-                  <p className="text-xs text-muted-foreground">
-                    {Object.entries(qpc)
-                      .filter(([, q]) => q > 0)
-                      .map(([cor, q]) => `${cor}: ${q}`)
-                      .join(" · ")}
-                  </p>
-                ) : (
-                  <div className="flex gap-1 mt-0.5 flex-wrap">
-                    {item.colors.map((c) => (
-                      <Badge key={c} variant="secondary" className="text-xs">
-                        {c}
-                      </Badge>
-                    ))}
-                    {item.custom_color && (
-                      <Badge variant="outline" className="text-xs">
-                        {item.custom_color}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-xl border-2">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Palette className="h-4 w-4" />
-            Personalização
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onEditPersonalization}
-            className="gap-1.5 text-xs"
-          >
-            <Pencil className="h-3 w-3" /> Editar
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-1 text-sm">
-          {personalization.print_color && (
-            <p>
-              <span className="text-muted-foreground">
-                Cor de impressão:
-              </span>{" "}
-              {personalization.print_color}
-            </p>
-          )}
-          {personalization.custom_color && (
-            <p>
-              <span className="text-muted-foreground">
-                Cor personalizada:
-              </span>{" "}
-              {personalization.custom_color}
-            </p>
-          )}
-          {personalization.notes && (
-            <p>
-              <span className="text-muted-foreground">Observações:</span>{" "}
-              {personalization.notes}
-            </p>
-          )}
-          {personalization.logo_file && (
-            <div className="flex items-center gap-2 mt-2">
-              <ImageIcon className="h-4 w-4 text-green-500" />
-              <span className="text-green-500 text-sm">
-                {personalization.logo_file.name} (
-                {(personalization.logo_file.size / 1024).toFixed(0)} KB)
-              </span>
-            </div>
-          )}
-          {!personalization.print_color &&
-            !personalization.custom_color &&
-            !personalization.notes &&
-            !personalization.logo_file && (
-              <p className="text-muted-foreground italic">
-                Nenhuma personalização informada
-              </p>
-            )}
-        </CardContent>
-      </Card>
+      <div className="rounded-xl bg-primary/10 border-2 border-primary/25 p-5 sm:p-6">
+        <p className="text-base sm:text-lg text-foreground/95 leading-relaxed font-medium">
+          Nossa equipe criará sua arte em até <strong className="text-primary">3 dias úteis</strong> e entrará em contato pelo WhatsApp para enviar a arte para revisão e aprovação.
+        </p>
+      </div>
 
       <div className="flex justify-between pt-4">
         <Button variant="ghost" onClick={onBack} className="gap-2">

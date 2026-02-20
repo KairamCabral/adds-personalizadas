@@ -14,13 +14,23 @@ import {
   Loader2,
   Package,
   Sliders,
+  Truck,
+  Check,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { getActiveProducts } from "@/services/quotes.service";
+import { recalculateQuote } from "@/lib/pricing";
+import type { ProductCatalogItem } from "@/lib/pricing";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { WizardProductItem } from "./quote-wizard-types";
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
 const DEFAULT_QTY_PER_COLOR = 100;
 const QUICK_QUANTITIES = [24, 36, 72, 120];
@@ -204,6 +214,38 @@ export function StepProducts({
       if (hasColors && p.colors.length === 0 && !p.custom_color?.trim()) return false;
       return getTotalQuantity(p) > 0;
     });
+
+  const getValidationMessage = (): string => {
+    if (selectedProducts.length === 0) {
+      return "Selecione pelo menos um produto para continuar.";
+    }
+    const issues: string[] = [];
+    for (const p of selectedProducts) {
+      const catalog = productList.find((c) => c.id === p.product_id);
+      const hasColors = (catalog?.available_colors?.length ?? 0) > 0;
+      const needsColor = hasColors && p.colors.length === 0 && !p.custom_color?.trim();
+      const needsQty = getTotalQuantity(p) <= 0;
+      if (needsColor && needsQty) {
+        issues.push(`${p.product_name}: selecione a cor e defina a quantidade`);
+      } else if (needsColor) {
+        issues.push(`${p.product_name}: selecione pelo menos uma cor`);
+      } else if (needsQty) {
+        issues.push(`${p.product_name}: defina a quantidade`);
+      }
+    }
+    if (issues.length === 0) return "";
+    return issues.length === 1
+      ? issues[0]
+      : "Complete os dados: " + issues.join("; ");
+  };
+
+  const handleNext = () => {
+    if (!isValid) {
+      toast.warning(getValidationMessage(), { duration: 5000 });
+      return;
+    }
+    onNext();
+  };
 
   return (
     <div className="space-y-8 w-full max-w-5xl mx-auto min-w-0">
@@ -403,14 +445,14 @@ export function StepProducts({
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="h-9 w-9 shrink-0"
+                                  className="h-11 w-11 shrink-0"
                                   onClick={() => {
                                     const first = Object.values(qpc ?? {})[0] ?? DEFAULT_QTY_PER_COLOR;
                                     setSameQuantityForAllColors(item.product_id, Math.max(1, first - 1));
                                   }}
                                   title={`Diminuir ${item.colors.length} un. (1 por cor)`}
                                 >
-                                  <Minus className="h-3 w-3" />
+                                  <Minus className="h-4 w-4" />
                                 </Button>
                                 <Input
                                   type="number"
@@ -420,27 +462,28 @@ export function StepProducts({
                                     const v = parseInt(e.target.value, 10) || 0;
                                     setSameQuantityForAllColors(item.product_id, v);
                                   }}
-                                  className="h-9 w-24 text-center text-sm"
+                                  className="h-11 w-28 text-center text-lg font-semibold tabular-nums"
                                 />
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="h-9 w-9 shrink-0"
+                                  className="h-11 w-11 shrink-0"
                                   onClick={() => {
                                     const first = Object.values(qpc ?? {})[0] ?? DEFAULT_QTY_PER_COLOR;
                                     setSameQuantityForAllColors(item.product_id, first + 1);
                                   }}
                                   title={`Aumentar ${item.colors.length} un. (1 por cor)`}
                                 >
-                                  <Plus className="h-3 w-3" />
+                                  <Plus className="h-4 w-4" />
                                 </Button>
                               </div>
                             </div>
                             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                              <p className="text-xs text-muted-foreground">
-                                Total: <strong className="text-foreground">{totalQty}</strong> un
-                                {item.colors.length > 1 &&
-                                  ` (${item.colors.length} cores × ${Object.values(qpc ?? {})[0] ?? 0})`}
+                              <p className="text-sm text-muted-foreground flex items-baseline gap-1.5 flex-wrap">
+                                Total: <span className="text-xl font-bold text-foreground tabular-nums">{totalQty}</span> un
+                                {item.colors.length > 1 && (
+                                  <span className="text-xs"> ({item.colors.length} cores × {Object.values(qpc ?? {})[0] ?? 0})</span>
+                                )}
                               </p>
                               <Button
                                 variant="outline"
@@ -464,10 +507,10 @@ export function StepProducts({
                                   variant="outline"
                                   size="sm"
                                   className={cn(
-                                    "h-8 min-w-9 px-3 text-xs font-medium tabular-nums rounded-md border transition-all duration-200",
+                                    "min-w-10 px-4 tabular-nums rounded-md border transition-all duration-200",
                                     isActive
-                                      ? "border-primary/70 bg-primary/10 text-primary shadow-sm"
-                                      : "border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
+                                      ? "h-10 text-base font-bold border-primary bg-primary/15 text-primary shadow-md"
+                                      : "h-8 text-xs font-medium border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
                                   )}
                                   onClick={() => setSameQuantityForAllColors(item.product_id, q)}
                                 >
@@ -561,8 +604,8 @@ export function StepProducts({
                               );
                             })}
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            Total: <strong>{totalQty}</strong> unidades
+                          <p className="text-sm text-muted-foreground flex items-baseline gap-1.5">
+                            Total: <span className="text-xl font-bold text-foreground tabular-nums">{totalQty}</span> unidades
                           </p>
                         </>
                       )}
@@ -575,7 +618,7 @@ export function StepProducts({
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-9 w-9 shrink-0"
+                            className="h-11 w-11 shrink-0"
                             onClick={() => {
                               const step = Math.max(1, selectedProducts.length);
                               updateProduct(item.product_id, {
@@ -584,7 +627,7 @@ export function StepProducts({
                             }}
                             title={selectedProducts.length > 1 ? `Diminuir ${selectedProducts.length} un.` : "Diminuir 1 un."}
                           >
-                            <Minus className="h-3 w-3" />
+                            <Minus className="h-4 w-4" />
                           </Button>
                           <Input
                             type="number"
@@ -595,12 +638,12 @@ export function StepProducts({
                                 quantity: Math.max(1, parseInt(e.target.value, 10) || 1),
                               })
                             }
-                            className="h-9 w-24 text-center text-sm"
+                            className="h-11 w-28 text-center text-lg font-semibold tabular-nums"
                           />
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-9 w-9 shrink-0"
+                            className="h-11 w-11 shrink-0"
                             onClick={() => {
                               const step = Math.max(1, selectedProducts.length);
                               updateProduct(item.product_id, {
@@ -609,7 +652,7 @@ export function StepProducts({
                             }}
                             title={selectedProducts.length > 1 ? `Aumentar ${selectedProducts.length} un.` : "Aumentar 1 un."}
                           >
-                            <Plus className="h-3 w-3" />
+                            <Plus className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -623,10 +666,10 @@ export function StepProducts({
                               variant="outline"
                               size="sm"
                               className={cn(
-                                "h-8 min-w-9 px-3 text-xs font-medium tabular-nums rounded-md border transition-all duration-200",
+                                "min-w-10 px-4 tabular-nums rounded-md border transition-all duration-200",
                                 isActive
-                                  ? "border-primary/70 bg-primary/10 text-primary shadow-sm"
-                                  : "border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
+                                  ? "h-10 text-base font-bold border-primary bg-primary/15 text-primary shadow-md"
+                                  : "h-8 text-xs font-medium border-border/50 bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-primary/5"
                               )}
                               onClick={() => updateProduct(item.product_id, { quantity: q })}
                             >
@@ -644,12 +687,76 @@ export function StepProducts({
         </div>
       )}
 
+      {selectedProducts.length > 0 && (() => {
+        const catalog = productList as unknown as ProductCatalogItem[];
+        const quote = recalculateQuote(
+          selectedProducts.map((p) => ({
+            product_id: p.product_id,
+            product_name: p.product_name,
+            quantity: p.quantity,
+            ...(p.quantity_per_color && Object.keys(p.quantity_per_color).length > 0
+              ? { quantity_per_color: p.quantity_per_color }
+              : {}),
+          })),
+          catalog
+        );
+        if (quote.items.length === 0) return null;
+        return (
+          <Card className="rounded-xl border-2 border-primary/20 bg-muted/20">
+            <CardContent className="p-4 md:p-5 space-y-3">
+              <p className="text-sm font-semibold text-muted-foreground">
+                Resultado do orçamento
+              </p>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-medium tabular-nums">{formatCurrency(quote.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Desconto PIX/Boleto (5%)</span>
+                  <span className="text-green-600 dark:text-green-400 tabular-nums">
+                    -{formatCurrency(quote.pixDiscountValue)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-base font-semibold pt-2">
+                  <span>Total à vista (PIX/Boleto)</span>
+                  <span className="tabular-nums text-primary">{formatCurrency(quote.totalPix)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>ou 4x de {formatCurrency(quote.installment4x)} no cartão</span>
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap pt-1">
+                {quote.freteGratis ? (
+                  <Badge variant="secondary" className="gap-1 bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30">
+                    <Check className="h-3 w-3" /> Frete grátis
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 text-amber-600 dark:text-amber-400 border-amber-500/50">
+                    <Truck className="h-3 w-3" /> Mín. 12 un ou R$ 200 para frete grátis
+                  </Badge>
+                )}
+                {quote.personalizacaoDisponivel ? (
+                  <Badge variant="secondary" className="gap-1 bg-primary/10 text-primary border-primary/30">
+                    <Check className="h-3 w-3" /> Personalização grátis
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 text-muted-foreground">
+                    <X className="h-3 w-3" /> Mín. 24 un ou R$ 480 para personalizar
+                  </Badge>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       <div className="flex justify-between pt-4">
         <Button variant="ghost" onClick={onBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Button>
-        <Button onClick={onNext} disabled={!isValid} className="gap-2 h-11 font-semibold">
+        <Button onClick={handleNext} className="gap-2 h-11 font-semibold">
           Próximo
           <ArrowRight className="h-4 w-4" />
         </Button>

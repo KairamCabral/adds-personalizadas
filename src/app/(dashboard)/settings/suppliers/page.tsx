@@ -251,7 +251,10 @@ export default function SettingsSuppliersPage() {
               "@/services/suppliers.service"
             );
             const payload = { ...data };
-            if (!payload.bling_api_token?.trim()) {
+            if (payload.bling_api_token) {
+              payload.bling_api_token = payload.bling_api_token.trim();
+              if (!payload.bling_api_token) delete payload.bling_api_token;
+            } else {
               delete payload.bling_api_token;
             }
             await updateSupplier(editingSupplier.id, payload);

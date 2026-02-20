@@ -10,7 +10,7 @@ interface WizardProgressProps {
 
 export function WizardProgress({ steps, currentIndex }: WizardProgressProps) {
   return (
-    <div className="w-full max-w-full min-w-0 overflow-x-auto overflow-y-visible pb-1 -mx-1 px-1">
+    <div className="w-full max-w-full min-w-0 overflow-x-auto overflow-y-visible pb-1 pt-6 -mx-1 px-1">
       <div className="flex items-start justify-center gap-0 min-w-max mx-auto">
         {steps.map((label, index) => {
           const isCompleted = index < currentIndex;
@@ -25,7 +25,7 @@ export function WizardProgress({ steps, currentIndex }: WizardProgressProps) {
                     "h-9 w-9 sm:h-10 sm:w-10 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold transition-all duration-300 shrink-0",
                     isCompleted && "bg-primary text-primary-foreground shadow-md",
                     isCurrent &&
-                      "bg-primary text-primary-foreground ring-4 ring-primary/25 shadow-lg scale-110",
+                      "bg-primary text-primary-foreground shadow-[0_0_0_4px_hsl(var(--primary)/0.25)] scale-110",
                     !isCompleted && !isCurrent && "bg-muted text-muted-foreground"
                   )}
                 >

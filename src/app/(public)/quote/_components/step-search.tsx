@@ -163,10 +163,10 @@ export function StepSearch({
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <Button onClick={handleConfirmAddress} className="flex-1 h-11 font-semibold">
+          <Button onClick={handleConfirmAddress} className="flex-1 h-14 text-base sm:text-lg font-semibold px-6">
             Sim, está correto
           </Button>
-          <Button variant="outline" onClick={handleAddressIncorrectClick} className="flex-1 h-11">
+          <Button variant="outline" onClick={handleAddressIncorrectClick} className="flex-1 h-14 text-base sm:text-lg px-6">
             Não, preciso alterar
           </Button>
         </div>

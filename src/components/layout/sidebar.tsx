@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
+import { getQuoteCounts } from "@/services/quotes.service";
 import {
   Columns3,
   LayoutDashboard,
@@ -29,6 +31,13 @@ const NAV_SECTIONS = [
         permission: "kanban.view" as const,
       },
       {
+        label: "Orçamentos",
+        href: "/quotes",
+        icon: FileText,
+        permission: "quotes.view" as const,
+        showPendingBadge: true,
+      },
+      {
         label: "Dashboard",
         href: "/dashboard",
         icon: LayoutDashboard,
@@ -39,12 +48,6 @@ const NAV_SECTIONS = [
         href: "/contacts",
         icon: Users,
         permission: "clients.view" as const,
-      },
-      {
-        label: "Orçamentos",
-        href: "/quotes",
-        icon: FileText,
-        permission: "quotes.view" as const,
       },
     ],
   },
@@ -72,6 +75,11 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } =
     useUIStore();
   const { can, isLoading } = usePermissions();
+  const { data: quoteCounts } = useQuery({
+    queryKey: ["quote-counts"],
+    queryFn: getQuoteCounts,
+    staleTime: 60 * 1000,
+  });
 
   const closeMobile = () => setMobileSidebarOpen(false);
 
@@ -181,6 +189,11 @@ export function Sidebar() {
                       (item.href !== "/pipeline" &&
                         pathname.startsWith(item.href));
                     const Icon = item.icon;
+                    const pendingCount =
+                      "showPendingBadge" in item && item.showPendingBadge
+                        ? quoteCounts?.PENDENTE ?? 0
+                        : 0;
+                    const hasPending = pendingCount > 0;
 
                     return (
                       <Link
@@ -210,7 +223,20 @@ export function Sidebar() {
                           {item.label}
                         </span>
 
-                        {isActive && (
+                        {hasPending && (
+                          <span
+                            className={cn(
+                              "ml-auto",
+                              sidebarCollapsed && "lg:hidden"
+                            )}
+                          >
+                            <span className="relative flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-amber-400/50 ring-offset-2 ring-offset-card animate-pulse">
+                              {pendingCount > 99 ? "99+" : pendingCount}
+                            </span>
+                          </span>
+                        )}
+
+                        {isActive && !hasPending && (
                           <div
                             className={cn(
                               "ml-auto h-1.5 w-1.5 rounded-full bg-primary",

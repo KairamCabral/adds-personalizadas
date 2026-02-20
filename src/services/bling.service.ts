@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { getOrderById } from "./orders.service";
 import { hasValidAgreement } from "./agreements.service";
@@ -31,6 +33,25 @@ const SHARED_FIELDS_KEYS: (keyof SharedFields)[] = [
 const DEFAULT_SHARED_FIELDS: SharedFields = Object.fromEntries(
   SHARED_FIELDS_KEYS.map((k) => [k, true])
 ) as SharedFields;
+
+/** Extrai mensagem de erro da resposta da API Bling (vários formatos possíveis). */
+function extractBlingErrorMessage(status: number, blingResponse: unknown): string {
+  if (blingResponse && typeof blingResponse === "object") {
+    const r = blingResponse as Record<string, unknown>;
+    if (r.error && typeof r.error === "object") {
+      const err = r.error as Record<string, unknown>;
+      const desc = typeof err.description === "string" ? err.description : typeof err.message === "string" ? err.message : null;
+      if (desc) return desc;
+    }
+    const msg =
+      (typeof r.error === "string" && r.error) ||
+      (typeof r.message === "string" && r.message) ||
+      (Array.isArray(r.errors) && r.errors[0] && typeof (r.errors[0] as Record<string, unknown>).message === "string" && (r.errors[0] as Record<string, unknown>).message as string) ||
+      (Array.isArray(r.errors) && r.errors[0] && typeof (r.errors[0] as Record<string, unknown>).descricao === "string" && (r.errors[0] as Record<string, unknown>).descricao as string);
+    if (msg) return msg;
+  }
+  return `HTTP ${status}`;
+}
 
 /** Normaliza shared_fields removendo campos obsoletos (ex: client_phone) e garantindo todos os atuais. */
 export function normalizeSharedFields(raw: unknown): SharedFields {
@@ -181,11 +202,12 @@ export async function testConnection(apiToken: string): Promise<{
   success: boolean;
   message?: string;
 }> {
+  const token = (apiToken ?? "").trim();
   const baseUrl = process.env.BLING_API_URL ?? "https://api.bling.com.br/Api/v3";
   try {
     const res = await fetch(`${baseUrl}/contatos?limite=1`, {
       headers: {
-        Authorization: `Bearer ${apiToken}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
     });
@@ -209,13 +231,16 @@ export async function testConnection(apiToken: string): Promise<{
 export async function sendClientToBling(
   supplierId: string,
   orderId: string,
-  sentBy?: string | null
+  sentBy?: string | null,
+  supabaseClient?: SupabaseClient<Database>
 ): Promise<{
   success: boolean;
   blingContactId?: number;
   error?: string;
 }> {
-  const { data: supplier, error: supplierError } = await supabase
+  const db = supabaseClient ?? supabase;
+
+  const { data: supplier, error: supplierError } = await db
     .from("suppliers")
     .select("*")
     .eq("id", supplierId)
@@ -229,7 +254,7 @@ export async function sendClientToBling(
     return { success: false, error: "Integração bloqueada — fornecedor inativo." };
   }
 
-  const hasAgreement = await hasValidAgreement(supplierId);
+  const hasAgreement = await hasValidAgreement(supplierId, db);
   if (!hasAgreement) {
     return {
       success: false,
@@ -237,7 +262,7 @@ export async function sendClientToBling(
     };
   }
 
-  const orderData = await getOrderById(orderId);
+  const orderData = await getOrderById(orderId, db);
   if (!orderData) {
     return { success: false, error: "Pedido não encontrado." };
   }
@@ -255,7 +280,7 @@ export async function sendClientToBling(
     sharedFields
   );
 
-  const apiToken = supplier.bling_api_token;
+  const apiToken = (supplier.bling_api_token ?? "").trim();
   const baseUrl =
     (supplier.bling_base_url as string) ??
     process.env.BLING_API_URL ??
@@ -281,10 +306,10 @@ export async function sendClientToBling(
 
     const logStatus = res.ok ? "success" : "error";
     const errorMessage = !res.ok
-      ? (blingResponse?.error ?? blingResponse?.message ?? `HTTP ${res.status}`)
+      ? extractBlingErrorMessage(res.status, blingResponse)
       : null;
 
-    await supabase.from("supplier_data_logs").insert({
+    await db.from("supplier_data_logs").insert({
       supplier_id: supplierId,
       order_id: orderId,
       client_id: orderData.client_id,
@@ -298,12 +323,14 @@ export async function sendClientToBling(
     });
 
     if (!res.ok) {
+      const baseMsg = errorMessage ? `Bling: ${errorMessage}` : "Erro ao enviar dados ao Bling.";
+      const hint =
+        blingResponse && typeof blingResponse === "object" && (blingResponse as Record<string, unknown>).error && typeof (blingResponse as Record<string, unknown>).error === "object" && ((blingResponse as Record<string, unknown>).error as Record<string, unknown>).type === "invalid_token"
+          ? " Atualize o token em Configurações → Fornecedores."
+          : "";
       return {
         success: false,
-        error:
-          typeof errorMessage === "string"
-            ? errorMessage
-            : "Erro ao enviar dados ao Bling.",
+        error: baseMsg + hint,
       };
     }
 
@@ -314,7 +341,7 @@ export async function sendClientToBling(
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Erro de conexão";
 
-    await supabase.from("supplier_data_logs").insert({
+    await db.from("supplier_data_logs").insert({
       supplier_id: supplierId,
       order_id: orderId,
       client_id: orderData.client_id,

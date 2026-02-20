@@ -3,25 +3,61 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Copy,
+  Palette,
+  Sparkles,
   Upload,
   X,
   FileIcon,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
-import type { WizardPersonalization } from "./quote-wizard-types";
+import { cn } from "@/lib/utils";
+import type { ArtworkMode, WizardPersonalization } from "./quote-wizard-types";
 
 const ACCEPTED_TYPES = ".jpg,.jpeg,.png,.pdf,.cdr";
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+
+const ARTWORK_OPTIONS: {
+  value: ArtworkMode;
+  label: string;
+  description: string;
+  icon: typeof Copy;
+  badge?: string;
+  disabled?: boolean;
+}[] = [
+  {
+    value: "use_last",
+    label: "Usar última arte",
+    description: "Reutilizar arte de um pedido anterior",
+    icon: Copy,
+  },
+  {
+    value: "request_creation",
+    label: "Solicitar criação da arte",
+    description: "Nossa equipe cria a arte para você",
+    icon: Palette,
+    badge: "Mais usado",
+  },
+  {
+    value: "do_it_yourself",
+    label: "Faça você mesmo",
+    description: "Sistema de personalização online",
+    icon: Sparkles,
+    badge: "Em breve",
+    disabled: true,
+  },
+];
 
 interface StepPersonalizationProps {
   data: WizardPersonalization;
   onChange: (data: WizardPersonalization) => void;
   onNext: () => void;
   onBack: () => void;
+  /** Cliente encontrado no Tiny (tem pedidos anteriores). Se false, oculta "Usar última arte". */
+  isExistingClient?: boolean;
 }
 
 export function StepPersonalization({
@@ -29,12 +65,28 @@ export function StepPersonalization({
   onChange,
   onNext,
   onBack,
+  isExistingClient = false,
 }: StepPersonalizationProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const update = (field: keyof WizardPersonalization, value: string) => {
+  const update = (field: keyof WizardPersonalization, value: string | File | null) => {
     onChange({ ...data, [field]: value });
+  };
+
+  const handleSelectMode = (mode: ArtworkMode) => {
+    if (mode === "do_it_yourself") return;
+    if (mode === "use_last") {
+      onChange({ ...data, artwork_mode: mode, notes: "Será a mesma arte" });
+      onNext();
+      return;
+    }
+    // Ao escolher "Solicitar criação", limpar notas de "use_last" para exibir o placeholder correto
+    if (mode === "request_creation" && data.notes === "Será a mesma arte") {
+      onChange({ ...data, artwork_mode: mode, notes: "" });
+    } else {
+      onChange({ ...data, artwork_mode: mode });
+    }
   };
 
   const handleFile = (file: File) => {
@@ -68,46 +120,154 @@ export function StepPersonalization({
       ? URL.createObjectURL(data.logo_file)
       : null;
 
+  const handleNext = () => {
+    onNext();
+  };
+
+  if (!data.artwork_mode) {
+    return (
+      <div className="space-y-8 w-full max-w-5xl mx-auto min-w-0">
+        <div className="space-y-2 text-center">
+          <h2 className="text-2xl font-bold tracking-tight">
+            Como deseja personalizar?
+          </h2>
+          <p className="text-muted-foreground">
+            Escolha a opção que melhor se encaixa no seu pedido
+          </p>
+        </div>
+
+        <div
+          role="radiogroup"
+          aria-label="Modo de personalização"
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {ARTWORK_OPTIONS.filter((o) => o.value !== "use_last" || isExistingClient).map((option) => {
+            const Icon = option.icon;
+            const isSelected = data.artwork_mode === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                aria-describedby={`desc-${option.value}`}
+                disabled={option.disabled}
+                onClick={() => handleSelectMode(option.value)}
+                className={cn(
+                  "group relative flex flex-col items-start gap-4 rounded-xl border-2 p-6 sm:p-7 text-left transition-all duration-200",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                  option.disabled
+                    ? "cursor-not-allowed border-border bg-muted/30 opacity-60"
+                    : isSelected
+                      ? "border-primary bg-primary/5 shadow-md"
+                      : "border-border hover:border-primary/50 hover:bg-muted/30 hover:shadow-sm"
+                )}
+              >
+                {option.badge && (
+                  <span
+                    className={cn(
+                      "absolute right-3 top-3 rounded-full px-2.5 py-1 text-xs font-semibold",
+                      option.disabled
+                        ? "bg-muted text-muted-foreground"
+                        : option.badge === "Mais usado"
+                          ? "bg-primary/20 text-primary"
+                          : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                    )}
+                  >
+                    {option.badge}
+                  </span>
+                )}
+                <div
+                  className={cn(
+                    "flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-lg transition-colors",
+                    option.disabled
+                      ? "bg-muted text-muted-foreground"
+                      : isSelected
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
+                  )}
+                >
+                  <Icon className="h-7 w-7 sm:h-8 sm:w-8" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-base sm:text-lg font-semibold leading-tight">{option.label}</p>
+                  <p
+                    id={`desc-${option.value}`}
+                    className="text-sm sm:text-base text-muted-foreground leading-snug"
+                  >
+                    {option.description}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex justify-between pt-4">
+          <Button variant="ghost" onClick={onBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Voltar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (data.artwork_mode === "use_last") {
+    return (
+      <div className="space-y-8 w-full max-w-5xl mx-auto min-w-0">
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold tracking-tight">
+            Usar última arte
+          </h2>
+          <p className="text-muted-foreground">
+            Será utilizada a mesma arte do pedido anterior.
+          </p>
+        </div>
+
+        <div className="flex justify-between pt-4">
+          <Button
+            variant="ghost"
+            onClick={() => onChange({ ...data, artwork_mode: null })}
+            className="gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar
+          </Button>
+          <Button
+            onClick={onNext}
+            className="gap-2 h-11 font-semibold"
+          >
+            Próximo
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 w-full max-w-5xl mx-auto min-w-0">
       <div className="space-y-2">
-        <h2 className="text-2xl font-bold tracking-tight">Personalização</h2>
+        <h2 className="text-2xl font-bold tracking-tight">
+          Solicitar criação da arte
+        </h2>
         <p className="text-muted-foreground">
-          Detalhes de cores, arte e sua logo
+          Informe os detalhes da personalização e anexe sua logo
         </p>
       </div>
 
       <div className="space-y-5">
         <div className="space-y-2">
-          <Label htmlFor="print_color">Cor de impressão</Label>
-          <Input
-            id="print_color"
-            placeholder="Ex: Branco, Prata, Dourado..."
-            value={data.print_color}
-            onChange={(e) => update("print_color", e.target.value)}
-            className="h-11 focus-visible:ring-2"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="custom_color">Cor personalizada (se aplicável)</Label>
-          <Input
-            id="custom_color"
-            placeholder="Ex: Pantone 485C, #FF0000, Azul Tiffany..."
-            value={data.custom_color}
-            onChange={(e) => update("custom_color", e.target.value)}
-            className="h-11 focus-visible:ring-2"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="notes">Observações sobre a personalização</Label>
+          <Label htmlFor="notes">Informações sobre a personalização</Label>
           <Textarea
             id="notes"
-            placeholder="Descreva detalhes da arte, textos na embalagem, posicionamento do logo, referências visuais..."
+            placeholder={"Exemplo:\nLinha 1: logo + nome\nLinha 2: telefone 1 + telefone 2"}
             rows={4}
             value={data.notes}
             onChange={(e) => update("notes", e.target.value)}
+            className="resize-none"
           />
         </div>
 
@@ -144,11 +304,12 @@ export function StepPersonalization({
             </div>
           ) : (
             <div
-              className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all duration-300 ${
+              className={cn(
+                "border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all duration-300",
                 dragOver
                   ? "border-primary bg-primary/5"
                   : "border-border hover:border-primary/50 hover:bg-muted/30"
-              }`}
+              )}
               onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -162,7 +323,7 @@ export function StepPersonalization({
                 Arraste ou clique para enviar sua logo
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                JPG, PNG, PDF ou CDR · Máximo 10MB
+                PDF, PNG, CDR ou JPG · Máximo 10MB
               </p>
             </div>
           )}
@@ -178,11 +339,15 @@ export function StepPersonalization({
       </div>
 
       <div className="flex justify-between pt-4">
-        <Button variant="ghost" onClick={onBack} className="gap-2">
+        <Button
+          variant="ghost"
+          onClick={() => onChange({ ...data, artwork_mode: null })}
+          className="gap-2"
+        >
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Button>
-        <Button onClick={onNext} className="gap-2 h-11 font-semibold">
+        <Button onClick={handleNext} className="gap-2 h-11 font-semibold">
           Próximo
           <ArrowRight className="h-4 w-4" />
         </Button>

@@ -18,7 +18,10 @@ export interface QuoteItem {
   quantity_per_color?: Record<string, number>;
 }
 
+export type ArtworkMode = "use_last" | "request_creation" | "do_it_yourself";
+
 export interface QuotePersonalization {
+  artwork_mode?: ArtworkMode | null;
   print_color?: string;
   custom_color?: string | null;
   notes?: string;
@@ -299,6 +302,26 @@ export async function approveQuote(quoteId: string) {
     label: "ORCAMENTO_PUBLICO",
     added_by: userId,
   });
+
+  if (quote.client_logo_url) {
+    const ext = quote.client_logo_url.split(".").pop()?.split("?")[0] || "png";
+    const mimeTypes: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      svg: "image/svg+xml",
+    };
+    await supabase.from("attachments").insert({
+      order_id: order.id,
+      file_url: quote.client_logo_url,
+      file_name: `logo-cliente.${ext}`,
+      file_size: null,
+      file_type: mimeTypes[ext.toLowerCase()] ?? null,
+      uploaded_by: userId,
+    });
+  }
 
   return order;
 }

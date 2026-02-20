@@ -21,10 +21,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (newStatus !== "ARTE_APROVADA") {
+    if (newStatus !== "APROVADO" && newStatus !== "ARTE_APROVADA") {
       return NextResponse.json({
         success: true,
-        message: "Status não é APROVADO, nenhum envio necessário.",
+        message: "Status não dispara envio ao fornecedor.",
         results: [],
       });
     }
@@ -53,7 +53,8 @@ export async function POST(request: NextRequest) {
       const result = await sendClientToBling(
         supplier.id,
         orderId,
-        user.id
+        user.id,
+        supabase
       );
       results.push({
         supplierId: supplier.id,

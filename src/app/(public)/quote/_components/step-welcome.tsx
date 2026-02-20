@@ -1,6 +1,6 @@
 "use client";
 
-import { UserCheck, UserPlus } from "lucide-react";
+import { UserCheck, UserPlus, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface StepWelcomeProps {
@@ -53,6 +53,21 @@ export function StepWelcome({ onSelect }: StepWelcomeProps) {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="flex flex-col items-center text-center w-full max-w-xl mx-auto px-6 sm:px-8 py-6 sm:py-8 rounded-xl bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/30">
+        <Info className="h-6 w-6 text-amber-600 dark:text-amber-500 mb-2" />
+        <div className="space-y-3 text-base sm:text-lg text-muted-foreground leading-relaxed">
+          <p>
+            Os orçamentos enviados por este link são analisados manualmente por nossa equipe em até <strong className="text-foreground/90">2 horas úteis</strong>.
+          </p>
+          <p>
+            A produção só terá início após sua <strong className="text-foreground/90">revisão e aprovação da arte</strong>.
+          </p>
+          <p>
+            Após a aprovação enviaremos o link de pagamento para dar início à produção.
+          </p>
+        </div>
       </div>
     </div>
   );

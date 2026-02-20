@@ -272,7 +272,12 @@ export function SupplierDetail({
         supplier={supplier}
         onSubmit={async (data) => {
           const payload = { ...data };
-          if (!payload.bling_api_token?.trim()) delete payload.bling_api_token;
+          if (payload.bling_api_token) {
+            payload.bling_api_token = payload.bling_api_token.trim();
+            if (!payload.bling_api_token) delete payload.bling_api_token;
+          } else {
+            delete payload.bling_api_token;
+          }
           await updateSupplier(supplierId, payload);
           toast.success("Fornecedor atualizado.");
           queryClient.invalidateQueries({ queryKey: ["supplier", supplierId] });

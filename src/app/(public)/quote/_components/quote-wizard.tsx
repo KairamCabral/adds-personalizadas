@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   createPublicQuote,
   uploadQuoteLogo,
+  getActiveProducts,
   type CreatePublicQuoteData,
 } from "@/services/quotes.service";
 import { WizardProgress } from "./wizard-progress";
@@ -22,7 +24,7 @@ import type {
   WizardStep,
 } from "./quote-wizard-types";
 
-export type { WizardClientData, WizardProductItem, WizardPersonalization, WizardStep };
+export type { WizardClientData, WizardProductItem, WizardPersonalization, WizardStep, ArtworkMode } from "./quote-wizard-types";
 
 const STEP_ORDER: WizardStep[] = [
   "welcome",
@@ -60,6 +62,7 @@ const INITIAL_CLIENT: WizardClientData = {
 };
 
 const INITIAL_PERSONALIZATION: WizardPersonalization = {
+  artwork_mode: null,
   print_color: "",
   custom_color: "",
   notes: "",
@@ -75,6 +78,11 @@ export function QuoteWizard() {
   const [products, setProducts] = useState<WizardProductItem[]>([]);
   const [personalization, setPersonalization] =
     useState<WizardPersonalization>(INITIAL_PERSONALIZATION);
+
+  const { data: productCatalog = [] } = useQuery({
+    queryKey: ["public-products"],
+    queryFn: getActiveProducts,
+  });
 
   const goTo = (step: WizardStep) => {
     setCurrentStep(step);
@@ -187,6 +195,7 @@ export function QuoteWizard() {
           };
         }),
         personalization: {
+          artwork_mode: personalization.artwork_mode ?? undefined,
           print_color: personalization.print_color || undefined,
           custom_color: personalization.custom_color || undefined,
           notes: personalization.notes || undefined,
@@ -266,6 +275,7 @@ export function QuoteWizard() {
           onChange={setPersonalization}
           onNext={() => goTo("review")}
           onBack={() => goTo("products")}
+          isExistingClient={clientData.is_existing_client}
         />
       )}
 
@@ -273,6 +283,7 @@ export function QuoteWizard() {
         <StepReview
           clientData={clientData}
           products={products}
+          productCatalog={productCatalog as { id: string; name: string; price: number | null; category?: string | null }[]}
           personalization={personalization}
           onSubmit={handleSubmit}
           isSubmitting={isSubmitting}

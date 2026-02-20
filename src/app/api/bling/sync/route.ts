@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
     const result = await sendClientToBling(
       supplierId,
       orderId,
-      user.id
+      user.id,
+      supabase
     );
 
     if (!result.success) {

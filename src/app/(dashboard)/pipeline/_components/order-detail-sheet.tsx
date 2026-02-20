@@ -72,6 +72,7 @@ import { OrderActivityPanel } from "./order-activity-panel";
 import { OrderEditSheet } from "./order-edit-sheet";
 
 const APROVADO_AND_AFTER = [
+  "APROVADO",
   "ARTE_APROVADA",
   "PRODUCAO",
   "EXPEDICAO",
@@ -248,7 +249,42 @@ export function OrderDetailSheet() {
                     {canAny("suppliers.send_data", "suppliers.manage") &&
                       order.client_id &&
                       APROVADO_AND_AFTER.includes(order.status) &&
-                      (activeSuppliers.length > 0 ? (
+                      (activeSuppliers.length === 1 ? (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={!!sendingToSupplier}
+                          onClick={async () => {
+                            const s = activeSuppliers[0] as { id: string; name: string };
+                            setSendingToSupplier(s.id);
+                            try {
+                              const res = await fetch("/api/bling/sync", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  supplierId: s.id,
+                                  orderId: order.id,
+                                }),
+                              });
+                              const json = await res.json();
+                              if (json.success) {
+                                toast.success(`Dados enviados ao fornecedor ${s.name}`);
+                                queryClient.invalidateQueries({ queryKey: ["orders"] });
+                              } else {
+                                toast.error(json.error ?? "Erro ao enviar");
+                              }
+                            } catch {
+                              toast.error("Erro ao enviar dados.");
+                            } finally {
+                              setSendingToSupplier(null);
+                            }
+                          }}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          {sendingToSupplier ? "Enviando..." : "Enviar ao Fornecedor"}
+                        </Button>
+                      ) : activeSuppliers.length > 1 ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -382,7 +418,47 @@ export function OrderDetailSheet() {
                 {canAny("suppliers.send_data", "suppliers.manage") &&
                   order.client_id &&
                   APROVADO_AND_AFTER.includes(order.status) &&
-                  (activeSuppliers.length > 0 ? (
+                  (activeSuppliers.length === 1 ? (
+                    <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                      <p className="mb-2 text-sm font-medium text-foreground">
+                        Enviar ao fornecedor
+                      </p>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        disabled={!!sendingToSupplier}
+                        className="gap-2"
+                        onClick={async () => {
+                          const supplier = activeSuppliers[0] as { id: string; name: string };
+                          setSendingToSupplier(supplier.id);
+                          try {
+                            const res = await fetch("/api/bling/sync", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                supplierId: supplier.id,
+                                orderId: order.id,
+                              }),
+                            });
+                            const json = await res.json();
+                            if (json.success) {
+                              toast.success(`Dados enviados ao fornecedor ${supplier.name}`);
+                              queryClient.invalidateQueries({ queryKey: ["orders"] });
+                            } else {
+                              toast.error(json.error ?? "Erro ao enviar");
+                            }
+                          } catch {
+                            toast.error("Erro ao enviar dados.");
+                          } finally {
+                            setSendingToSupplier(null);
+                          }
+                        }}
+                      >
+                        <Send className="h-4 w-4" />
+                        {sendingToSupplier ? "Enviando..." : "Enviar ao Fornecedor"}
+                      </Button>
+                    </div>
+                  ) : activeSuppliers.length > 1 ? (
                     <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
                       <p className="mb-2 text-sm font-medium text-foreground">
                         Enviar ao fornecedor

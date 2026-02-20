@@ -162,6 +162,18 @@ export function SupplierForm({
 
           <div className="space-y-2">
             <Label htmlFor="bling_api_token">Token API do Bling</Label>
+            <p className="text-xs text-muted-foreground">
+              Token OAuth 2.0 (Bearer). Pode expirar; se der 401, gere um novo em{" "}
+              <a
+                href="https://developer.bling.com.br/aplicativos"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-primary hover:no-underline"
+              >
+                Bling → Minhas Instalações
+              </a>
+              .
+            </p>
             <div className="flex gap-2">
               <Input
                 id="bling_api_token"

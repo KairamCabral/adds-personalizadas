@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AGREEMENT_CONTENT, AGREEMENT_VERSION } from "@/lib/agreement-template";
@@ -243,8 +245,12 @@ export async function revokeAgreement(agreementId: string, reason: string) {
   return { success: true };
 }
 
-export async function getActiveAgreement(supplierId: string) {
-  const { data, error } = await supabase
+export async function getActiveAgreement(
+  supplierId: string,
+  supabaseClient?: SupabaseClient<Database>
+) {
+  const db = supabaseClient ?? supabase;
+  const { data, error } = await db
     .from("supplier_agreements")
     .select("*")
     .eq("supplier_id", supplierId)
@@ -257,7 +263,10 @@ export async function getActiveAgreement(supplierId: string) {
   return data;
 }
 
-export async function hasValidAgreement(supplierId: string): Promise<boolean> {
-  const agreement = await getActiveAgreement(supplierId);
+export async function hasValidAgreement(
+  supplierId: string,
+  supabaseClient?: SupabaseClient<Database>
+): Promise<boolean> {
+  const agreement = await getActiveAgreement(supplierId, supabaseClient);
   return !!agreement;
 }
