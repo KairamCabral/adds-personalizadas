@@ -141,6 +141,7 @@ export function OrderAttachments({ orderId }: OrderAttachmentsProps) {
     <div className="space-y-4">
       <FileUpload
         multiple
+        accept="image/jpeg,image/jpg,image/png,image/svg+xml,application/pdf,.cdr,.ai,.eps,.svg"
         onUpload={handleUpload}
         disabled={uploadMutation.isPending}
       />
