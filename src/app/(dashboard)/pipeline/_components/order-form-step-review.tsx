@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createOrderWithItems } from "@/services/orders.service";
+import { createOrderWithItems, deleteOrder } from "@/services/orders.service";
 import { createClient } from "@/lib/supabase/client";
 import {
   Select,
@@ -109,23 +109,28 @@ export function OrderFormStepReview({
       });
 
       if (logoFile) {
-        const formData = new FormData();
-        formData.append("file", logoFile);
-        formData.append("order_id", order.id);
+        try {
+          const formData = new FormData();
+          formData.append("file", logoFile);
+          formData.append("order_id", order.id);
 
-        const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
+          const supabase = createClient();
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
 
-        const res = await fetch("/api/orders/upload-logo", {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: formData,
-        });
+          const res = await fetch("/api/orders/upload-logo", {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+          });
 
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Erro ao enviar logo");
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || "Erro ao enviar logo");
+          }
+        } catch (err) {
+          await deleteOrder(order.id);
+          throw err;
         }
       }
 

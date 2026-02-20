@@ -9,9 +9,13 @@ const ACCEPTED_TYPES = [
   "image/jpeg",
   "image/jpg",
   "image/png",
+  "image/svg+xml",
   "application/pdf",
+  "application/postscript", // .ai, .eps
+  "application/illustrator",
 ];
-const ACCEPTED_EXT = [".jpg", ".jpeg", ".png", ".pdf", ".cdr"];
+const ACCEPTED_EXT = [".jpg", ".jpeg", ".png", ".pdf", ".cdr", ".ai", ".eps", ".svg"];
+const ACCEPT_ATTR = "image/jpeg,image/jpg,image/png,image/svg+xml,application/pdf,.cdr,.ai,.eps,.svg";
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
 interface LogoUploadProps {
@@ -37,7 +41,7 @@ export function LogoUpload({
     const ext = "." + f.name.split(".").pop()?.toLowerCase();
     if (!ACCEPTED_EXT.includes(ext) && !ACCEPTED_TYPES.includes(f.type)) {
       toast.error(
-        "Formato não suportado. Use JPG, PNG, PDF ou CDR."
+        "Formato não suportado. Use JPG, PNG, PDF ou vetor (CDR, AI, EPS, SVG)."
       );
       return false;
     }
@@ -96,12 +100,12 @@ export function LogoUpload({
             Arraste a logo ou clique para selecionar
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            JPG, PNG, PDF ou CDR · Máximo 10MB
+            JPG, PNG, PDF ou vetor (CDR, AI, EPS, SVG) · Máximo 10MB
           </p>
           <input
             ref={inputRef}
             type="file"
-            accept={ACCEPTED_EXT.join(",")}
+            accept={ACCEPT_ATTR}
             onChange={handleInputChange}
             className="hidden"
           />

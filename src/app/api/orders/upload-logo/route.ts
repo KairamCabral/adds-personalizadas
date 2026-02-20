@@ -8,9 +8,12 @@ const ALLOWED_TYPES = [
   "image/jpeg",
   "image/jpg",
   "image/png",
+  "image/svg+xml",
   "application/pdf",
+  "application/postscript",
+  "application/illustrator",
 ];
-const ALLOWED_EXT = [".jpg", ".jpeg", ".png", ".pdf", ".cdr"];
+const ALLOWED_EXT = [".jpg", ".jpeg", ".png", ".pdf", ".cdr", ".ai", ".eps", ".svg"];
 
 function getServiceClient() {
   return createClient<Database>(
@@ -47,9 +50,11 @@ export async function POST(request: NextRequest) {
     }
 
     const ext = "." + (file.name.split(".").pop()?.toLowerCase() || "bin");
-    if (!ALLOWED_EXT.includes(ext) && !ALLOWED_TYPES.includes(file.type)) {
+    const typeOk = file.type ? ALLOWED_TYPES.includes(file.type) : false;
+    const extOk = ALLOWED_EXT.includes(ext);
+    if (!extOk && !typeOk) {
       return NextResponse.json(
-        { error: "Formato não suportado. Use JPG, PNG, PDF ou CDR." },
+        { error: "Formato não suportado. Use JPG, PNG, PDF ou vetor (CDR, AI, EPS, SVG)." },
         { status: 400 }
       );
     }
