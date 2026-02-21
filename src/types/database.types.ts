@@ -7,8 +7,31 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.1"
+  }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string | null
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string | null
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       approval_tokens: {
         Row: {
           artwork_id: string
@@ -402,6 +425,8 @@ export type Database = {
           is_system: boolean | null
           mentions: string[] | null
           order_id: string
+          read_at: string | null
+          read_by: string | null
           updated_at: string
           user_id: string | null
         }
@@ -412,6 +437,8 @@ export type Database = {
           is_system?: boolean | null
           mentions?: string[] | null
           order_id: string
+          read_at?: string | null
+          read_by?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -422,6 +449,8 @@ export type Database = {
           is_system?: boolean | null
           mentions?: string[] | null
           order_id?: string
+          read_at?: string | null
+          read_by?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -431,6 +460,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_read_by_fkey"
+            columns: ["read_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -703,6 +739,7 @@ export type Database = {
           description: string | null
           due_date: string | null
           id: string
+          order_date: string | null
           order_number: number
           order_type: Database["public"]["Enums"]["order_type"]
           position: number
@@ -723,6 +760,7 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          order_date?: string | null
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
           position?: number
@@ -743,6 +781,7 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          order_date?: string | null
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
           position?: number
@@ -781,7 +820,7 @@ export type Database = {
       products: {
         Row: {
           allows_custom_color: boolean | null
-          available_colors: unknown
+          available_colors: Json | null
           canvas_height: number | null
           canvas_width: number | null
           category: string | null
@@ -801,7 +840,7 @@ export type Database = {
         }
         Insert: {
           allows_custom_color?: boolean | null
-          available_colors?: unknown
+          available_colors?: Json | null
           canvas_height?: number | null
           canvas_width?: number | null
           category?: string | null
@@ -821,7 +860,7 @@ export type Database = {
         }
         Update: {
           allows_custom_color?: boolean | null
-          available_colors?: unknown
+          available_colors?: Json | null
           canvas_height?: number | null
           canvas_width?: number | null
           category?: string | null
@@ -998,24 +1037,6 @@ export type Database = {
           },
         ]
       }
-      app_settings: {
-        Row: {
-          key: string
-          value: Json
-          updated_at: string
-        }
-        Insert: {
-          key: string
-          value: Json
-          updated_at?: string
-        }
-        Update: {
-          key?: string
-          value?: Json
-          updated_at?: string
-        }
-        Relationships: [        ]
-      }
       supplier_agreements: {
         Row: {
           agreement_hash: string | null
@@ -1028,7 +1049,7 @@ export type Database = {
           revoked_by: string | null
           signed_at: string | null
           signer_document: string | null
-          signer_ip: string | null
+          signer_ip: unknown
           signer_name: string | null
           signer_role: string | null
           signer_user_agent: string | null
@@ -1048,7 +1069,7 @@ export type Database = {
           revoked_by?: string | null
           signed_at?: string | null
           signer_document?: string | null
-          signer_ip?: string | null
+          signer_ip?: unknown
           signer_name?: string | null
           signer_role?: string | null
           signer_user_agent?: string | null
@@ -1068,7 +1089,7 @@ export type Database = {
           revoked_by?: string | null
           signed_at?: string | null
           signer_document?: string | null
-          signer_ip?: string | null
+          signer_ip?: unknown
           signer_name?: string | null
           signer_role?: string | null
           signer_user_agent?: string | null
@@ -1275,10 +1296,52 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      find_client_by_document: {
+        Args: { doc_digits: string }
+        Returns: {
+          city: string | null
+          company: string | null
+          complement: string | null
+          country: string | null
+          created_at: string
+          created_by: string | null
+          document: string | null
+          email: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          neighborhood: string | null
+          notes: string | null
+          number: string | null
+          person_type: Database["public"]["Enums"]["person_type"]
+          phone: string | null
+          state: string | null
+          street: string | null
+          tiny_id: number | null
+          tiny_synced_at: string | null
+          updated_at: string
+          zip_code: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "clients"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_dashboard_clientes_data: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
+      get_dashboard_crm: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      get_vendas_data: { Args: { p_from: string; p_to: string }; Returns: Json }
       reorder_column: {
         Args: {
           p_order_ids: string[]
@@ -1288,10 +1351,6 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
-      get_dashboard_clientes_data: {
-        Args: { p_from: string; p_to: string }
-        Returns: Json
-      }
       validate_approval_token: {
         Args: { p_token: string }
         Returns: {
@@ -1301,11 +1360,16 @@ export type Database = {
           order_id: string
           order_title: string
           token_id: string
+          variation_index: number
         }[]
       }
     }
     Enums: {
-      artwork_status: "PENDENTE" | "APROVADA" | "AJUSTE_SOLICITADO" | "DESCARTADA"
+      artwork_status:
+        | "PENDENTE"
+        | "APROVADA"
+        | "AJUSTE_SOLICITADO"
+        | "DESCARTADA"
       audit_action:
         | "LOGIN"
         | "LOGOUT"
@@ -1482,7 +1546,12 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      artwork_status: ["PENDENTE", "APROVADA", "AJUSTE_SOLICITADO", "DESCARTADA"],
+      artwork_status: [
+        "PENDENTE",
+        "APROVADA",
+        "AJUSTE_SOLICITADO",
+        "DESCARTADA",
+      ],
       audit_action: [
         "LOGIN",
         "LOGOUT",
@@ -1541,9 +1610,6 @@ export const Constants = {
   },
 } as const
 
-// ============================================
-// Type aliases convenientes para uso no app
-// ============================================
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 export type Client = Database["public"]["Tables"]["clients"]["Row"]
 export type Order = Database["public"]["Tables"]["orders"]["Row"]
