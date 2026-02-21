@@ -796,7 +796,7 @@ export function StepProducts({
       {selectedProducts.length > 0 && (() => {
         const catalog = productList as unknown as ProductCatalogItem[];
         const validProducts = selectedProducts.filter((p) => {
-          const catalogItem = catalog.find((c) => c.id === p.product_id);
+          const catalogItem = productList.find((c) => c.id === p.product_id);
           const hasColors = (catalogItem?.available_colors?.length ?? 0) > 0;
           const totalQty = getTotalQuantity(p);
           if (hasColors && p.colors.length === 0) return false;

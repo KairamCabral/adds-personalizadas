@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PublicQuote } from "@/services/quotes.service";
-import type { QuoteStatus } from "@/services/quotes.service";
 
 const PAGE_SIZE = 20;
 const ALLOWED_ROLES = ["MASTER", "GESTOR"] as const;
@@ -33,7 +32,14 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const status = (searchParams.get("status") ?? "ALL") as QuoteStatus | "ALL";
+    const status = (searchParams.get("status") ?? "ALL") as
+      | "ALL"
+      | "PENDENTE_CONTACTADO"
+      | "PENDENTE"
+      | "CONTACTADO"
+      | "CONCLUIDO"
+      | "APROVADO"
+      | "REJEITADO";
     const search = searchParams.get("search") ?? "";
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? String(PAGE_SIZE), 10)));
