@@ -27,7 +27,7 @@ type ColorWithImage = ColorOption & { image_url?: string | null };
 function parseAvailableColors(product: Product): ColorOption[] {
   const raw = product.available_colors;
   if (!raw || !Array.isArray(raw)) return [];
-  return (raw as ColorOption[]).filter(
+  return (raw as unknown as ColorOption[]).filter(
     (c) => c && typeof c.key === "string" && typeof c.label === "string"
   );
 }
@@ -41,7 +41,7 @@ function getDisplayImageUrl(
   if (!raw || !Array.isArray(raw) || keys.length === 0) {
     return product.image_url ?? null;
   }
-  const colors = raw as ColorWithImage[];
+  const colors = raw as unknown as ColorWithImage[];
   const firstKey = keys[0];
   const colorWithImage = colors.find(
     (c) => c && c.key === firstKey && (c as ColorWithImage).image_url
