@@ -134,16 +134,29 @@ export function buildBlingPayload(
     client?.person_type === "JURIDICA" || docDigits.length >= 14;
   const tipo = isJuridica ? "J" : "F";
 
-  const nome = isJuridica
-    ? (client?.company ?? client?.name ?? "Cliente")
-    : (client?.name ?? client?.company ?? "Cliente");
+  // Para PJ: name = razão social, company = nome fantasia
+  // Para PF: name = nome completo
+  const nomeRazaoSocial = String(client?.name ?? "").trim();
+  const nomeFantasia = String(client?.company ?? "").trim();
+
+  // nome (obrigatório no Bling): razão social para PJ, nome para PF
+  const nomeEnvio = (isJuridica
+    ? nomeRazaoSocial || nomeFantasia
+    : nomeRazaoSocial || nomeFantasia
+  ) || "Cliente";
 
   const payload: Record<string, unknown> = {
-    nome: String(nome).trim() || "Cliente",
+    nome: nomeEnvio,
     situacao: "A",
     tipo,
   };
-  if (sharedFields.client_name && (client?.name || client?.company)) {
+
+  // fantasia: nome fantasia para PJ (quando diferente da razão social)
+  if (isJuridica && nomeFantasia && nomeFantasia !== nomeRazaoSocial) {
+    payload.fantasia = nomeFantasia;
+  }
+
+  if (sharedFields.client_name && (nomeRazaoSocial || nomeFantasia)) {
     fieldsSent.push("client_name");
   }
 
