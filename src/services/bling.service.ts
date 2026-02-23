@@ -36,21 +36,51 @@ const DEFAULT_SHARED_FIELDS: SharedFields = Object.fromEntries(
 
 /** Extrai mensagem de erro da resposta da API Bling (vários formatos possíveis). */
 function extractBlingErrorMessage(status: number, blingResponse: unknown): string {
-  if (blingResponse && typeof blingResponse === "object") {
-    const r = blingResponse as Record<string, unknown>;
-    if (r.error && typeof r.error === "object") {
-      const err = r.error as Record<string, unknown>;
-      const desc = typeof err.description === "string" ? err.description : typeof err.message === "string" ? err.message : null;
-      if (desc) return desc;
+  if (!blingResponse || typeof blingResponse !== "object") return `HTTP ${status}`;
+
+  const r = blingResponse as Record<string, unknown>;
+
+  // Formato: { error: { type, message, description, fields: [...] } }
+  if (r.error && typeof r.error === "object") {
+    const err = r.error as Record<string, unknown>;
+    const parts: string[] = [];
+    const desc =
+      typeof err.description === "string" ? err.description :
+      typeof err.message === "string" ? err.message : null;
+    if (desc) parts.push(desc);
+
+    // Campos com erro de validação
+    if (Array.isArray(err.fields)) {
+      err.fields.forEach((f) => {
+        if (f && typeof f === "object") {
+          const field = f as Record<string, unknown>;
+          const fieldMsg = field.msg ?? field.message ?? field.descricao;
+          const fieldName = field.campo ?? field.field ?? field.name;
+          if (fieldMsg) parts.push(`${fieldName ? `${fieldName}: ` : ""}${fieldMsg}`);
+        }
+      });
     }
-    const msg =
-      (typeof r.error === "string" && r.error) ||
-      (typeof r.message === "string" && r.message) ||
-      (Array.isArray(r.errors) && r.errors[0] && typeof (r.errors[0] as Record<string, unknown>).message === "string" && (r.errors[0] as Record<string, unknown>).message as string) ||
-      (Array.isArray(r.errors) && r.errors[0] && typeof (r.errors[0] as Record<string, unknown>).descricao === "string" && (r.errors[0] as Record<string, unknown>).descricao as string);
-    if (msg) return msg;
+    if (parts.length) return parts.join(" | ");
   }
-  return `HTTP ${status}`;
+
+  // Formato: { errors: [{ message, descricao }] }
+  if (Array.isArray(r.errors) && r.errors.length > 0) {
+    const msgs = r.errors.map((e) => {
+      if (e && typeof e === "object") {
+        const err = e as Record<string, unknown>;
+        return err.message ?? err.descricao ?? err.msg ?? JSON.stringify(err);
+      }
+      return String(e);
+    });
+    return msgs.filter(Boolean).join(" | ");
+  }
+
+  const msg =
+    (typeof r.error === "string" && r.error) ||
+    (typeof r.message === "string" && r.message);
+  if (msg) return msg;
+
+  return `HTTP ${status} — ${JSON.stringify(blingResponse).slice(0, 300)}`;
 }
 
 /** Normaliza shared_fields removendo campos obsoletos (ex: client_phone) e garantindo todos os atuais. */
@@ -64,6 +94,8 @@ export function normalizeSharedFields(raw: unknown): SharedFields {
 interface ClientData {
   id?: string;
   name?: string | null;
+  company?: string | null;
+  person_type?: "FISICA" | "JURIDICA" | null;
   document?: string | null;
   street?: string | null;
   number?: string | null;
@@ -85,27 +117,38 @@ interface OrderData {
   items?: OrderItem[];
 }
 
+/**
+ * Monta o payload no formato da API Bling v3 (Contatos).
+ * Ref: ContatosDadosBaseDTO + ContatosDadosDTO + ContatosEnderecoDTO
+ */
 export function buildBlingPayload(
   client: ClientData | null,
   order: OrderData,
   sharedFields: SharedFields
 ): { payload: Record<string, unknown>; fieldsSent: string[] } {
   const fieldsSent: string[] = [];
+
+  // Detecta o tipo de pessoa: J (Jurídica) ou F (Física)
+  const docDigits = client?.document ? String(client.document).replace(/\D/g, "") : "";
+  const isJuridica =
+    client?.person_type === "JURIDICA" || docDigits.length >= 14;
+  const tipo = isJuridica ? "J" : "F";
+
+  const nome = isJuridica
+    ? (client?.company ?? client?.name ?? "Cliente")
+    : (client?.name ?? client?.company ?? "Cliente");
+
   const payload: Record<string, unknown> = {
-    tipo: "F",
+    nome: String(nome).trim() || "Cliente",
+    situacao: "A",
+    tipo,
   };
-
-  if (!client && !order) {
-    return { payload, fieldsSent };
-  }
-
-  if (sharedFields.client_name && client?.name) {
-    payload.nome = client.name;
+  if (sharedFields.client_name && (client?.name || client?.company)) {
     fieldsSent.push("client_name");
   }
 
-  if (sharedFields.client_document && client?.document) {
-    payload.cpfCnpj = client.document;
+  if (sharedFields.client_document && docDigits) {
+    payload.numeroDocumento = docDigits;
     fieldsSent.push("client_document");
   }
 
@@ -118,80 +161,54 @@ export function buildBlingPayload(
     sharedFields.client_state ||
     sharedFields.client_zip_code;
 
-  if (hasAddressFields) {
-    payload.endereco = payload.endereco ?? {};
-    const endereco = payload.endereco as Record<string, string>;
-
-    if (sharedFields.client_street && client?.street) {
-      endereco.logradouro = client.street;
+  if (hasAddressFields && client) {
+    const geral: Record<string, string> = {};
+    if (sharedFields.client_street && client.street) {
+      geral.endereco = client.street;
       fieldsSent.push("client_street");
     }
-    if (sharedFields.client_number && client?.number) {
-      endereco.numero = client.number;
+    if (sharedFields.client_number && client.number) {
+      geral.numero = client.number;
       fieldsSent.push("client_number");
     }
-    if (sharedFields.client_complement && client?.complement) {
-      endereco.complemento = client.complement;
+    if (sharedFields.client_complement && client.complement) {
+      geral.complemento = client.complement;
       fieldsSent.push("client_complement");
     }
-    if (sharedFields.client_neighborhood && client?.neighborhood) {
-      endereco.bairro = client.neighborhood;
+    if (sharedFields.client_neighborhood && client.neighborhood) {
+      geral.bairro = client.neighborhood;
       fieldsSent.push("client_neighborhood");
     }
-    if (sharedFields.client_city && client?.city) {
-      endereco.municipio = client.city;
+    if (sharedFields.client_city && client.city) {
+      geral.municipio = client.city;
       fieldsSent.push("client_city");
     }
-    if (sharedFields.client_state && client?.state) {
-      endereco.uf = client.state;
+    if (sharedFields.client_state && client.state) {
+      geral.uf = client.state;
       fieldsSent.push("client_state");
     }
-    if (sharedFields.client_zip_code && client?.zip_code) {
-      endereco.cep = client.zip_code;
+    if (sharedFields.client_zip_code && client.zip_code) {
+      geral.cep = String(client.zip_code).replace(/\D/g, "");
       fieldsSent.push("client_zip_code");
     }
-  }
-
-  if (
-    sharedFields.order_products ||
-    sharedFields.order_quantities ||
-    sharedFields.order_personalization
-  ) {
-    const items = order.items ?? [];
-    if (items.length > 0) {
-      const produtos: string[] = [];
-      const quantidades: number[] = [];
-      const personalizacoes: unknown[] = [];
-
-      items.forEach((item) => {
-        if (sharedFields.order_products && item.product_name) {
-          produtos.push(item.product_name);
-        }
-        if (sharedFields.order_quantities && item.quantity != null) {
-          quantidades.push(item.quantity);
-        }
-        if (sharedFields.order_personalization && item.personalization) {
-          personalizacoes.push(item.personalization);
-        }
-      });
-
-      if (produtos.length > 0) {
-        payload.produtos = produtos;
-        fieldsSent.push("order_products");
-      }
-      if (quantidades.length > 0) {
-        payload.quantidades = quantidades;
-        fieldsSent.push("order_quantities");
-      }
-      if (personalizacoes.length > 0) {
-        payload.personalizacao = personalizacoes;
-        fieldsSent.push("order_personalization");
-      }
+    if (Object.keys(geral).length > 0) {
+      payload.endereco = { geral };
     }
   }
 
+  // Dados do pedido ficam registrados no log (fieldsSent) mas não vão no payload do contato,
+  // pois a API de Contatos do Bling v3 não aceita campos de pedido.
+  if (sharedFields.order_products || sharedFields.order_quantities || sharedFields.order_personalization) {
+    const items = order.items ?? [];
+    if (items.length > 0) {
+      items.forEach((item) => {
+        if (sharedFields.order_products && item.product_name) fieldsSent.push("order_products");
+        if (sharedFields.order_quantities && item.quantity != null) fieldsSent.push("order_quantities");
+        if (sharedFields.order_personalization && item.personalization) fieldsSent.push("order_personalization");
+      });
+    }
+  }
   if (sharedFields.order_due_date && order.due_date) {
-    payload.prazo_entrega = order.due_date;
     fieldsSent.push("order_due_date");
   }
 

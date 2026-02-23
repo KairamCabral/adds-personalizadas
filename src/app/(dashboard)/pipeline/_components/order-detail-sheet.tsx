@@ -440,12 +440,12 @@ export function OrderDetailSheet() {
                                 orderId: order.id,
                               }),
                             });
-                            const json = await res.json();
-                            if (json.success) {
+                            const json = await res.json().catch(() => ({}));
+                            if (res.ok && json.success) {
                               toast.success(`Dados enviados ao fornecedor ${supplier.name}`);
                               queryClient.invalidateQueries({ queryKey: ["orders"] });
                             } else {
-                              toast.error(json.error ?? "Erro ao enviar");
+                              toast.error(json.error ?? `Erro ao enviar (${res.status})`);
                             }
                           } catch {
                             toast.error("Erro ao enviar dados.");
