@@ -48,7 +48,9 @@ export function ProductFormDialog({
   const [newColorLabel, setNewColorLabel] = useState("");
   const [newColorHex, setNewColorHex] = useState("#000000");
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingPrintArea, setUploadingPrintArea] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const printAreaInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -56,6 +58,7 @@ export function ProductFormDialog({
       name: "",
       description: "",
       image_url: null,
+      print_area_image_url: null,
       available_colors: [],
       is_active: true,
     },
@@ -63,6 +66,7 @@ export function ProductFormDialog({
 
   const colors = form.watch("available_colors") ?? [];
   const imageUrl = form.watch("image_url");
+  const printAreaImageUrl = form.watch("print_area_image_url");
   const isActive = form.watch("is_active") ?? true;
 
   useEffect(() => {
@@ -81,6 +85,7 @@ export function ProductFormDialog({
         name: initialData.name,
         description: initialData.description ?? "",
         image_url: initialData.image_url ?? null,
+        print_area_image_url: (initialData as any).print_area_image_url ?? null,
         available_colors: parsed,
         is_active: initialData.is_active ?? true,
       });
@@ -89,6 +94,7 @@ export function ProductFormDialog({
         name: "",
         description: "",
         image_url: null,
+        print_area_image_url: null,
         available_colors: [...DEFAULT_COLORS],
         is_active: true,
       });
@@ -149,6 +155,49 @@ export function ProductFormDialog({
 
   const removeImage = () => {
     form.setValue("image_url", null);
+  };
+
+  const uploadPrintAreaImage = useCallback(async (file: File) => {
+    const ext = "." + (file.name.split(".").pop()?.toLowerCase() || "");
+    const allowedExt = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+    if (!ACCEPTED_TYPES.includes(file.type) && !allowedExt.includes(ext)) {
+      toast.error("Formato não suportado. Use JPG, PNG, GIF ou WebP.");
+      return;
+    }
+    if (file.size > MAX_SIZE) {
+      toast.error("Arquivo muito grande. Máximo 5MB.");
+      return;
+    }
+    setUploadingPrintArea(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (initialData?.id) {
+        formData.append("product_id", initialData.id);
+      }
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch("/api/products/upload-image", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Erro ao fazer upload");
+      }
+      const { url } = await res.json();
+      form.setValue("print_area_image_url", url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao fazer upload");
+    } finally {
+      setUploadingPrintArea(false);
+    }
+  }, [initialData?.id, form]);
+
+  const removePrintAreaImage = () => {
+    form.setValue("print_area_image_url", null);
   };
 
   const addColor = () => {
@@ -307,6 +356,64 @@ export function ProductFormDialog({
                   onChange={handleFileChange}
                   className="hidden"
                   disabled={uploadingImage}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Imagem da área de personalização */}
+          <div className="space-y-2">
+            <Label>Imagem da área de personalização</Label>
+            <p className="text-xs text-muted-foreground">
+              Foto do local onde a personalização será impressa. Usada como fundo no editor &quot;Faça você mesmo&quot;.
+            </p>
+            {printAreaImageUrl ? (
+              <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+                <img
+                  src={printAreaImageUrl}
+                  alt="Área de personalização"
+                  className="h-16 w-16 rounded-lg object-cover"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">Imagem carregada</p>
+                  <p className="text-xs text-muted-foreground">
+                    Clique em remover para trocar
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={removePrintAreaImage}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <X className="mr-1 h-4 w-4" />
+                  Remover
+                </Button>
+              </div>
+            ) : (
+              <div
+                onClick={() => !uploadingPrintArea && printAreaInputRef.current?.click()}
+                className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 py-8 transition-colors hover:border-primary/30 hover:bg-muted/50"
+              >
+                <Upload className="mb-2 h-10 w-10 text-muted-foreground" />
+                <p className="text-sm font-medium text-foreground">
+                  {uploadingPrintArea ? "Enviando..." : "Arraste a imagem ou clique para selecionar"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  JPG, PNG, GIF ou WebP · Máximo 5MB
+                </p>
+                <input
+                  ref={printAreaInputRef}
+                  type="file"
+                  accept={ACCEPTED_TYPES.join(",")}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadPrintAreaImage(file);
+                    e.target.value = "";
+                  }}
+                  className="hidden"
+                  disabled={uploadingPrintArea}
                 />
               </div>
             )}

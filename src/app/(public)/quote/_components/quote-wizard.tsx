@@ -68,6 +68,7 @@ const INITIAL_PERSONALIZATION: WizardPersonalization = {
   custom_color: "",
   notes: "",
   logo_file: null,
+  diy_customizations: [],
 };
 
 export function QuoteWizard() {
@@ -159,7 +160,15 @@ export function QuoteWizard() {
     setIsSubmitting(true);
     try {
       let logoUrl: string | undefined;
-      if (personalization.logo_file) {
+
+      if (personalization.artwork_mode === "do_it_yourself") {
+        const firstWithLogo = personalization.diy_customizations.find(
+          (c) => c.logo_file,
+        );
+        if (firstWithLogo?.logo_file) {
+          logoUrl = await uploadQuoteLogo(firstWithLogo.logo_file);
+        }
+      } else if (personalization.logo_file) {
         logoUrl = await uploadQuoteLogo(personalization.logo_file);
       }
 
@@ -179,8 +188,19 @@ export function QuoteWizard() {
         };
       });
 
-      const catalog = productCatalog as { id: string; name: string; price: number | null; category?: string | null }[];
+      const catalog = (productCatalog as unknown) as { id: string; name: string; price: number | null; category?: string | null }[];
       const quoteCalc = recalculateQuote(itemsForSubmit, catalog);
+
+      const diyCustomizations =
+        personalization.artwork_mode === "do_it_yourself"
+          ? personalization.diy_customizations.map((c) => ({
+              product_id: c.product_id,
+              line1: c.line1,
+              line2: c.line2,
+              print_color: c.print_color,
+              has_logo: !!c.logo_file,
+            }))
+          : undefined;
 
       const quoteData: CreatePublicQuoteData = {
         client_name: clientData.client_name,
@@ -206,6 +226,7 @@ export function QuoteWizard() {
           print_color: personalization.print_color || undefined,
           custom_color: personalization.custom_color || undefined,
           notes: personalization.notes || undefined,
+          customizations: diyCustomizations,
         },
       };
 
@@ -280,6 +301,8 @@ export function QuoteWizard() {
         <StepPersonalization
           data={personalization}
           onChange={setPersonalization}
+          products={products}
+          clientData={clientData}
           onNext={() => goTo("review")}
           onBack={() => goTo("products")}
           isExistingClient={clientData.is_existing_client}
@@ -290,7 +313,7 @@ export function QuoteWizard() {
         <StepReview
           clientData={clientData}
           products={products}
-          productCatalog={productCatalog as { id: string; name: string; price: number | null; category?: string | null }[]}
+          productCatalog={(productCatalog as unknown) as { id: string; name: string; price: number | null; category?: string | null }[]}
           personalization={personalization}
           onSubmit={handleSubmit}
           isSubmitting={isSubmitting}

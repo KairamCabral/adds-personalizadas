@@ -15,7 +15,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { ArtworkMode, WizardPersonalization } from "./quote-wizard-types";
+import type {
+  ArtworkMode,
+  WizardPersonalization,
+  WizardProductItem,
+  WizardClientData,
+} from "./quote-wizard-types";
+import { DiyEditor } from "./personalization-diy/diy-editor";
 
 const ACCEPTED_TYPES = ".jpg,.jpeg,.png,.pdf,.cdr";
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
@@ -44,16 +50,17 @@ const ARTWORK_OPTIONS: {
   {
     value: "do_it_yourself",
     label: "Faça você mesmo",
-    description: "Sistema de personalização online",
+    description: "Personalize agora e veja o resultado",
     icon: Sparkles,
-    badge: "Em breve",
-    disabled: true,
+    badge: "Novo",
   },
 ];
 
 interface StepPersonalizationProps {
   data: WizardPersonalization;
   onChange: (data: WizardPersonalization) => void;
+  products: WizardProductItem[];
+  clientData: WizardClientData;
   onNext: () => void;
   onBack: () => void;
   /** Cliente encontrado no Tiny (tem pedidos anteriores). Se false, oculta "Usar última arte". */
@@ -63,6 +70,8 @@ interface StepPersonalizationProps {
 export function StepPersonalization({
   data,
   onChange,
+  products,
+  clientData,
   onNext,
   onBack,
   isExistingClient = false,
@@ -75,7 +84,10 @@ export function StepPersonalization({
   };
 
   const handleSelectMode = (mode: ArtworkMode) => {
-    if (mode === "do_it_yourself") return;
+    if (mode === "do_it_yourself") {
+      onChange({ ...data, artwork_mode: mode });
+      return;
+    }
     if (mode === "use_last") {
       onChange({ ...data, artwork_mode: mode, notes: "Será a mesma arte" });
       onNext();
@@ -123,6 +135,19 @@ export function StepPersonalization({
   const handleNext = () => {
     onNext();
   };
+
+  if (data.artwork_mode === "do_it_yourself") {
+    return (
+      <DiyEditor
+        products={products}
+        clientData={clientData}
+        data={data}
+        onChange={onChange}
+        onNext={onNext}
+        onBack={() => onChange({ ...data, artwork_mode: null })}
+      />
+    );
+  }
 
   if (!data.artwork_mode) {
     return (

@@ -14,7 +14,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  ExternalLink,
+  Link2,
+  AlertCircle,
+} from "lucide-react";
 import type { Supplier } from "@/types/database.types";
 
 const supplierSchema = z.object({
@@ -22,7 +30,8 @@ const supplierSchema = z.object({
   contact_name: z.string().optional(),
   contact_email: z.string().email("E-mail inválido").optional().or(z.literal("")),
   contact_phone: z.string().optional(),
-  bling_api_token: z.string().optional(),
+  bling_client_id: z.string().optional(),
+  bling_client_secret: z.string().optional(),
 });
 
 type SupplierFormData = z.infer<typeof supplierSchema>;
@@ -40,11 +49,15 @@ export function SupplierForm({
   supplier,
   onSubmit,
 }: SupplierFormProps) {
-  const [testResult, setTestResult] = useState<{
-    success: boolean;
-    message?: string;
-  } | null>(null);
-  const [isTesting, setIsTesting] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const isConnected = !!(
+    supplier?.bling_access_token && supplier?.bling_token_expires_at
+  );
+  const tokenExpiry = supplier?.bling_token_expires_at
+    ? new Date(supplier.bling_token_expires_at)
+    : null;
+  const isTokenExpired = tokenExpiry ? tokenExpiry.getTime() < Date.now() : false;
 
   const form = useForm<SupplierFormData>({
     resolver: zodResolver(supplierSchema),
@@ -53,7 +66,8 @@ export function SupplierForm({
       contact_name: "",
       contact_email: "",
       contact_phone: "",
-      bling_api_token: "",
+      bling_client_id: "",
+      bling_client_secret: "",
     },
   });
 
@@ -64,40 +78,22 @@ export function SupplierForm({
         contact_name: supplier?.contact_name ?? "",
         contact_email: supplier?.contact_email ?? "",
         contact_phone: supplier?.contact_phone ?? "",
-        bling_api_token: supplier?.bling_api_token ?? "",
+        bling_client_id: supplier?.bling_client_id ?? "",
+        bling_client_secret: supplier?.bling_client_secret ?? "",
       });
     }
   }, [open, supplier, form]);
-
-  const token = form.watch("bling_api_token");
-
-  async function handleTestConnection() {
-    if (!token?.trim()) {
-      setTestResult({ success: false, message: "Informe o token para testar." });
-      return;
-    }
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/bling/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiToken: token.trim() }),
-      });
-      const data = await res.json();
-      setTestResult({ success: data.success, message: data.message });
-    } catch {
-      setTestResult({ success: false, message: "Erro de conexão" });
-    } finally {
-      setIsTesting(false);
-    }
-  }
 
   async function handleSubmit(data: SupplierFormData) {
     await onSubmit(data);
     onOpenChange(false);
     form.reset();
-    setTestResult(null);
+  }
+
+  function handleConnectBling() {
+    if (!supplier?.id) return;
+    setIsConnecting(true);
+    window.location.href = `/api/bling/oauth/start?supplier_id=${supplier.id}`;
   }
 
   return (
@@ -160,59 +156,84 @@ export function SupplierForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="bling_api_token">Token API do Bling</Label>
+          {/* Integração Bling OAuth 2.0 */}
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Integração Bling</Label>
+              {supplier?.id && (
+                <ConnectionBadge
+                  isConnected={isConnected}
+                  isExpired={isTokenExpired}
+                />
+              )}
+            </div>
+
             <p className="text-xs text-muted-foreground">
-              Token OAuth 2.0 (Bearer). Pode expirar; se der 401, gere um novo em{" "}
+              Insira as credenciais do seu app Bling.{" "}
               <a
                 href="https://developer.bling.com.br/aplicativos"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline text-primary hover:no-underline"
+                className="inline-flex items-center gap-0.5 underline text-primary hover:no-underline"
               >
-                Bling → Minhas Instalações
+                Criar app no Bling
+                <ExternalLink className="h-3 w-3" />
               </a>
-              .
             </p>
-            <div className="flex gap-2">
+
+            <div className="space-y-2">
+              <Label htmlFor="bling_client_id" className="text-xs">
+                Client ID
+              </Label>
               <Input
-                id="bling_api_token"
-                type="password"
-                placeholder="Token da API Bling"
-                {...form.register("bling_api_token")}
+                id="bling_client_id"
+                placeholder="Client ID do aplicativo Bling"
+                {...form.register("bling_client_id")}
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleTestConnection}
-                disabled={isTesting}
-              >
-                {isTesting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Testar"
-                )}
-              </Button>
             </div>
-            {testResult && (
-              <div
-                className={`flex items-center gap-2 text-xs ${
-                  testResult.success ? "text-emerald-600" : "text-destructive"
-                }`}
-              >
-                {testResult.success ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" />
-                    Conexão OK
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-4 w-4" />
-                    {testResult.message}
-                  </>
-                )}
+
+            <div className="space-y-2">
+              <Label htmlFor="bling_client_secret" className="text-xs">
+                Client Secret
+              </Label>
+              <Input
+                id="bling_client_secret"
+                type="password"
+                placeholder="Client Secret do aplicativo Bling"
+                {...form.register("bling_client_secret")}
+              />
+            </div>
+
+            {supplier?.id ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
+                  Salve as credenciais e clique em "Conectar com Bling" para autorizar o acesso.
+                  O Bling redirecionará de volta automaticamente.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2"
+                  onClick={handleConnectBling}
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Link2 className="h-4 w-4" />
+                  )}
+                  {isConnected && !isTokenExpired
+                    ? "Reconectar com Bling"
+                    : "Conectar com Bling"}
+                </Button>
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
+                Salve o fornecedor primeiro para poder conectar ao Bling.
+              </p>
             )}
           </div>
 
@@ -234,5 +255,36 @@ export function SupplierForm({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ConnectionBadge({
+  isConnected,
+  isExpired,
+}: {
+  isConnected: boolean;
+  isExpired: boolean;
+}) {
+  if (isConnected && !isExpired) {
+    return (
+      <Badge variant="secondary" className="gap-1 text-emerald-700 bg-emerald-50 border-emerald-200">
+        <CheckCircle2 className="h-3 w-3" />
+        Conectado
+      </Badge>
+    );
+  }
+  if (isConnected && isExpired) {
+    return (
+      <Badge variant="secondary" className="gap-1 text-amber-700 bg-amber-50 border-amber-200">
+        <AlertCircle className="h-3 w-3" />
+        Token expirado
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary" className="gap-1 text-muted-foreground">
+      <XCircle className="h-3 w-3" />
+      Não conectado
+    </Badge>
   );
 }

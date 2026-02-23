@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, MoreHorizontal, Pencil, Eye, Truck } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -30,6 +31,8 @@ import type { Supplier } from "@/types/database.types";
 
 export default function SettingsSuppliersPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [detailSupplierId, setDetailSupplierId] = useState<string | null>(null);
@@ -38,6 +41,31 @@ export default function SettingsSuppliersPage() {
     typeof window !== "undefined"
       ? window.location.origin
       : process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  // Captura resultado do fluxo OAuth e exibe feedback
+  useEffect(() => {
+    const blingConnected = searchParams.get("bling_connected");
+    const blingError = searchParams.get("bling_error");
+    const supplierId = searchParams.get("supplier_id");
+
+    if (blingConnected === "1") {
+      toast.success("Bling conectado com sucesso! O token foi salvo automaticamente.");
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+      if (supplierId) setDetailSupplierId(supplierId);
+      router.replace("/settings/suppliers");
+    } else if (blingError) {
+      const messages: Record<string, string> = {
+        fornecedor_nao_encontrado: "Fornecedor não encontrado.",
+        credenciais_ausentes: "Client ID ou Client Secret não configurados.",
+        falha_troca_token: "Falha ao trocar o código pelo token. Verifique as credenciais.",
+        erro_interno: "Erro interno no servidor.",
+        access_denied: "Autorização negada pelo usuário.",
+      };
+      toast.error(messages[blingError] ?? `Erro ao conectar com Bling: ${blingError}`);
+      router.replace("/settings/suppliers");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: suppliers = [], isLoading } = useQuery({
     queryKey: ["suppliers"],
@@ -50,7 +78,8 @@ export default function SettingsSuppliersPage() {
       contact_name?: string;
       contact_email?: string;
       contact_phone?: string;
-      bling_api_token?: string;
+      bling_client_id?: string;
+      bling_client_secret?: string;
     }) => {
       const { createSupplier } = await import("@/services/suppliers.service");
       return createSupplier(data);
@@ -250,14 +279,7 @@ export default function SettingsSuppliersPage() {
             const { updateSupplier } = await import(
               "@/services/suppliers.service"
             );
-            const payload = { ...data };
-            if (payload.bling_api_token) {
-              payload.bling_api_token = payload.bling_api_token.trim();
-              if (!payload.bling_api_token) delete payload.bling_api_token;
-            } else {
-              delete payload.bling_api_token;
-            }
-            await updateSupplier(editingSupplier.id, payload);
+            await updateSupplier(editingSupplier.id, data);
             toast.success("Fornecedor atualizado.");
           } else {
             await createMutation.mutateAsync(data);

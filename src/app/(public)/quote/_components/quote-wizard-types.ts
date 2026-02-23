@@ -31,9 +31,23 @@ export interface WizardProductItem {
    * Permite mesma quantidade para todas (ex.: 100 cada) ou quantidades diferentes por cor.
    */
   quantity_per_color?: Record<string, number>;
+  /** URL da imagem da área de personalização — usada como fundo no editor DIY */
+  print_area_image_url?: string | null;
 }
 
 export type ArtworkMode = "use_last" | "request_creation" | "do_it_yourself";
+
+export type DiyPrintColor = "colorida" | "branca" | "preta";
+
+export interface DiyCustomization {
+  product_id: string;
+  product_name: string;
+  line1: string;
+  line2: string;
+  logo_file: File | null;
+  logo_preview_url: string | null;
+  print_color: DiyPrintColor;
+}
 
 export interface WizardPersonalization {
   artwork_mode: ArtworkMode | null;
@@ -41,6 +55,7 @@ export interface WizardPersonalization {
   custom_color: string;
   notes: string;
   logo_file: File | null;
+  diy_customizations: DiyCustomization[];
 }
 
 export type WizardStep =

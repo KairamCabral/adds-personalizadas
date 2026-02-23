@@ -1201,6 +1201,11 @@ export type Database = {
           activated_at: string | null
           bling_api_token: string | null
           bling_base_url: string | null
+          bling_client_id: string | null
+          bling_client_secret: string | null
+          bling_access_token: string | null
+          bling_refresh_token: string | null
+          bling_token_expires_at: string | null
           contact_email: string | null
           contact_name: string | null
           contact_phone: string | null
@@ -1218,6 +1223,11 @@ export type Database = {
           activated_at?: string | null
           bling_api_token?: string | null
           bling_base_url?: string | null
+          bling_client_id?: string | null
+          bling_client_secret?: string | null
+          bling_access_token?: string | null
+          bling_refresh_token?: string | null
+          bling_token_expires_at?: string | null
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null
@@ -1235,6 +1245,11 @@ export type Database = {
           activated_at?: string | null
           bling_api_token?: string | null
           bling_base_url?: string | null
+          bling_client_id?: string | null
+          bling_client_secret?: string | null
+          bling_access_token?: string | null
+          bling_refresh_token?: string | null
+          bling_token_expires_at?: string | null
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null

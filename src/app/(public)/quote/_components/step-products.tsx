@@ -64,6 +64,7 @@ interface ProductRecord {
   id: string;
   name: string;
   image_url: string | null;
+  print_area_image_url?: string | null;
   available_colors?: ColorOption[];
   allows_custom_color?: boolean | null;
 }
@@ -148,6 +149,7 @@ export function StepProducts({
         colors: [],
         custom_color: null,
         quantity_per_color: undefined,
+        print_area_image_url: product.print_area_image_url ?? null,
       },
     ]);
   };

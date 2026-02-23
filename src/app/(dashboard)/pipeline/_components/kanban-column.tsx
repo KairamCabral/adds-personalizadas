@@ -48,8 +48,9 @@ export function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
+      data-kanban-column
       className={cn(
-        "flex h-full w-[280px] min-w-[280px] flex-col rounded-xl transition-colors duration-200",
+        "flex h-full w-[280px] min-w-[280px] flex-col rounded-xl transition-colors duration-200 cursor-default",
         isOver && "bg-primary/5 ring-2 ring-primary/20 ring-inset"
       )}
       style={{ animationDelay: `${index * 40}ms` }}

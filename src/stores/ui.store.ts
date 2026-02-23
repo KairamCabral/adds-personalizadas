@@ -4,8 +4,10 @@ import { persist } from "zustand/middleware";
 interface UIStore {
   // Sidebar (desktop collapsed state)
   sidebarCollapsed: boolean;
+  sidebarPinned: boolean;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  setSidebarPinned: (pinned: boolean) => void;
 
   // Sidebar mobile overlay
   mobileSidebarOpen: boolean;
@@ -30,12 +32,18 @@ interface UIStore {
 export const useUIStore = create<UIStore>()(
   persist(
     (set) => ({
-      // Sidebar
-      sidebarCollapsed: false,
+      // Sidebar (encolhida por padrão, expande no hover, pode fixar)
+      sidebarCollapsed: true,
+      sidebarPinned: false,
       toggleSidebar: () =>
-        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+        set((state) => ({
+          sidebarCollapsed: !state.sidebarCollapsed,
+          sidebarPinned: state.sidebarCollapsed ? state.sidebarPinned : false,
+        })),
       setSidebarCollapsed: (collapsed) =>
         set({ sidebarCollapsed: collapsed }),
+      setSidebarPinned: (pinned) =>
+        set({ sidebarPinned: pinned, sidebarCollapsed: pinned ? false : true }),
 
       // Mobile sidebar
       mobileSidebarOpen: false,
@@ -61,6 +69,7 @@ export const useUIStore = create<UIStore>()(
       name: "adds-crm-ui",
       partialize: (state) => ({
         sidebarCollapsed: state.sidebarCollapsed,
+        sidebarPinned: state.sidebarPinned,
       }),
     }
   )

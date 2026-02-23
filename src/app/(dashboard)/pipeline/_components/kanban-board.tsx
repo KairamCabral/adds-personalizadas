@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQueryState, parseAsString } from "nuqs";
 import {
   DndContext,
@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ORDER_STATUSES, type OrderStatus } from "@/lib/constants";
+import { KANBAN_COLUMN_STATUSES, type OrderStatus } from "@/lib/constants";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { getOrders, getArchivedOrders, moveOrder, reorderColumn, archiveOrder, unarchiveOrder } from "@/services/orders.service";
@@ -44,6 +44,9 @@ export function KanbanBoard() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef<{ lastX: number } | null>(null);
 
   const [busca, setBusca] = useQueryState("busca", parseAsString);
   const [responsavel] = useQueryState("responsavel", parseAsString);
@@ -104,12 +107,64 @@ export function KanbanBoard() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
+      activationConstraint: { distance: 10 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const visibleColumns = KANBAN_COLUMN_STATUSES.filter(
+    (s) => s.key !== "ARQUIVADO" || can("orders.archive")
+  );
+
+  const handlePanStart = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest("[data-kanban-card]")) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      panRef.current = { lastX: e.clientX };
+      setIsPanning(true);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isPanning) return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const handleMove = (e: MouseEvent) => {
+      const pan = panRef.current;
+      if (!pan) return;
+      const dx = pan.lastX - e.clientX;
+      el.scrollLeft += dx;
+      pan.lastX = e.clientX;
+    };
+
+    const handleEnd = () => {
+      panRef.current = null;
+      setIsPanning(false);
+    };
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleEnd);
+    document.addEventListener("mouseleave", handleEnd);
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleEnd);
+      document.removeEventListener("mouseleave", handleEnd);
+    };
+  }, [isPanning]);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (!e.shiftKey) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  }, []);
 
   const getOrdersByStatus = useCallback(
     (status: OrderStatus) => {
@@ -157,11 +212,18 @@ export function KanbanBoard() {
     const activeOrder = (orders as any[]).find((o: any) => o.id === active.id);
     if (!activeOrder) return;
 
-    const overStatus = ORDER_STATUSES.find((s) => s.key === over.id);
+    const overStatus = visibleColumns.find((s) => s.key === over.id);
     const overOrder = (orders as any[]).find((o: any) => o.id === over.id);
 
     const targetStatus = overStatus?.key ?? overOrder?.status;
     if (!targetStatus) return;
+
+    if (targetStatus === "ARQUIVADO") {
+      if (can("orders.archive")) {
+        archiveMutation.mutate(active.id as string);
+      }
+      return;
+    }
 
     const targetOrders = (orders as any[])
       .filter((o: any) => o.status === targetStatus && o.id !== active.id)
@@ -190,7 +252,7 @@ export function KanbanBoard() {
     ? (orders as any[]).find((o: any) => o.id === activeId)
     : null;
 
-  const filteredCount = ORDER_STATUSES.reduce(
+  const filteredCount = visibleColumns.reduce(
     (acc, s) => acc + getOrdersByStatus(s.key).length,
     0
   );
@@ -270,10 +332,20 @@ export function KanbanBoard() {
       </div>
 
       {/* Kanban board */}
-      <div className="kanban-scroll flex-1 overflow-x-auto overflow-y-hidden">
+      <div
+        ref={scrollRef}
+        role="region"
+        aria-label="Área do kanban"
+        onMouseDown={handlePanStart}
+        onWheel={handleWheel}
+        className={cn(
+          "kanban-scroll flex-1 overflow-x-auto overflow-y-hidden select-none touch-pan-x",
+          isPanning ? "cursor-grabbing" : "cursor-grab"
+        )}
+      >
         {isLoading ? (
           <div className="flex h-full gap-3 p-4">
-            {ORDER_STATUSES.map((status) => (
+            {visibleColumns.map((status) => (
               <div
                 key={status.key}
                 className="flex w-[280px] min-w-[280px] flex-col gap-2"
@@ -298,13 +370,13 @@ export function KanbanBoard() {
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex h-full gap-3 p-4">
-              {ORDER_STATUSES.map((status, index) => (
+            <div className="flex h-full min-w-0 gap-3 p-4">
+              {visibleColumns.map((status, index) => (
                 <KanbanColumn
                   key={status.key}
                   status={status}
                   orders={getOrdersByStatus(status.key)}
-                  canAddOrder={can("orders.create") && !showArchived}
+                  canAddOrder={can("orders.create") && !showArchived && status.key !== "ARQUIVADO"}
                   onAddOrder={() => handleAddOrder(status.key)}
                   onOrderClick={(id) => setSelectedOrderId(id)}
                   index={index}

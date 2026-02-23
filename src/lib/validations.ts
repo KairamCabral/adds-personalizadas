@@ -91,6 +91,7 @@ export const productSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   description: z.string().nullable().optional(),
   image_url: z.string().nullable().optional(),
+  print_area_image_url: z.string().nullable().optional(),
   canvas_width: z.coerce.number().int().nullable().optional(),
   canvas_height: z.coerce.number().int().nullable().optional(),
   available_colors: z.array(colorItemSchema).default([]),

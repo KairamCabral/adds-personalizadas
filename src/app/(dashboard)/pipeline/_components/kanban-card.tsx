@@ -79,6 +79,7 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
   return (
     <div
       ref={setNodeRef}
+      data-kanban-card
       style={style}
       {...(disabled ? {} : { ...attributes, ...listeners })}
       onClick={handleCardClick}

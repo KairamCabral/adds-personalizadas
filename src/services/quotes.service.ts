@@ -28,6 +28,14 @@ export interface QuotePersonalization {
   /** Campos enviados pelo formulário público */
   cor_impressao?: string;
   notas_especiais?: string;
+  /** Customizações DIY por produto */
+  customizations?: {
+    product_id: string;
+    line1: string;
+    line2: string;
+    print_color: string;
+    has_logo: boolean;
+  }[];
 }
 
 type PublicQuoteRow = Database["public"]["Tables"]["public_quotes"]["Row"];
@@ -498,7 +506,7 @@ export async function getActiveProducts() {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, description, price, image_url, category, available_colors, allows_custom_color"
+      "id, name, description, price, image_url, print_area_image_url, category, available_colors, allows_custom_color"
     )
     .eq("is_active", true)
     .order("name");

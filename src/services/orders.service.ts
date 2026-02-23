@@ -165,6 +165,7 @@ export async function createOrderWithItems(
     priority: params.priority,
     start_date: today,
     due_date: null,
+    order_date: today,
     assigned_to: null,
     created_by: createdBy,
     tiny_order_id: null,

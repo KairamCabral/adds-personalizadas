@@ -198,6 +198,86 @@ export function buildBlingPayload(
   return { payload, fieldsSent };
 }
 
+type SupplierTokenFields = {
+  bling_api_token?: string | null;
+  bling_client_id?: string | null;
+  bling_client_secret?: string | null;
+  bling_access_token?: string | null;
+  bling_refresh_token?: string | null;
+  bling_token_expires_at?: string | null;
+};
+
+/**
+ * Retorna um access token válido para o fornecedor.
+ * Prioriza o token OAuth (access_token) com auto-refresh.
+ * Faz fallback para o token manual legado (bling_api_token).
+ */
+async function getValidBlingToken(
+  supplierId: string,
+  supplier: SupplierTokenFields,
+  db: SupabaseClient<Database>
+): Promise<string | null> {
+  const expiresAt = supplier.bling_token_expires_at
+    ? new Date(supplier.bling_token_expires_at).getTime()
+    : 0;
+  const now = Date.now();
+  const bufferMs = 60_000; // 1 minuto de margem
+
+  // Token OAuth ainda válido
+  if (supplier.bling_access_token && expiresAt > now + bufferMs) {
+    return supplier.bling_access_token;
+  }
+
+  // Token expirado — tenta refresh
+  if (
+    supplier.bling_refresh_token &&
+    supplier.bling_client_id &&
+    supplier.bling_client_secret
+  ) {
+    const basicAuth = Buffer.from(
+      `${supplier.bling_client_id}:${supplier.bling_client_secret}`
+    ).toString("base64");
+
+    try {
+      const res = await fetch("https://www.bling.com.br/Api/v3/oauth/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${basicAuth}`,
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: supplier.bling_refresh_token,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const newExpiresAt = new Date(
+          Date.now() + (data.expires_in ?? 21600) * 1000
+        ).toISOString();
+
+        await db
+          .from("suppliers")
+          .update({
+            bling_access_token: data.access_token,
+            bling_refresh_token: data.refresh_token ?? supplier.bling_refresh_token,
+            bling_token_expires_at: newExpiresAt,
+          })
+          .eq("id", supplierId);
+
+        return data.access_token;
+      }
+    } catch {
+      // continua para fallback
+    }
+  }
+
+  // Fallback: token manual legado
+  const legacy = (supplier.bling_api_token ?? "").trim();
+  return legacy || null;
+}
+
 export async function testConnection(apiToken: string): Promise<{
   success: boolean;
   message?: string;
@@ -280,14 +360,17 @@ export async function sendClientToBling(
     sharedFields
   );
 
-  const apiToken = (supplier.bling_api_token ?? "").trim();
+  const apiToken = await getValidBlingToken(supplierId, supplier, db);
   const baseUrl =
     (supplier.bling_base_url as string) ??
     process.env.BLING_API_URL ??
     "https://api.bling.com.br/Api/v3";
 
   if (!apiToken) {
-    return { success: false, error: "Token Bling não configurado." };
+    return {
+      success: false,
+      error: "Token Bling não configurado. Conecte o Bling em Configurações → Fornecedores.",
+    };
   }
 
   try {
@@ -324,10 +407,15 @@ export async function sendClientToBling(
 
     if (!res.ok) {
       const baseMsg = errorMessage ? `Bling: ${errorMessage}` : "Erro ao enviar dados ao Bling.";
-      const hint =
-        blingResponse && typeof blingResponse === "object" && (blingResponse as Record<string, unknown>).error && typeof (blingResponse as Record<string, unknown>).error === "object" && ((blingResponse as Record<string, unknown>).error as Record<string, unknown>).type === "invalid_token"
-          ? " Atualize o token em Configurações → Fornecedores."
-          : "";
+      const isInvalidToken =
+        blingResponse &&
+        typeof blingResponse === "object" &&
+        (blingResponse as Record<string, unknown>).error &&
+        typeof (blingResponse as Record<string, unknown>).error === "object" &&
+        ((blingResponse as Record<string, unknown>).error as Record<string, unknown>).type === "invalid_token";
+      const hint = isInvalidToken
+        ? " Reconecte o Bling em Configurações → Fornecedores."
+        : "";
       return {
         success: false,
         error: baseMsg + hint,

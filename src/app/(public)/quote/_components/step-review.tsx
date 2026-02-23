@@ -252,6 +252,46 @@ export function StepReview({
                 )}
             </>
           )}
+          {personalization.artwork_mode === "do_it_yourself" &&
+            personalization.diy_customizations.length > 0 && (
+              <div className="space-y-2">
+                <p className="font-medium flex items-center gap-2">
+                  <Palette className="h-4 w-4 text-primary" />
+                  Faça Você Mesmo
+                </p>
+                {personalization.diy_customizations.map((c, i) => (
+                  <div
+                    key={i}
+                    className="p-3 rounded-lg bg-muted/30 space-y-1"
+                  >
+                    <p className="font-medium text-xs text-muted-foreground">
+                      {c.product_name}
+                    </p>
+                    {c.line1 && (
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">Linha 1:</span>{" "}
+                        {c.line1}
+                      </p>
+                    )}
+                    {c.line2 && (
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">Linha 2:</span>{" "}
+                        {c.line2}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground capitalize">
+                      Impressão: {c.print_color}
+                    </p>
+                    {c.logo_file && (
+                      <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                        <Check className="h-3 w-3" />
+                        Logo anexado
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           {!personalization.artwork_mode && (
             <p className="text-muted-foreground italic">Nenhuma personalização informada</p>
           )}

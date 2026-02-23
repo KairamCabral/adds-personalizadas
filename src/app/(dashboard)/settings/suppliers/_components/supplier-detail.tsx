@@ -20,6 +20,9 @@ import {
   Link2,
   Ban,
   Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getSupplierById, updateSupplier } from "@/services/suppliers.service";
@@ -166,10 +169,7 @@ export function SupplierDetail({
                       <span className="text-muted-foreground">Telefone:</span>{" "}
                       {supplier.contact_phone ?? "—"}
                     </p>
-                    <p>
-                      <span className="text-muted-foreground">Token Bling:</span>{" "}
-                      {supplier.bling_api_token ? "••••••••" : "Não configurado"}
-                    </p>
+                    <BlingConnectionStatus supplier={supplier} />
                   </div>
                   <div>
                     <Label className="mb-2 block">Campos compartilhados</Label>
@@ -271,14 +271,7 @@ export function SupplierDetail({
         onOpenChange={setFormOpen}
         supplier={supplier}
         onSubmit={async (data) => {
-          const payload = { ...data };
-          if (payload.bling_api_token) {
-            payload.bling_api_token = payload.bling_api_token.trim();
-            if (!payload.bling_api_token) delete payload.bling_api_token;
-          } else {
-            delete payload.bling_api_token;
-          }
-          await updateSupplier(supplierId, payload);
+          await updateSupplier(supplierId, data);
           toast.success("Fornecedor atualizado.");
           queryClient.invalidateQueries({ queryKey: ["supplier", supplierId] });
           queryClient.invalidateQueries({ queryKey: ["suppliers"] });
@@ -406,5 +399,55 @@ function LogsTab({ supplierId }: { supplierId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+function BlingConnectionStatus({ supplier }: { supplier: Supplier }) {
+  const isConnected = !!(supplier.bling_access_token && supplier.bling_token_expires_at);
+  const tokenExpiry = supplier.bling_token_expires_at
+    ? new Date(supplier.bling_token_expires_at)
+    : null;
+  const isExpired = tokenExpiry ? tokenExpiry.getTime() < Date.now() : false;
+
+  if (isConnected && !isExpired) {
+    return (
+      <p>
+        <span className="text-muted-foreground">Bling API:</span>{" "}
+        <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Conectado
+        </span>
+        {tokenExpiry && (
+          <span className="ml-2 text-xs text-muted-foreground">
+            (expira {tokenExpiry.toLocaleDateString("pt-BR")})
+          </span>
+        )}
+      </p>
+    );
+  }
+
+  if (isConnected && isExpired) {
+    return (
+      <p>
+        <span className="text-muted-foreground">Bling API:</span>{" "}
+        <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
+          <AlertCircle className="h-3.5 w-3.5" />
+          Token expirado
+        </span>
+        <span className="ml-2 text-xs text-muted-foreground">
+          — Clique em Editar para reconectar
+        </span>
+      </p>
+    );
+  }
+
+  return (
+    <p>
+      <span className="text-muted-foreground">Bling API:</span>{" "}
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <XCircle className="h-3.5 w-3.5" />
+        Não conectado
+      </span>
+    </p>
   );
 }

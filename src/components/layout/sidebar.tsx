@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -16,6 +17,8 @@ import {
   Settings,
   ChevronsLeft,
   ChevronsRight,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Logo } from "@/components/brand/logo";
@@ -70,10 +73,20 @@ const NAV_SECTIONS = [
   },
 ];
 
+const HOVER_COLLAPSE_DELAY_MS = 150;
+
 export function Sidebar() {
   const pathname = usePathname();
-  const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } =
-    useUIStore();
+  const {
+    sidebarCollapsed,
+    sidebarPinned,
+    toggleSidebar,
+    setSidebarCollapsed,
+    setSidebarPinned,
+    mobileSidebarOpen,
+    setMobileSidebarOpen,
+  } = useUIStore();
+  const leaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { can, isLoading } = usePermissions();
   const { data: quoteCounts } = useQuery({
     queryKey: ["quote-counts"],
@@ -83,8 +96,29 @@ export function Sidebar() {
 
   const closeMobile = () => setMobileSidebarOpen(false);
 
+  const handleMouseEnter = () => {
+    if (leaveTimeoutRef.current) {
+      clearTimeout(leaveTimeoutRef.current);
+      leaveTimeoutRef.current = null;
+    }
+    if (typeof window !== "undefined" && window.innerWidth >= 1024) {
+      setSidebarCollapsed(false);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) return;
+    if (sidebarPinned) return;
+    leaveTimeoutRef.current = setTimeout(() => {
+      setSidebarCollapsed(true);
+      leaveTimeoutRef.current = null;
+    }, HOVER_COLLAPSE_DELAY_MS);
+  };
+
   const sidebarContent = (
     <aside
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={cn(
         "flex h-screen flex-col border-r border-border bg-card transition-all duration-300 ease-in-out",
         // Desktop: fixed, collapsible
@@ -122,18 +156,39 @@ export function Sidebar() {
           </div>
         </Link>
 
-        {/* Desktop collapse toggle — hidden on mobile */}
-        <button
-          onClick={toggleSidebar}
-          aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-          className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-        >
-          {sidebarCollapsed ? (
-            <ChevronsRight className="h-4 w-4" />
-          ) : (
-            <ChevronsLeft className="h-4 w-4" />
+        {/* Desktop: pin e collapse — hidden on mobile */}
+        <div className="hidden lg:flex items-center gap-0.5">
+          {!sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarPinned(!sidebarPinned)}
+              aria-label={sidebarPinned ? "Desafixar menu" : "Fixar menu expandido"}
+              title={sidebarPinned ? "Desafixar" : "Manter expandido"}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                sidebarPinned
+                  ? "text-primary hover:bg-primary/10"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+              )}
+            >
+              {sidebarPinned ? (
+                <PinOff className="h-4 w-4" />
+              ) : (
+                <Pin className="h-4 w-4" />
+              )}
+            </button>
           )}
-        </button>
+          <button
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            {sidebarCollapsed ? (
+              <ChevronsRight className="h-4 w-4" />
+            ) : (
+              <ChevronsLeft className="h-4 w-4" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Navigation */}

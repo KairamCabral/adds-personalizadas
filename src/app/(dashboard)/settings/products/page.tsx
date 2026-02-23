@@ -206,6 +206,7 @@ export default function SettingsProductsPage() {
             name: data.name,
             description: data.description || null,
             image_url: data.image_url || null,
+            print_area_image_url: data.print_area_image_url || null,
             available_colors: data.available_colors ?? [],
             allows_custom_color: false,
             is_active: data.is_active ?? true,

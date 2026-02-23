@@ -373,6 +373,8 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
         const numeroPedido = raw.numeroPedido ?? raw.numero ?? tinyOrderId;
         const valor = raw.valor ?? raw.total ?? raw.valorTotal;
         const dataPrevista = raw.dataPrevista ?? raw.data_prevista;
+        const dataPedido =
+          raw.dataPedido ?? raw.data_pedido ?? raw.data ?? raw.dataCriacao;
         const situacao = raw.situacao ?? raw.status ?? 0;
 
         if (!tinyOrderId) {
@@ -401,6 +403,7 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
           client_id: clientRow.id,
           status: mapTinySituacaoToStatus(situacao),
           due_date: dataPrevista ? parseTinyDate(dataPrevista) : null,
+          order_date: dataPedido ? parseTinyDate(String(dataPedido)) : null,
           tiny_order_id: tinyOrderId,
           order_type: "PERSONALIZADO" as const,
           priority: "NORMAL" as const,
