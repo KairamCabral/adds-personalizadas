@@ -499,19 +499,30 @@ export async function createPublicQuote(data: CreatePublicQuoteData) {
 
 // ============================================
 // BUSCAR PRODUTOS ATIVOS (formulário público, sem auth)
+// Usa API route com service role para evitar RLS e erros de coluna
 // ============================================
 export async function getActiveProducts() {
-  const supabase = createClient();
+  const res = await fetch("/api/products/public", {
+    cache: "no-store",
+  });
 
-  const { data, error } = await supabase
-    .from("products")
-    .select(
-      "id, name, description, price, image_url, print_area_image_url, category, available_colors, allows_custom_color"
-    )
-    .eq("is_active", true)
-    .order("name");
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(json.error ?? "Erro ao carregar produtos");
+  }
 
-  if (error) throw error;
+  const data = (await res.json()) as Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    price: number | null;
+    image_url: string | null;
+    print_area_image_url?: string | null;
+    category: string | null;
+    available_colors: unknown;
+    allows_custom_color: boolean | null;
+  }>;
+
   return data ?? [];
 }
 
