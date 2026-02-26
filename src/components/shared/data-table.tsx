@@ -66,7 +66,7 @@ export function DataTable<TData, TValue>({
   });
 
   return (
-    <div>
+    <div className="min-w-0 w-full">
       <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
@@ -121,11 +121,11 @@ export function DataTable<TData, TValue>({
       </div>
 
       {!hidePagination && (
-        <div className="flex items-center justify-between px-2 py-4">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-2 py-4">
           <p className="text-sm text-muted-foreground">
             {table.getFilteredRowModel().rows.length} registro(s) no total
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               variant="outline"
               size="sm"

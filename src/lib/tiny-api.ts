@@ -1,6 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
+/** Erro quando o refresh token do Tiny está expirado ou revogado (invalid_grant). */
+export class TinyTokenExpiredError extends Error {
+  constructor(message: string = "Sessão Tiny expirada ou revogada. Reconecte em Configurações > Integrações.") {
+    super(message);
+    this.name = "TinyTokenExpiredError";
+  }
+}
+
 const TINY_TOKEN_URL =
   "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token";
 const TINY_AUTH_URL =
@@ -77,6 +85,16 @@ async function refreshAccessToken(
 
   if (!res.ok) {
     const text = await res.text();
+    try {
+      const body = JSON.parse(text) as { error?: string; error_description?: string };
+      if (body?.error === "invalid_grant" || /token is not active|token.*inactive/i.test(body?.error_description ?? "")) {
+        throw new TinyTokenExpiredError(
+          body?.error_description ?? "Sessão Tiny expirada ou revogada. Reconecte em Configurações > Integrações."
+        );
+      }
+    } catch (e) {
+      if (e instanceof TinyTokenExpiredError) throw e;
+    }
     throw new Error(`Tiny OAuth refresh failed: ${res.status} ${text}`);
   }
 
@@ -118,7 +136,7 @@ async function getValidAccessToken(): Promise<string> {
 
   if (!data?.value) {
     console.warn("[Tiny API] Nenhum token encontrado em app_settings");
-    throw new Error("Tiny ERP não conectado. Configure em Configurações > Integrações.");
+    throw new TinyTokenExpiredError("Tiny ERP não conectado. Configure em Configurações > Integrações.");
   }
 
   const tokens = data.value as {
@@ -127,9 +145,9 @@ async function getValidAccessToken(): Promise<string> {
     expires_at: string;
   };
 
-  if (!tokens.access_token) {
-    console.error("[Tiny API] access_token ausente no objeto de tokens");
-    throw new Error("Token de acesso inválido. Reconecte o Tiny ERP.");
+  if (!tokens.access_token || !tokens.refresh_token) {
+    console.error("[Tiny API] access_token ou refresh_token ausente");
+    throw new TinyTokenExpiredError("Token inválido. Reconecte o Tiny ERP em Configurações > Integrações.");
   }
 
   const now = new Date();

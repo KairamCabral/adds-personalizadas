@@ -170,7 +170,7 @@ export default function SettingsProductsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="min-w-0 space-y-6 p-6">
       <PageHeader
         title="Produtos"
         description="Gerencie o catálogo de produtos"

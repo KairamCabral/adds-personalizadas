@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission } from "@/lib/permissions";
+import { TinyTokenExpiredError } from "@/lib/tiny-api";
 import { runIncrementalClientsSync } from "@/lib/tiny-sync-incremental";
 import type { UserRole } from "@/lib/constants";
 
@@ -45,6 +46,12 @@ export async function POST() {
       message: result.message,
     });
   } catch (err) {
+    if (err instanceof TinyTokenExpiredError) {
+      return NextResponse.json(
+        { success: false, error: err.message, code: "TINY_RECONNECT" },
+        { status: 401 }
+      );
+    }
     const e = err instanceof Error ? err : new Error(String(err));
     console.error("[Tiny Sync Recent] Erro:", e.message);
     return NextResponse.json(

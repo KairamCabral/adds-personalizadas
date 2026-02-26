@@ -120,7 +120,7 @@ export function Sidebar() {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
-        "flex h-screen flex-col border-r border-border bg-card transition-all duration-300 ease-in-out",
+        "flex h-screen flex-col border-r border-border bg-card dark:bg-card transition-all duration-300 ease-in-out",
         // Desktop: fixed, collapsible
         "fixed left-0 top-0 z-40",
         // Desktop width

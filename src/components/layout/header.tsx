@@ -68,7 +68,7 @@ export function Header() {
   return (
     <header
       className={cn(
-        "fixed right-0 top-0 z-30 flex h-[60px] items-center gap-4 border-b border-border bg-card/80 px-4 backdrop-blur-xl transition-all duration-300",
+        "fixed right-0 top-0 z-30 flex h-[60px] items-center gap-4 border-b border-border bg-card/80 dark:bg-card/80 px-4 backdrop-blur-xl transition-all duration-300",
         // Mobile: full width
         "left-0",
         // Desktop: offset by sidebar width
@@ -79,7 +79,7 @@ export function Header() {
       <button
         onClick={toggleMobileSidebar}
         aria-label="Abrir menu lateral"
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden"
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-muted-foreground dark:hover:bg-secondary dark:hover:text-foreground lg:hidden"
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -95,7 +95,7 @@ export function Header() {
             setTheme(next);
           }}
           aria-label={themeLabel}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-muted-foreground dark:hover:bg-secondary dark:hover:text-foreground"
         >
           {resolvedTheme === "dark" ? (
             <Moon className="h-4 w-4" aria-hidden="true" />
@@ -115,7 +115,7 @@ export function Header() {
             aria-label="Menu do usuário"
             aria-expanded={userMenuOpen}
             aria-haspopup="true"
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-secondary"
+            className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-secondary"
           >
             <div
               className={cn(
@@ -131,12 +131,12 @@ export function Header() {
                 <p className="text-xs font-medium text-foreground leading-tight">
                   {profile.full_name}
                 </p>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[10px] text-slate-600 dark:text-muted-foreground">
                   {profile.role}
                 </p>
               </div>
             )}
-            <ChevronDown className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+            <ChevronDown className="h-3 w-3 text-slate-500 dark:text-muted-foreground" aria-hidden="true" />
           </button>
 
           {/* Dropdown */}

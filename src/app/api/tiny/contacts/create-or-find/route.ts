@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { tinyApiGet, tinyApiPost, isTinyConnected } from "@/lib/tiny-api";
+import { tinyApiGet, tinyApiPost, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
 
 /**
  * Verifica se o contato existe no Tiny (por CPF/CNPJ ou celular).
@@ -96,6 +96,12 @@ export async function POST(request: NextRequest) {
     );
     return NextResponse.json({ tiny_id: null, found: false });
   } catch (error) {
+    if (error instanceof TinyTokenExpiredError) {
+      return NextResponse.json(
+        { error: error.message, code: "TINY_RECONNECT" },
+        { status: 401 }
+      );
+    }
     console.error("[Tiny create-or-find]", error);
     return NextResponse.json(
       { error: "Erro ao verificar/criar contato no Tiny" },

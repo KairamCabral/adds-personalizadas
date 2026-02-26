@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { createClient as createClientService } from "@/services/clients.service";
-import { syncRecentClients } from "@/services/tiny.service";
+import { syncRecentClients, TinyReconnectError } from "@/services/tiny.service";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,7 @@ export function ClientSearch({
   const [showQuickForm, setShowQuickForm] = useState(false);
   const [syncingRecent, setSyncingRecent] = useState(false);
   const { can } = usePermissions();
+  const router = useRouter();
   const [quickForm, setQuickForm] = useState({
     name: "",
     phone: "",
@@ -241,9 +243,18 @@ export function ClientSearch({
         toast.error("Erro ao sincronizar contatos recentes");
       }
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Erro ao sincronizar contatos"
-      );
+      if (err instanceof TinyReconnectError) {
+        toast.error(err.message, {
+          action: {
+            label: "Abrir Integrações",
+            onClick: () => router.push("/settings/integrations"),
+          },
+        });
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : "Erro ao sincronizar contatos"
+        );
+      }
     } finally {
       setSyncingRecent(false);
     }

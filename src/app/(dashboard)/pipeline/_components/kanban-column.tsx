@@ -50,17 +50,17 @@ export function KanbanColumn({
       ref={setNodeRef}
       data-kanban-column
       className={cn(
-        "flex h-full w-[280px] min-w-[280px] flex-col rounded-xl transition-colors duration-200 cursor-default",
+        "flex h-full w-[280px] min-w-[280px] flex-col rounded-xl bg-primary/5 shadow-sm transition-colors duration-200 cursor-default backdrop-blur-[2px] dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
         isOver && "bg-primary/5 ring-2 ring-primary/20 ring-inset"
       )}
       style={{ animationDelay: `${index * 40}ms` }}
     >
-      {/* Column header */}
+      {/* Column header — contraste legível no fundo azul claro */}
       <div className="mb-2 flex items-center justify-between px-2">
         <div className="flex items-center gap-2">
           <div
             className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-md",
+              "flex h-6 w-6 items-center justify-center rounded-md ring-1 ring-black/[0.08] dark:ring-transparent",
               status.bgColor
             )}
           >
@@ -69,7 +69,7 @@ export function KanbanColumn({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">
             {status.shortLabel}
           </h3>
-          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-secondary px-1.5 text-[10px] font-bold text-muted-foreground">
+          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-200/80 px-1.5 text-[10px] font-bold text-slate-700 dark:bg-secondary dark:text-muted-foreground">
             {orders.length}
           </span>
         </div>
@@ -79,14 +79,14 @@ export function KanbanColumn({
             <button
               onClick={onAddOrder}
               aria-label={`Adicionar pedido em ${status.shortLabel}`}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-secondary hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           )}
           <button
             aria-label={`Opções da coluna ${status.shortLabel}`}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-secondary hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground"
           >
             <MoreHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -127,7 +127,7 @@ export function KanbanColumn({
       {canAddOrder && (
         <button
           onClick={onAddOrder}
-          className="mx-2 mb-2 flex items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground/60 transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+          className="mx-2 mb-2 flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-600 transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary dark:border-border dark:text-muted-foreground"
         >
           <Plus className="h-3 w-3" />
           Adicionar pedido

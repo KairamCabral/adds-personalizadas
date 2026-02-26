@@ -140,6 +140,11 @@ export default function SettingsIntegrationsPage() {
               Integre o ADDS CRM com o Tiny ERP para sincronizar clientes e
               produtos automaticamente via OAuth2.
             </p>
+            <p className="text-xs text-muted-foreground rounded-md border border-border/80 bg-muted/30 px-3 py-2">
+              A conexão com o Tiny pode expirar após algum tempo. Se a
+              sincronização falhar ou aparecer &quot;Token is not active&quot;, reconecte
+              abaixo para autorizar novamente.
+            </p>
 
             <div className="flex flex-wrap gap-2">
               {isLoading ? (

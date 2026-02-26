@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { tinyApiGet, isTinyConnected } from "@/lib/tiny-api";
+import { tinyApiGet, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
 
 /** Exclui contatos internos/financeiros (prolabore, salário, etc.) da busca. */
 function isInternalOrFinancialContact(name: string | null, company: string | null): boolean {
@@ -111,6 +111,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ items: tinyItems });
   } catch (error) {
+    if (error instanceof TinyTokenExpiredError) {
+      return NextResponse.json(
+        { items: [], error: error.message, code: "TINY_RECONNECT" },
+        { status: 401 }
+      );
+    }
     console.error("[Tiny contacts search]", error);
     return NextResponse.json({ items: [] });
   }

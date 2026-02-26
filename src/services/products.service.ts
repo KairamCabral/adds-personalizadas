@@ -38,6 +38,21 @@ export async function getProductById(id: string) {
   return data;
 }
 
+function isColumnMissingError(error: { code?: string; message?: string }): boolean {
+  const msg = (error.message ?? "").toLowerCase();
+  const code = String(error.code ?? "");
+  return (
+    code === "42703" ||
+    msg.includes("print_area_image_url") ||
+    (msg.includes("column") && (msg.includes("does not exist") || msg.includes("undefined")))
+  );
+}
+
+function withoutPrintAreaImageUrl<T extends Record<string, unknown>>(obj: T): Omit<T, "print_area_image_url"> {
+  const { print_area_image_url: _, ...rest } = obj;
+  return rest;
+}
+
 export async function createProduct(data: ProductInsert) {
   const { data: product, error } = await supabase
     .from("products")
@@ -45,6 +60,16 @@ export async function createProduct(data: ProductInsert) {
     .select()
     .single();
 
+  if (error && isColumnMissingError(error)) {
+    const fallback = withoutPrintAreaImageUrl(data as Record<string, unknown>) as ProductInsert;
+    const { data: product2, error: error2 } = await supabase
+      .from("products")
+      .insert(fallback)
+      .select()
+      .single();
+    if (error2) throw error2;
+    return product2;
+  }
   if (error) throw error;
   return product;
 }
@@ -57,6 +82,17 @@ export async function updateProduct(id: string, data: ProductUpdate) {
     .select()
     .single();
 
+  if (error && isColumnMissingError(error)) {
+    const fallback = withoutPrintAreaImageUrl(data as Record<string, unknown>) as ProductUpdate;
+    const { data: product2, error: error2 } = await supabase
+      .from("products")
+      .update(fallback)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error2) throw error2;
+    return product2;
+  }
   if (error) throw error;
   return product;
 }

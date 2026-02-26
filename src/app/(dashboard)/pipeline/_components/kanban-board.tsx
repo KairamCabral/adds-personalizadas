@@ -260,8 +260,8 @@ export function KanbanBoard() {
 
   return (
     <div className="flex h-[calc(100vh-60px)] flex-col">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-3">
+      {/* Toolbar — azul claro só no tema claro; tema escuro inalterado */}
+      <div className="flex items-center justify-between border-b border-border bg-primary/10 px-6 py-3 dark:bg-background">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-bold text-foreground">
             {showArchived ? "Arquivados" : "Pipeline"}
@@ -331,7 +331,7 @@ export function KanbanBoard() {
         </div>
       </div>
 
-      {/* Kanban board */}
+      {/* Kanban board — azul claro só no tema claro; tema escuro inalterado */}
       <div
         ref={scrollRef}
         role="region"
@@ -339,7 +339,7 @@ export function KanbanBoard() {
         onMouseDown={handlePanStart}
         onWheel={handleWheel}
         className={cn(
-          "kanban-scroll flex-1 overflow-x-auto overflow-y-hidden select-none touch-pan-x",
+          "kanban-scroll flex-1 overflow-x-auto overflow-y-hidden select-none touch-pan-x bg-primary/5 dark:bg-background",
           isPanning ? "cursor-grabbing" : "cursor-grab"
         )}
       >
@@ -348,7 +348,7 @@ export function KanbanBoard() {
             {visibleColumns.map((status) => (
               <div
                 key={status.key}
-                className="flex w-[280px] min-w-[280px] flex-col gap-2"
+                className="flex w-[280px] min-w-[280px] flex-col gap-2 rounded-xl bg-primary/5 p-2 dark:bg-background/80"
               >
                 <div className="mb-2 h-8 rounded-md bg-muted/50" />
                 <KanbanCardSkeleton />
@@ -358,7 +358,7 @@ export function KanbanBoard() {
           </div>
         ) : error ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-foreground">
               Erro ao carregar pedidos. Verifique sua conexão.
             </p>
           </div>
@@ -370,7 +370,7 @@ export function KanbanBoard() {
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex h-full min-w-0 gap-3 p-4">
+            <div className="flex h-full min-w-0 gap-3 p-4 min-h-0">
               {visibleColumns.map((status, index) => (
                 <KanbanColumn
                   key={status.key}

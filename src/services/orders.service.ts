@@ -65,7 +65,7 @@ export async function getOrderById(
       client:clients(*),
       assigned_user:profiles!orders_assigned_to_fkey(id, full_name, avatar_url, email),
       labels:order_labels(id, label, created_at),
-      items:order_items(*, product:products(id, name, image_url)),
+      items:order_items(*, product:products(id, name, image_url, available_colors, allows_custom_color)),
       artworks:artworks(*),
       comments:comments(*, user:profiles!comments_user_id_fkey(id, full_name, avatar_url)),
       watchers:order_watchers(user_id, profile:profiles(id, full_name, avatar_url)),
@@ -195,6 +195,34 @@ export async function createOrderWithItems(
   }
 
   return order as Order;
+}
+
+/**
+ * Substitui todos os order_items de um pedido de uma vez.
+ * Delete + insert garante consistência sem precisar rastrear diff.
+ */
+export async function replaceOrderItems(
+  orderId: string,
+  items: CreateOrderItemParams[]
+): Promise<void> {
+  const { error: delError } = await supabase
+    .from("order_items")
+    .delete()
+    .eq("order_id", orderId);
+  if (delError) throw delError;
+
+  if (items.length === 0) return;
+
+  const rows = items.map((item) => ({
+    order_id: orderId,
+    product_id: item.product_id,
+    product_name: item.product_name,
+    quantity: item.quantity,
+    personalization: item.personalization as unknown as Record<string, unknown>,
+  }));
+
+  const { error: insError } = await supabase.from("order_items").insert(rows);
+  if (insError) throw insError;
 }
 
 export async function updateOrder(id: string, updates: Partial<Order>) {

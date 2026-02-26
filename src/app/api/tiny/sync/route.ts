@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { tinyApiGet } from "@/lib/tiny-api";
+import { tinyApiGet, TinyTokenExpiredError } from "@/lib/tiny-api";
 
 const LOG_PREFIX = "[Tiny Sync]";
 
@@ -84,6 +84,12 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (error: unknown) {
+    if (error instanceof TinyTokenExpiredError) {
+      return NextResponse.json(
+        { error: error.message, code: "TINY_RECONNECT" },
+        { status: 401 }
+      );
+    }
     const err = error instanceof Error ? error : new Error(String(error));
     console.error(`${LOG_PREFIX} Erro geral:`, err.message);
     console.error(`${LOG_PREFIX} Stack:`, err.stack);

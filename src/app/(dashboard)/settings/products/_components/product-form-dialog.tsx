@@ -277,16 +277,18 @@ export function ProductFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className="max-h-[90vh] max-w-[min(32rem,calc(100vw-2rem))] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle>
             {initialData ? "Editar produto" : "Novo produto"}
           </DialogTitle>
         </DialogHeader>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="flex flex-col gap-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
         >
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
+            <div className="flex flex-col gap-4">
           <div className="space-y-2">
             <Label htmlFor="name">Nome *</Label>
             <Input
@@ -314,7 +316,7 @@ export function ProductFormDialog({
           <div className="space-y-2">
             <Label>Imagem do produto</Label>
             {imageUrl ? (
-              <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+              <div className="flex min-w-0 items-center gap-4 rounded-xl border border-border bg-card p-4">
                 <img
                   src={imageUrl}
                   alt="Preview"
@@ -368,7 +370,7 @@ export function ProductFormDialog({
               Foto do local onde a personalização será impressa. Usada como fundo no editor &quot;Faça você mesmo&quot;.
             </p>
             {printAreaImageUrl ? (
-              <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+              <div className="flex min-w-0 items-center gap-4 rounded-xl border border-border bg-card p-4">
                 <img
                   src={printAreaImageUrl}
                   alt="Área de personalização"
@@ -429,14 +431,14 @@ export function ProductFormDialog({
               {colors.map((c) => (
                 <div
                   key={c.key}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3"
+                  className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-muted/20 p-3"
                 >
                   <span
                     className="h-8 w-8 shrink-0 rounded-full border border-border"
                     style={{ backgroundColor: c.hex ?? "transparent" }}
                   />
-                  <span className="min-w-[80px] text-sm font-medium">{c.label}</span>
-                  <div className="flex flex-1 items-center gap-2">
+                  <span className="shrink-0 text-sm font-medium">{c.label}</span>
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
                     {(c as { image_url?: string | null }).image_url ? (
                       <div className="flex items-center gap-2">
                         <img
@@ -568,7 +570,10 @@ export function ProductFormDialog({
             />
           </div>
 
-          <DialogFooter>
+            </div>
+          </div>
+
+          <DialogFooter className="shrink-0">
             <Button
               type="button"
               variant="outline"

@@ -831,6 +831,7 @@ export type Database = {
           is_active: boolean
           name: string
           price: number | null
+          print_area_image_url: string | null
           product_type: string | null
           stock: number | null
           tiny_code: string | null
@@ -851,6 +852,7 @@ export type Database = {
           is_active?: boolean
           name: string
           price?: number | null
+          print_area_image_url?: string | null
           product_type?: string | null
           stock?: number | null
           tiny_code?: string | null
@@ -871,6 +873,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           price?: number | null
+          print_area_image_url?: string | null
           product_type?: string | null
           stock?: number | null
           tiny_code?: string | null

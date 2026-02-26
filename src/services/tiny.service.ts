@@ -86,6 +86,15 @@ export async function disconnectTiny(): Promise<{ success: boolean; error?: stri
   }
 }
 
+/** Erro com código TINY_RECONNECT quando a sessão Tiny expirou (401). */
+export class TinyReconnectError extends Error {
+  code = "TINY_RECONNECT" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "TinyReconnectError";
+  }
+}
+
 export async function syncRecentClients(): Promise<{
   success: boolean;
   message?: string;
@@ -94,13 +103,18 @@ export async function syncRecentClients(): Promise<{
   earlyExit?: boolean;
 }> {
   const res = await fetch("/api/tiny/sync-recent", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Erro ao sincronizar contatos recentes");
+    if (res.status === 401 && data.code === "TINY_RECONNECT") {
+      throw new TinyReconnectError(
+        data.error ?? "Conexão com o Tiny expirou. Reconecte em Configurações > Integrações."
+      );
+    }
+    throw new Error(data.error || "Erro ao sincronizar contatos recentes");
   }
 
-  return res.json();
+  return data;
 }
 
 export async function syncClients(): Promise<{
@@ -113,13 +127,18 @@ export async function syncClients(): Promise<{
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ entity: "clients" }),
   });
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Erro ao sincronizar clientes");
+    if (res.status === 401 && data.code === "TINY_RECONNECT") {
+      throw new TinyReconnectError(
+        data.error ?? "Conexão com o Tiny expirou. Reconecte em Configurações > Integrações."
+      );
+    }
+    throw new Error(data.error || "Erro ao sincronizar clientes");
   }
 
-  return res.json();
+  return data;
 }
 
 export async function syncProducts(): Promise<{

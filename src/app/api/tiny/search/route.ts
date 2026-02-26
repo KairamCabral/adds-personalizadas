@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { tinyApiGet, isTinyConnected } from "@/lib/tiny-api";
+import { tinyApiGet, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
 
 function isInternalOrFinancialContact(
   name: string | null,
@@ -105,6 +105,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ contacts });
   } catch (error) {
+    if (error instanceof TinyTokenExpiredError) {
+      return NextResponse.json(
+        { contacts: [], error: error.message, code: "TINY_RECONNECT" },
+        { status: 401 }
+      );
+    }
     console.error("[Tiny search]", error);
     return NextResponse.json({ contacts: [] });
   }
