@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database.types";
+import type { Database, Json } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { logAction } from "@/services/audit.service";
 import type { Order } from "@/types/database.types";
@@ -218,7 +218,7 @@ export async function replaceOrderItems(
     product_id: item.product_id,
     product_name: item.product_name,
     quantity: item.quantity,
-    personalization: item.personalization as unknown as Record<string, unknown>,
+    personalization: item.personalization as Json,
   }));
 
   const { error: insError } = await supabase.from("order_items").insert(rows);
