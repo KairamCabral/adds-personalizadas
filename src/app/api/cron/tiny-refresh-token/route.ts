@@ -1,0 +1,35 @@
+import { NextRequest, NextResponse } from "next/server";
+import { refreshTinyTokenProactively } from "@/lib/tiny-api";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 30;
+
+/**
+ * Cron: refresh proativo do token Tiny
+ *
+ * - Autenticação: Bearer CRON_SECRET (igual aos outros crons)
+ * - Executa 1x por dia (ex: 6h) para manter o token válido
+ * - Se o refresh falhar (token expirado), remove os tokens
+ *
+ * Configurar no Vercel Cron (vercel.json):
+ *   "crons": [{ "path": "/api/cron/tiny-refresh-token", "schedule": "0 6 * * *" }]
+ */
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
+
+  try {
+    const result = await refreshTinyTokenProactively();
+    return NextResponse.json(result);
+  } catch (err) {
+    const e = err instanceof Error ? err : new Error(String(err));
+    console.error("[Tiny Refresh Token] Erro:", e.message);
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: 500 }
+    );
+  }
+}

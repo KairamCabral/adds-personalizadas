@@ -236,3 +236,47 @@ export async function isTinyConnected(): Promise<boolean> {
 
   return !!data?.value;
 }
+
+/**
+ * Remove tokens do Tiny (usado quando refresh falha ou ao desconectar).
+ */
+export async function clearTinyTokens(): Promise<void> {
+  const supabase = getServiceClient();
+  await supabase.from("app_settings").delete().eq("key", "tiny_oauth_tokens");
+}
+
+/**
+ * Refresh proativo: garante que o token está válido.
+ * Se o refresh falhar (invalid_grant), remove os tokens.
+ * Usado pelo cron diário para manter a conexão ativa.
+ */
+export async function refreshTinyTokenProactively(): Promise<{
+  success: boolean;
+  refreshed?: boolean;
+  cleared?: boolean;
+  skipped?: boolean;
+  error?: string;
+}> {
+  const supabase = getServiceClient();
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", "tiny_oauth_tokens")
+    .single();
+
+  if (!data?.value) {
+    return { success: true, skipped: true };
+  }
+
+  try {
+    await getValidAccessToken();
+    return { success: true };
+  } catch (e) {
+    if (e instanceof TinyTokenExpiredError) {
+      await clearTinyTokens();
+      console.warn("[Tiny API] Token expirado, tokens removidos:", e.message);
+      return { success: false, cleared: true, error: e.message };
+    }
+    throw e;
+  }
+}
