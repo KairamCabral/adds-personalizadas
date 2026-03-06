@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sendClientToBling } from "@/services/bling.service";
+import { checkRecentBlingOrder, sendOrderToBling } from "@/services/bling.service";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { supplierId, orderId } = body;
+    const { supplierId, orderId, force = false } = body;
 
     if (!supplierId || !orderId) {
       return NextResponse.json(
@@ -21,24 +21,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await sendClientToBling(
+    if (!force) {
+      const duplicateCheck = await checkRecentBlingOrder(
+        supplierId,
+        orderId,
+        supabase
+      );
+      if (duplicateCheck.hasDuplicate) {
+        return NextResponse.json({
+          success: false,
+          requiresConfirmation: true,
+          recentOrders: duplicateCheck.recentOrders,
+          message:
+            "Este cliente já tem pedido(s) enviado(s) ao Bling nos últimos 30 dias.",
+        });
+      }
+    }
+
+    const result = await sendOrderToBling(
       supplierId,
       orderId,
       user.id,
       supabase
     );
 
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error ?? "Erro ao enviar dados." },
-        { status: 400 }
-      );
+    if (result.orderSent) {
+      return NextResponse.json({
+        success: true,
+        contactSent: result.contactSent,
+        orderSent: result.orderSent,
+        blingOrderId: result.blingOrderId,
+        blingOrderNumber: result.blingOrderNumber,
+      });
     }
 
-    return NextResponse.json({
-      success: true,
-      blingContactId: result.blingContactId,
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        contactSent: result.contactSent,
+        orderSent: result.orderSent,
+        error: result.error ?? "Erro ao enviar dados.",
+      },
+      { status: 400 }
+    );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Erro ao sincronizar com Bling.";

@@ -1,6 +1,10 @@
 "use client";
 
-import { useSortable } from "@dnd-kit/sortable";
+import {
+  useSortable,
+  defaultAnimateLayoutChanges,
+  type AnimateLayoutChanges,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn, getInitials, generateAvatarColor, formatDate } from "@/lib/utils";
 import { LABEL_MAP, type LabelType } from "@/lib/constants";
@@ -46,6 +50,13 @@ interface KanbanCardProps {
   isDragging?: boolean;
 }
 
+const animateLayoutChanges: AnimateLayoutChanges = (args) => {
+  const { isSorting, wasDragging } = args;
+  if (wasDragging) return false;
+  if (isSorting) return defaultAnimateLayoutChanges(args);
+  return true;
+};
+
 export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, onUnarchive }: KanbanCardProps) {
   const {
     attributes,
@@ -54,11 +65,15 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
     transform,
     transition,
     isDragging: isSortableDragging,
-  } = useSortable({ id: order.id, disabled });
+  } = useSortable({
+    id: order.id,
+    disabled,
+    animateLayoutChanges,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: transition || undefined,
   };
 
   const isHighPriority = order.priority === "ALTA";
@@ -84,11 +99,11 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
       {...(disabled ? {} : { ...attributes, ...listeners })}
       onClick={handleCardClick}
       className={cn(
-        "group cursor-pointer rounded-xl border bg-card p-3 shadow-sm transition-all",
+        "group cursor-pointer overflow-visible rounded-xl border bg-card p-3 shadow-sm transition-all",
         isDragging || isSortableDragging
-          ? "rotate-2 scale-105 border-primary/40 shadow-xl shadow-primary/10"
+          ? "scale-[1.02] border-primary/30 shadow-lg shadow-primary/5"
           : "border-border hover:border-primary/20 hover:shadow-md",
-        isSortableDragging && "opacity-40",
+        isSortableDragging && "opacity-50",
         isHighPriority && "border-l-2 border-l-red-500"
       )}
     >
@@ -119,81 +134,92 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
         {order.title}
       </h4>
 
-      {/* Items summary */}
-      {order.items && order.items.length > 0 && (
-        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-          {order.items
-            .map((i) => `${i.product_name} (${i.quantity})`)
-            .join(" · ")}
-        </p>
-      )}
-
-      {/* Description indicator */}
-      {order.description && (
-        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-          {order.description}
-        </p>
-      )}
-
       {/* Footer */}
-      <div className="mt-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {/* Has description */}
-          {order.description && (
-            <div className="flex items-center text-muted-foreground/50">
-              <AlignLeft className="h-3 w-3" />
-            </div>
-          )}
+      <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            {/* Has description */}
+            {order.description && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                      <AlignLeft className="h-4 w-4" />
+                      <span className="text-[10px]">Descrição</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="pointer-events-none">Possui observações/personalização</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
 
-          {/* Has logo/attachments */}
-          {order.attachments && order.attachments.length > 0 && (
-            <div className="flex items-center text-muted-foreground/50">
-              <Paperclip className="h-3 w-3" />
-            </div>
-          )}
+            {/* Has logo/attachments */}
+            {order.attachments && order.attachments.length > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                      <Paperclip className="h-4 w-4" />
+                      <span className="text-[10px]">Anexos</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="pointer-events-none">{order.attachments.length} anexo(s)</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
 
-          {/* Due date */}
-          {order.due_date && (
-            <div
-              className={cn(
-                "flex items-center gap-1 text-[10px]",
-                isOverdue
-                  ? "text-destructive"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Clock className="h-3 w-3" />
-              {formatDate(order.due_date)}
-            </div>
-          )}
+            {/* Due date */}
+            {order.due_date && (
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-1 text-[10px]",
+                  isOverdue
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+                )}
+              >
+                <Clock className="h-4 w-4" />
+                <span>{formatDate(order.due_date)}</span>
+              </div>
+            )}
 
-          {/* Priority */}
-          {isHighPriority && (
-            <div className="flex items-center text-red-500">
-              <AlertTriangle className="h-3 w-3" />
-            </div>
-          )}
+            {/* Priority */}
+            {isHighPriority && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex shrink-0 items-center gap-1 text-red-500">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span className="text-[10px]">Alta</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="pointer-events-none">Prioridade alta</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
 
-          {/* Bling sync indicator */}
-          {lastBlingLog && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center text-primary">
-                    <Truck className="h-3 w-3" />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Dados enviados a{" "}
-                  {(lastBlingLog.suppliers as { name?: string })?.name ?? "Fornecedor"}{" "}
-                  em {formatDate(lastBlingLog.sent_at)}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
+            {/* Bling sync - compacto, detalhes no tooltip */}
+            {lastBlingLog && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex shrink-0 cursor-help items-center gap-1 text-primary">
+                      <Truck className="h-4 w-4" />
+                      <span className="text-[10px]">Enviado</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[260px] pointer-events-none">
+                    <p className="text-xs">
+                      Enviado a{" "}
+                      {(lastBlingLog.suppliers as { name?: string })?.name ?? "Fornecedor"}{" "}
+                      em {formatDate(lastBlingLog.sent_at)}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
 
-        <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
           {/* Arquivar/Desarquivar - aparece no hover */}
           {archiveAction && (
             <TooltipProvider>
@@ -206,17 +232,17 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
                       e.stopPropagation();
                       archiveAction(order.id);
                     }}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 transition-opacity hover:bg-secondary hover:text-foreground group-hover:opacity-100"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 transition-opacity hover:bg-secondary hover:text-foreground group-hover:opacity-100"
                     aria-label={isUnarchive ? "Desarquivar" : "Arquivar"}
                   >
                     {isUnarchive ? (
-                      <ArchiveRestore className="h-3.5 w-3.5" />
+                      <ArchiveRestore className="h-4 w-4" />
                     ) : (
-                      <Archive className="h-3.5 w-3.5" />
+                      <Archive className="h-4 w-4" />
                     )}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent>{isUnarchive ? "Desarquivar" : "Arquivar"}</TooltipContent>
+                <TooltipContent className="pointer-events-none">{isUnarchive ? "Desarquivar" : "Arquivar"}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -226,7 +252,7 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
                 <TooltipTrigger asChild>
                   <div
                     className={cn(
-                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white",
+                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white",
                       "shadow-[0_0_0_1px_rgba(255,255,255,0.15)_inset]",
                       generateAvatarColor(
                         (order.assigned_user ?? order.created_user)!.full_name
@@ -238,7 +264,7 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
                     )}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>
+                <TooltipContent className="pointer-events-none">
                   {order.assigned_user
                     ? `Responsável: ${order.assigned_user.full_name}`
                     : `Criado por: ${order.created_user!.full_name}`}

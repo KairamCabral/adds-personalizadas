@@ -99,6 +99,7 @@ export function KanbanColumn({
       {/* Cards container */}
       <div className="flex-1 space-y-2 overflow-y-auto px-2 pb-2">
         <SortableContext
+          id={status.key}
           items={orders.map((o) => o.id)}
           strategy={verticalListSortingStrategy}
         >

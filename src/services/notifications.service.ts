@@ -44,3 +44,22 @@ export async function markAllAsRead() {
 
   if (error) throw error;
 }
+
+export async function deleteNotification(id: string) {
+  const { error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function clearAllNotifications() {
+  // Filtro que atinge todas as linhas (RLS restringe ao user_id do usuário)
+  const { error } = await supabase
+    .from("notifications")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+
+  if (error) throw error;
+}

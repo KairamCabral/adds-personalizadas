@@ -18,8 +18,13 @@ export async function GET(request: NextRequest) {
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
   const cutoff = ninetyDaysAgo.toISOString();
 
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const sevenDaysCutoff = sevenDaysAgo.toISOString();
+
   let tokensDeleted = 0;
   let notificationsDeleted = 0;
+  let notificationsAutoMarked = 0;
 
   try {
     const { data: expiredTokens, error: tokensError } = await supabase
@@ -46,11 +51,28 @@ export async function GET(request: NextRequest) {
       console.error("Cleanup notifications error:", notifError);
     }
 
+    // Auto-marcar notificações não lidas com mais de 7 dias como lidas
+    const { data: autoMarked, error: autoMarkError } = await supabase
+      .from("notifications")
+      .update({ read_at: now })
+      .is("read_at", null)
+      .lt("created_at", sevenDaysCutoff)
+      .select("id");
+
+    if (!autoMarkError && autoMarked) {
+      notificationsAutoMarked = autoMarked.length;
+    } else if (autoMarkError) {
+      console.error("Cleanup auto-mark notifications error:", autoMarkError);
+    }
+
     return NextResponse.json({
       success: true,
       deleted: {
         approval_tokens: tokensDeleted,
         notifications: notificationsDeleted,
+      },
+      auto_marked: {
+        notifications: notificationsAutoMarked,
       },
     });
   } catch (err) {

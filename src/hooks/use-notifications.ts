@@ -8,6 +8,8 @@ import {
   getUnreadCount,
   markAsRead as markAsReadService,
   markAllAsRead as markAllAsReadService,
+  deleteNotification as deleteNotificationService,
+  clearAllNotifications as clearAllService,
 } from "@/services/notifications.service";
 import { useUser } from "@/hooks/use-user";
 import { toast } from "sonner";
@@ -47,6 +49,22 @@ export function useNotifications(page = 1, limit = 20) {
     },
   });
 
+  const deleteNotificationMutation = useMutation({
+    mutationFn: deleteNotificationService,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+      queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY });
+    },
+  });
+
+  const clearAllMutation = useMutation({
+    mutationFn: clearAllService,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+      queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY });
+    },
+  });
+
   useEffect(() => {
     if (!profile?.id) return;
 
@@ -66,5 +84,7 @@ export function useNotifications(page = 1, limit = 20) {
     isLoading,
     markAsRead: markAsReadMutation.mutate,
     markAllAsRead: markAllAsReadMutation.mutate,
+    deleteNotification: deleteNotificationMutation.mutate,
+    clearAll: clearAllMutation.mutate,
   };
 }

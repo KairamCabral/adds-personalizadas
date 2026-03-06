@@ -49,6 +49,14 @@ export function formatPeriodLabel(range: PeriodRange): string {
   return `${format(fromDate, "dd/MM/yyyy", { locale: ptBR })} - ${format(toDate, "dd/MM/yyyy", { locale: ptBR })}`;
 }
 
+/** Converte range de datas para PeriodRange (ISO strings) */
+export function formatRangeFromDates(from: Date, to: Date): PeriodRange {
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+  };
+}
+
 // ============================================
 // DASHBOARD CRM UNIFICADO
 // ============================================
@@ -56,6 +64,9 @@ export function formatPeriodLabel(range: PeriodRange): string {
 export interface TempoPorEtapa {
   etapa: string;
   mediaHoras: number;
+  medianaHoras?: number;
+  minHoras?: number;
+  maxHoras?: number;
   pedidos: number;
   isBottleneck: boolean;
 }
@@ -77,26 +88,46 @@ export interface PorResponsavelItem {
   quantidade: number;
 }
 
+export interface FunilItem {
+  etapa: string;
+  quantidade: number;
+  ordem: number;
+}
+
+export interface TendenciaItem {
+  mes: string;
+  mesLabel: string;
+  criados: number;
+  finalizados: number;
+}
+
+export interface PedidoParado {
+  id: string;
+  title: string;
+  status: string;
+  diasParado: number;
+}
+
 export interface DashboardCrmData {
   totalClientes: number;
   novosClientes: number;
+  novosClientesPrev?: number;
   pedidosAtivos: number;
   pedidosAtrasados: number;
   pedidosCriados: number;
+  pedidosCriadosPrev?: number;
   pedidosFinalizados: number;
+  pedidosFinalizadosPrev?: number;
   pedidosArquivados: number;
   taxaConclusao: number;
   tempoMedioTotal: { mediaHoras: number; pedidos: number };
   tempoPorEtapa: TempoPorEtapa[];
-  funil: {
-    fazerAprovacao: number;
-    producao: number;
-    expedicao: number;
-    finalizado: number;
-  };
+  funil: FunilItem[];
   porStatus: PorStatusItem[];
   porResponsavel: PorResponsavelItem[];
   topClientes: TopCliente[];
+  tendencia?: TendenciaItem[];
+  pedidosParados?: PedidoParado[];
 }
 
 export async function getDashboardCrmData(
@@ -116,22 +147,22 @@ export async function getDashboardCrmData(
   return {
     totalClientes: r?.totalClientes ?? 0,
     novosClientes: r?.novosClientes ?? 0,
+    novosClientesPrev: r?.novosClientesPrev ?? 0,
     pedidosAtivos: r?.pedidosAtivos ?? 0,
     pedidosAtrasados: r?.pedidosAtrasados ?? 0,
     pedidosCriados: r?.pedidosCriados ?? 0,
+    pedidosCriadosPrev: r?.pedidosCriadosPrev ?? 0,
     pedidosFinalizados: r?.pedidosFinalizados ?? 0,
+    pedidosFinalizadosPrev: r?.pedidosFinalizadosPrev ?? 0,
     pedidosArquivados: r?.pedidosArquivados ?? 0,
     taxaConclusao: Number(r?.taxaConclusao ?? 0),
     tempoMedioTotal: r?.tempoMedioTotal ?? { mediaHoras: 0, pedidos: 0 },
     tempoPorEtapa: r?.tempoPorEtapa ?? [],
-    funil: r?.funil ?? {
-      fazerAprovacao: 0,
-      producao: 0,
-      expedicao: 0,
-      finalizado: 0,
-    },
+    funil: r?.funil ?? [],
     porStatus: r?.porStatus ?? [],
     porResponsavel: r?.porResponsavel ?? [],
     topClientes: r?.topClientes ?? [],
+    tendencia: r?.tendencia ?? [],
+    pedidosParados: r?.pedidosParados ?? [],
   };
 }

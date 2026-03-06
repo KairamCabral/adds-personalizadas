@@ -64,6 +64,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { getSuppliers } from "@/services/suppliers.service";
 import { OrderLabels } from "./order-labels";
 import { OrderAttachments } from "./order-attachments";
@@ -92,6 +102,16 @@ export function OrderDetailSheet() {
     null
   );
   const [showDetails, setShowDetails] = useState(true);
+  const [blingDuplicateData, setBlingDuplicateData] = useState<{
+    recentOrders: {
+      order_id: string;
+      order_number: number | null;
+      order_title: string;
+      bling_order_id: number | null;
+      days_ago: number;
+    }[];
+    supplierId: string;
+  } | null>(null);
 
   const open = !!selectedOrderId;
 
@@ -159,10 +179,31 @@ export function OrderDetailSheet() {
   const moveMutation = useMutation({
     mutationFn: ({ orderId, newStatus }: { orderId: string; newStatus: OrderStatus }) =>
       moveOrder(orderId, newStatus, 0),
-    onSuccess: () => {
+    onSuccess: async (_data, variables) => {
       toast.success("Etapa alterada.");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
+      // Envio automático ao Bling quando status muda para APROVADO ou ARTE_APROVADA
+      if (variables.newStatus === "APROVADO" || variables.newStatus === "ARTE_APROVADA") {
+        try {
+          const res = await fetch("/api/bling/sync-on-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: variables.orderId,
+              newStatus: variables.newStatus,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (json.results?.some((r: { success: boolean }) => r.success)) {
+            toast.success("Pedido enviado ao fornecedor automaticamente.");
+            queryClient.invalidateQueries({ queryKey: ["orders"] });
+            queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
+          }
+        } catch {
+          // Silencioso: o usuário pode reenviar manualmente pelo botão
+        }
+      }
     },
     onError: () => {
       toast.error("Erro ao alterar etapa.");
@@ -171,6 +212,101 @@ export function OrderDetailSheet() {
 
   function handleClose() {
     setSelectedOrderId(null);
+  }
+
+  function handleSyncResponse(supplierId: string, json: Record<string, unknown>, res: Response) {
+    queryClient.invalidateQueries({ queryKey: ["orders"] });
+    queryClient.invalidateQueries({ queryKey: ["order", order!.id] });
+    if (json.requiresConfirmation) {
+      setBlingDuplicateData({
+        recentOrders:
+          (json.recentOrders as {
+            order_id: string;
+            order_number: number | null;
+            order_title: string;
+            bling_order_id: number | null;
+            days_ago: number;
+          }[]) ?? [],
+        supplierId,
+      });
+      return;
+    }
+    if (json.success) {
+      toast.success("Enviado ao fornecedor!", {
+        description: json.blingOrderNumber
+          ? `Pedido Bling #${json.blingOrderNumber} criado`
+          : "Contato e pedido enviados",
+      });
+    } else if (json.contactSent && !json.orderSent) {
+      toast.warning("Contato enviado, mas pedido falhou", {
+        description: (json.error as string) ?? "Verifique o mapeamento de SKUs dos produtos",
+      });
+    } else {
+      toast.error("Erro ao enviar", {
+        description: (json.error as string) ?? `Tente novamente${res.status ? ` (${res.status})` : ""}`,
+      });
+    }
+  }
+
+  async function handleSyncToSupplier(supplierId: string) {
+    if (!order) return;
+    setSendingToSupplier(supplierId);
+    try {
+      const res = await fetch("/api/bling/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplierId,
+          orderId: order.id,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      handleSyncResponse(supplierId, json, res);
+    } catch {
+      toast.error("Erro ao enviar dados.");
+    } finally {
+      setSendingToSupplier(null);
+    }
+  }
+
+  async function handleForceSync() {
+    if (!blingDuplicateData || !order) return;
+    const supplierId = blingDuplicateData.supplierId;
+    setBlingDuplicateData(null);
+    setSendingToSupplier(supplierId);
+    try {
+      const res = await fetch("/api/bling/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplierId,
+          orderId: order.id,
+          force: true,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", order.id] });
+      if (json.success) {
+        toast.success("Enviado ao fornecedor!", {
+          description: json.blingOrderNumber
+            ? `Pedido Bling #${json.blingOrderNumber} criado`
+            : "Contato e pedido enviados",
+        });
+      } else if (json.contactSent && !json.orderSent) {
+        toast.warning("Contato enviado, mas pedido falhou", {
+          description: json.error ?? "Verifique o mapeamento de SKUs dos produtos",
+        });
+      } else {
+        toast.error("Erro ao enviar", {
+          description: json.error ?? "Tente novamente",
+        });
+      }
+    } catch {
+      toast.error("Erro ao enviar dados.");
+    } finally {
+      setSendingToSupplier(null);
+    }
   }
 
   return (
@@ -238,6 +374,11 @@ export function OrderDetailSheet() {
                     <SheetTitle className="mt-2 text-xl font-semibold leading-tight">
                       {order.title}
                     </SheetTitle>
+                    {order.bling_order_id && (
+                      <Badge variant="outline" className="mt-2 text-xs border-green-500/50 text-green-600 dark:text-green-400">
+                        Bling #{order.bling_order_id}
+                      </Badge>
+                    )}
                     {order.description &&
                       order.order_type !== "PERSONALIZADO" && (
                       <SheetDescription className="mt-1 text-sm text-muted-foreground">
@@ -255,30 +396,9 @@ export function OrderDetailSheet() {
                           size="sm"
                           className="gap-1.5"
                           disabled={!!sendingToSupplier}
-                          onClick={async () => {
+                          onClick={() => {
                             const s = activeSuppliers[0] as { id: string; name: string };
-                            setSendingToSupplier(s.id);
-                            try {
-                              const res = await fetch("/api/bling/sync", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  supplierId: s.id,
-                                  orderId: order.id,
-                                }),
-                              });
-                              const json = await res.json();
-                              if (json.success) {
-                                toast.success(`Dados enviados ao fornecedor ${s.name}`);
-                                queryClient.invalidateQueries({ queryKey: ["orders"] });
-                              } else {
-                                toast.error(json.error ?? "Erro ao enviar");
-                              }
-                            } catch {
-                              toast.error("Erro ao enviar dados.");
-                            } finally {
-                              setSendingToSupplier(null);
-                            }
+                            handleSyncToSupplier(s.id);
                           }}
                         >
                           <Send className="h-3.5 w-3.5" />
@@ -302,30 +422,7 @@ export function OrderDetailSheet() {
                               (s: { id: string; name: string }) => (
                                 <DropdownMenuItem
                                   key={s.id}
-                                  onClick={async () => {
-                                    setSendingToSupplier(s.id);
-                                    try {
-                                      const res = await fetch("/api/bling/sync", {
-                                        method: "POST",
-                                        headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({
-                                          supplierId: s.id,
-                                          orderId: order.id,
-                                        }),
-                                      });
-                                      const json = await res.json();
-                                      if (json.success) {
-                                        toast.success(`Dados enviados ao fornecedor ${s.name}`);
-                                        queryClient.invalidateQueries({ queryKey: ["orders"] });
-                                      } else {
-                                        toast.error(json.error ?? "Erro ao enviar");
-                                      }
-                                    } catch {
-                                      toast.error("Erro ao enviar dados.");
-                                    } finally {
-                                      setSendingToSupplier(null);
-                                    }
-                                  }}
+                                  onClick={() => handleSyncToSupplier(s.id)}
                                 >
                                   {s.name}
                                 </DropdownMenuItem>
@@ -428,30 +525,9 @@ export function OrderDetailSheet() {
                         size="sm"
                         disabled={!!sendingToSupplier}
                         className="gap-2"
-                        onClick={async () => {
+                        onClick={() => {
                           const supplier = activeSuppliers[0] as { id: string; name: string };
-                          setSendingToSupplier(supplier.id);
-                          try {
-                            const res = await fetch("/api/bling/sync", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                supplierId: supplier.id,
-                                orderId: order.id,
-                              }),
-                            });
-                            const json = await res.json().catch(() => ({}));
-                            if (res.ok && json.success) {
-                              toast.success(`Dados enviados ao fornecedor ${supplier.name}`);
-                              queryClient.invalidateQueries({ queryKey: ["orders"] });
-                            } else {
-                              toast.error(json.error ?? `Erro ao enviar (${res.status})`);
-                            }
-                          } catch {
-                            toast.error("Erro ao enviar dados.");
-                          } finally {
-                            setSendingToSupplier(null);
-                          }
+                          handleSyncToSupplier(supplier.id);
                         }}
                       >
                         <Send className="h-4 w-4" />
@@ -482,38 +558,7 @@ export function OrderDetailSheet() {
                             (supplier: { id: string; name: string }) => (
                               <DropdownMenuItem
                                 key={supplier.id}
-                                onClick={async () => {
-                                  setSendingToSupplier(supplier.id);
-                                  try {
-                                    const res = await fetch("/api/bling/sync", {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                      },
-                                      body: JSON.stringify({
-                                        supplierId: supplier.id,
-                                        orderId: order.id,
-                                      }),
-                                    });
-                                    const json = await res.json();
-                                    if (json.success) {
-                                      toast.success(
-                                        `Dados enviados ao fornecedor ${supplier.name}`
-                                      );
-                                      queryClient.invalidateQueries({
-                                        queryKey: ["orders"],
-                                      });
-                                    } else {
-                                      toast.error(
-                                        json.error ?? "Erro ao enviar"
-                                      );
-                                    }
-                                  } catch {
-                                    toast.error("Erro ao enviar dados.");
-                                  } finally {
-                                    setSendingToSupplier(null);
-                                  }
-                                }}
+                                onClick={() => handleSyncToSupplier(supplier.id)}
                               >
                                 {supplier.name}
                               </DropdownMenuItem>
@@ -767,6 +812,52 @@ export function OrderDetailSheet() {
         onConfirm={() => deleteMutation.mutate()}
         loading={deleteMutation.isPending}
       />
+
+      <AlertDialog
+        open={!!blingDuplicateData}
+        onOpenChange={(open) => !open && setBlingDuplicateData(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-amber-500">
+              Pedido já enviado para este cliente
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Este cliente já tem pedido(s) enviado(s) ao Bling nos últimos 30 dias:</p>
+                <div className="space-y-2">
+                  {blingDuplicateData?.recentOrders.map((o) => (
+                    <div
+                      key={o.order_id}
+                      className="flex items-center justify-between rounded bg-muted p-2 text-sm"
+                    >
+                      <span className="font-medium">
+                        #{o.order_number} — {o.order_title}
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        {o.days_ago === 0
+                          ? "hoje"
+                          : `há ${o.days_ago} dia${o.days_ago > 1 ? "s" : ""}`}
+                        {o.bling_order_id && ` · Bling #${o.bling_order_id}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm">Deseja enviar mesmo assim?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForceSync}
+              className="bg-amber-500 hover:bg-amber-600"
+            >
+              Enviar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <OrderEditSheet
         orderId={editOrderId}

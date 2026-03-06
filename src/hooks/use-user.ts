@@ -10,6 +10,7 @@ interface UseUserReturn {
   profile: Profile | null;
   isLoading: boolean;
   error: Error | null;
+  refetchProfile: () => Promise<void>;
 }
 
 export function useUser(): UseUserReturn {
@@ -77,5 +78,9 @@ export function useUser(): UseUserReturn {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
-  return { user, profile, isLoading, error };
+  const refetchProfile = useCallback(async () => {
+    if (user) await fetchProfile(user.id);
+  }, [user, fetchProfile]);
+
+  return { user, profile, isLoading, error, refetchProfile };
 }

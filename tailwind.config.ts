@@ -44,6 +44,15 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        dashboard: {
+          primary: "hsl(var(--dashboard-primary))",
+          "primary-strong": "hsl(var(--dashboard-primary-strong))",
+          success: "hsl(var(--dashboard-success))",
+          "success-light": "hsl(var(--dashboard-success-light))",
+          accent: "hsl(var(--dashboard-accent))",
+          warning: "hsl(var(--dashboard-warning))",
+          danger: "hsl(var(--dashboard-danger))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

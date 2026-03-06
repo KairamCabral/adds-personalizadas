@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
       for (const userId of uniqueIds) {
         await supabase.from("notifications").insert({
           user_id: userId,
-          type: "artwork_revision_requested",
+          type: "artwork_adjustment",
           title: "Ajuste solicitado na arte",
           message: `${approver_name.trim()} solicitou ajuste na arte v${revVersion}: ${feedbackText.slice(0, 80)}${feedbackText.length > 80 ? "…" : ""}`,
           data: { order_id: tokenRow.order_id, artwork_id: tokenRow.artwork_id },

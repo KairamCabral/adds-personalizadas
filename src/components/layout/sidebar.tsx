@@ -28,7 +28,7 @@ const NAV_SECTIONS = [
     title: "Principal",
     items: [
       {
-        label: "Pipeline",
+        label: "Pedidos",
         href: "/pipeline",
         icon: Columns3,
         permission: "kanban.view" as const,
@@ -120,11 +120,11 @@ export function Sidebar() {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
-        "flex h-screen flex-col border-r border-border bg-card dark:bg-card transition-all duration-300 ease-in-out",
+        "flex h-screen flex-col border-r border-border/80 bg-card/95 backdrop-blur-sm shadow-sm transition-all duration-300 ease-in-out",
         // Desktop: fixed, collapsible
         "fixed left-0 top-0 z-40",
         // Desktop width
-        sidebarCollapsed ? "lg:w-[68px]" : "lg:w-[260px]",
+        sidebarCollapsed ? "lg:w-[72px]" : "lg:w-[260px]",
         // Mobile: always full width when overlay is open
         "w-[260px]"
       )}
@@ -132,7 +132,7 @@ export function Sidebar() {
       {/* Header */}
       <div
         className={cn(
-          "flex h-[60px] items-center border-b border-border px-4",
+          "flex h-[64px] items-center border-b border-border/60 px-4",
           sidebarCollapsed ? "lg:justify-center" : "justify-between"
         )}
       >
@@ -140,7 +140,7 @@ export function Sidebar() {
         <Link
           href="/pipeline"
           className={cn(
-            "flex items-center gap-2.5",
+            "flex items-center gap-2.5 rounded-lg px-2 py-1.5 -ml-2 transition-colors hover:bg-secondary/50",
             sidebarCollapsed && "lg:hidden"
           )}
           onClick={closeMobile}
@@ -157,17 +157,17 @@ export function Sidebar() {
         </Link>
 
         {/* Desktop: pin e collapse — hidden on mobile */}
-        <div className="hidden lg:flex items-center gap-0.5">
+        <div className="hidden lg:flex items-center gap-1">
           {!sidebarCollapsed && (
             <button
               onClick={() => setSidebarPinned(!sidebarPinned)}
               aria-label={sidebarPinned ? "Desafixar menu" : "Fixar menu expandido"}
               title={sidebarPinned ? "Desafixar" : "Manter expandido"}
               className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                "flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200",
                 sidebarPinned
-                  ? "text-primary hover:bg-primary/10"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  ? "text-primary bg-primary/10 hover:bg-primary/15"
+                  : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
               )}
             >
               {sidebarPinned ? (
@@ -180,7 +180,7 @@ export function Sidebar() {
           <button
             onClick={toggleSidebar}
             aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all duration-200 hover:bg-secondary/80 hover:text-foreground"
           >
             {sidebarCollapsed ? (
               <ChevronsRight className="h-4 w-4" />
@@ -193,7 +193,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav
-        className="flex-1 space-y-6 overflow-y-auto px-3 py-4"
+        className="flex-1 space-y-7 overflow-y-auto px-3 py-5"
         aria-label="Navegação principal"
       >
         {isLoading ? (
@@ -231,13 +231,13 @@ export function Sidebar() {
               <div key={section.title}>
                 <h3
                   className={cn(
-                    "mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60",
+                    "mb-2.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50",
                     sidebarCollapsed && "lg:sr-only"
                   )}
                 >
                   {section.title}
                 </h3>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {visibleItems.map((item) => {
                     const isActive =
                       pathname === item.href ||
@@ -257,35 +257,56 @@ export function Sidebar() {
                         onClick={closeMobile}
                         aria-current={isActive ? "page" : undefined}
                         className={cn(
-                          "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
+                          "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                           sidebarCollapsed && "lg:justify-center lg:px-0",
                           isActive
                             ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                            : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
                         )}
                         title={sidebarCollapsed ? item.label : undefined}
                       >
-                        <Icon
+                        <span
                           className={cn(
-                            "h-[18px] w-[18px] flex-shrink-0 transition-colors",
-                            isActive
-                              ? "text-primary"
-                              : "text-muted-foreground group-hover:text-foreground"
+                            "absolute left-0 top-1/2 -translate-y-1/2 h-6 w-0.5 rounded-r-full transition-all duration-200",
+                            isActive ? "bg-primary" : "bg-transparent",
+                            sidebarCollapsed && "lg:hidden"
                           )}
-                          aria-hidden="true"
                         />
-                        <span className={cn(sidebarCollapsed && "lg:sr-only")}>
+                        <span
+                          className={cn(
+                            "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors duration-200",
+                            isActive
+                              ? "bg-primary/15"
+                              : "group-hover:bg-secondary/80"
+                          )}
+                        >
+                          <Icon
+                            className={cn(
+                              "h-[18px] w-[18px] transition-colors",
+                              isActive
+                                ? "text-primary"
+                                : "text-muted-foreground group-hover:text-foreground"
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+                        <span
+                          className={cn(
+                            "flex-1 truncate",
+                            sidebarCollapsed && "lg:sr-only"
+                          )}
+                        >
                           {item.label}
                         </span>
 
                         {hasPending && (
                           <span
                             className={cn(
-                              "ml-auto",
+                              "ml-auto flex-shrink-0",
                               sidebarCollapsed && "lg:hidden"
                             )}
                           >
-                            <span className="relative flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-amber-400/50 ring-offset-2 ring-offset-card animate-pulse">
+                            <span className="relative flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white shadow-sm ring-2 ring-amber-400/30 ring-offset-2 ring-offset-card animate-pulse">
                               {pendingCount > 99 ? "99+" : pendingCount}
                             </span>
                           </span>
@@ -294,7 +315,7 @@ export function Sidebar() {
                         {isActive && !hasPending && (
                           <div
                             className={cn(
-                              "ml-auto h-1.5 w-1.5 rounded-full bg-primary",
+                              "ml-auto h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary",
                               sidebarCollapsed && "lg:hidden"
                             )}
                           />
@@ -312,11 +333,11 @@ export function Sidebar() {
       {/* Footer */}
       <div
         className={cn(
-          "border-t border-border px-4 py-3",
+          "border-t border-border/60 px-4 py-4",
           sidebarCollapsed && "lg:hidden"
         )}
       >
-        <p className="text-[10px] text-muted-foreground/40">
+        <p className="text-[10px] font-medium tracking-wide text-muted-foreground/45">
           ADDS CRM v1.0.0
         </p>
       </div>

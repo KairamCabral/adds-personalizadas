@@ -158,7 +158,7 @@ export function Header() {
                   role="menuitem"
                   onClick={() => {
                     setUserMenuOpen(false);
-                    router.push("/settings");
+                    router.push("/profile");
                   }}
                   className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >

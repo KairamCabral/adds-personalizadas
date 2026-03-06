@@ -58,6 +58,15 @@
     --sidebar-width: 260px;
     --sidebar-collapsed-width: 68px;
     --header-height: 60px;
+
+    /* ===== Dashboard Premium (cores com mais contraste) ===== */
+    --dashboard-primary: 207 85% 38%;
+    --dashboard-primary-strong: 207 90% 32%;
+    --dashboard-success: 142 65% 32%;
+    --dashboard-success-light: 142 72% 38%;
+    --dashboard-accent: 30 100% 42%;
+    --dashboard-warning: 38 92% 40%;
+    --dashboard-danger: 0 72% 48%;
   }
 
   .dark {
@@ -94,6 +103,15 @@
     --status-entregue: 160 30% 13%;
     --status-faturado: 207 40% 13%;
     --status-arquivado: 215 15% 14%;
+
+    /* Dashboard Premium (dark) */
+    --dashboard-primary: 207 85% 52%;
+    --dashboard-primary-strong: 207 90% 58%;
+    --dashboard-success: 142 65% 45%;
+    --dashboard-success-light: 142 72% 48%;
+    --dashboard-accent: 30 100% 52%;
+    --dashboard-warning: 38 92% 55%;
+    --dashboard-danger: 0 72% 55%;
   }
 }
 
@@ -184,6 +202,49 @@
 
   .stagger-children > * {
     animation-fill-mode: forwards;
+  }
+
+  /* Dashboard premium - progress bar fill animation */
+  @keyframes dashboard-progress-fill {
+    from {
+      transform: scaleX(0);
+      opacity: 0.6;
+    }
+    to {
+      transform: scaleX(1);
+      opacity: 1;
+    }
+  }
+
+  .dashboard-progress-animate {
+    animation: dashboard-progress-fill 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    transform-origin: left;
+  }
+
+  /* Skeleton shimmer for dashboard */
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--muted-foreground) / 0.06) 45%,
+      hsl(var(--muted-foreground) / 0.12) 50%,
+      hsl(var(--muted-foreground) / 0.06) 55%,
+      transparent 100%
+    );
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
   }
 }
 

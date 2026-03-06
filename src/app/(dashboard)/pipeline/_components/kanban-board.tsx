@@ -5,7 +5,8 @@ import { useQueryState, parseAsString } from "nuqs";
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
+  closestCenter,
+  defaultDropAnimationSideEffects,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -19,7 +20,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { KANBAN_COLUMN_STATUSES, type OrderStatus } from "@/lib/constants";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
-import { getOrders, getArchivedOrders, moveOrder, reorderColumn, archiveOrder, unarchiveOrder } from "@/services/orders.service";
+import { getOrders, getArchivedOrders, moveOrder, archiveOrder, unarchiveOrder } from "@/services/orders.service";
 import { KanbanColumn } from "./kanban-column";
 import { KanbanCard } from "./kanban-card";
 import { KanbanCardSkeleton } from "./kanban-card-skeleton";
@@ -43,6 +44,7 @@ export function KanbanBoard() {
   const queryClient = useQueryClient();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -95,19 +97,84 @@ export function KanbanBoard() {
       const result = await moveOrder(orderId, newStatus, newPosition);
       return { result, orderId, newStatus };
     },
-    onSuccess: async (data) => {
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      // Envio ao fornecedor é apenas manual (botão "Enviar ao Fornecedor"), não ao arrastar para Aprovado/Arte Aprovada
+    onMutate: async ({ orderId, newStatus, newPosition }) => {
+      await queryClient.cancelQueries({ queryKey: ["orders"] });
+      const previousOrders = queryClient.getQueryData(["orders"]);
+      queryClient.setQueryData(["orders"], (old: unknown) => {
+        if (!Array.isArray(old)) return old;
+        const movedOrder = (old as any[]).find((o: any) => o.id === orderId);
+        if (!movedOrder) return old as any[];
+
+        const oldStatus = movedOrder.status;
+        const withoutMoved = (old as any[]).filter((o: any) => o.id !== orderId);
+
+        const targetCards = withoutMoved
+          .filter((o: any) => o.status === newStatus)
+          .sort((a: any, b: any) => a.position - b.position);
+
+        targetCards.splice(newPosition, 0, {
+          ...movedOrder,
+          status: newStatus,
+          position: newPosition,
+        });
+
+        const updatedTarget = targetCards.map((o: any, i: number) => ({
+          ...o,
+          position: i,
+        }));
+
+        let otherCards = withoutMoved.filter((o: any) => o.status !== newStatus);
+        if (oldStatus !== newStatus) {
+          const oldColumnCards = otherCards
+            .filter((o: any) => o.status === oldStatus)
+            .sort((a: any, b: any) => a.position - b.position)
+            .map((o: any, i: number) => ({ ...o, position: i }));
+          otherCards = [
+            ...otherCards.filter((o: any) => o.status !== oldStatus),
+            ...oldColumnCards,
+          ];
+        }
+
+        return [...otherCards, ...updatedTarget];
+      });
+      return { previousOrders };
     },
-    onError: () => {
+    onError: (_err, _vars, context) => {
+      if (context?.previousOrders != null) {
+        queryClient.setQueryData(["orders"], context.previousOrders);
+      }
       toast.error("Erro ao mover pedido.");
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onSuccess: async (data) => {
+      if (data.newStatus === "APROVADO" || data.newStatus === "ARTE_APROVADA") {
+        try {
+          const res = await fetch("/api/bling/sync-on-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: data.orderId,
+              newStatus: data.newStatus,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (json.results?.some((r: { success: boolean }) => r.success)) {
+            toast.success("Pedido enviado ao fornecedor automaticamente.");
+          }
+        } catch {
+          // Silencioso
+        }
+      }
+    },
+    onSettled: () => {
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["orders"] });
+      }, 1500);
     },
   });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 10 },
+      activationConstraint: { distance: 8 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -171,7 +238,11 @@ export function KanbanBoard() {
       return (orders as any[])
         .filter((o: any) => o.status === status)
         .filter((o: any) => {
-          if (responsavel && o.assigned_to !== responsavel) return false;
+          if (responsavel) {
+            const isAssigned = o.assigned_to === responsavel;
+            const isCreator = o.created_by === responsavel;
+            if (!isAssigned && !isCreator) return false;
+          }
           if (prioridade && o.priority !== prioridade) return false;
           if (tipo && o.order_type !== tipo) return false;
           if (etiqueta) {
@@ -200,22 +271,47 @@ export function KanbanBoard() {
   }
 
   function handleDragOver(event: DragOverEvent) {
-    // Visual feedback only -- actual move happens on drag end
-  }
-
-  function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    setActiveId(null);
+    setOverId(over ? (over.id as string) : null);
 
     if (showArchived || !over) return;
 
     const activeOrder = (orders as any[]).find((o: any) => o.id === active.id);
     if (!activeOrder) return;
 
-    const overStatus = visibleColumns.find((s) => s.key === over.id);
     const overOrder = (orders as any[]).find((o: any) => o.id === over.id);
+    const overColumnId = over.data.current?.sortable?.containerId ?? over.id;
+    const targetStatus = visibleColumns.some((s) => s.key === overColumnId)
+      ? overColumnId
+      : overOrder?.status;
 
-    const targetStatus = overStatus?.key ?? overOrder?.status;
+    if (!targetStatus || targetStatus === activeOrder.status) return;
+
+    queryClient.setQueryData(["orders"], (old: unknown) => {
+      if (!Array.isArray(old)) return old;
+      return (old as any[]).map((o: any) =>
+        o.id === active.id
+          ? { ...o, status: targetStatus, position: 999 }
+          : o
+      );
+    });
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setActiveId(null);
+    setOverId(null);
+
+    if (showArchived || !over) return;
+
+    const activeOrder = (orders as any[]).find((o: any) => o.id === active.id);
+    if (!activeOrder) return;
+
+    const overOrder = (orders as any[]).find((o: any) => o.id === over.id);
+    const overColumnId = over.data.current?.sortable?.containerId ?? over.id;
+    const targetStatus =
+      (visibleColumns.some((s) => s.key === overColumnId) ? overColumnId : null) ??
+      overOrder?.status;
     if (!targetStatus) return;
 
     if (targetStatus === "ARQUIVADO") {
@@ -225,11 +321,20 @@ export function KanbanBoard() {
       return;
     }
 
+    const isSameColumn = activeOrder.status === targetStatus;
+
     const targetOrders = (orders as any[])
       .filter((o: any) => o.status === targetStatus && o.id !== active.id)
       .sort((a: any, b: any) => a.position - b.position);
 
-    const newPosition = targetOrders.length;
+    let newPosition: number;
+    if (isSameColumn) {
+      const overIndex = over.data.current?.sortable?.index;
+      newPosition =
+        typeof overIndex === "number" ? overIndex : targetOrders.length;
+    } else {
+      newPosition = targetOrders.length;
+    }
 
     if (
       activeOrder.status !== targetStatus ||
@@ -365,7 +470,7 @@ export function KanbanBoard() {
         ) : (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={closestCenter}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
@@ -395,13 +500,15 @@ export function KanbanBoard() {
               ))}
             </div>
 
-            <DragOverlay dropAnimation={null}>
-              {activeOrder ? (
-                <KanbanCard
-                  order={activeOrder}
-                  onClick={() => {}}
-                  isDragging
-                />
+            <DragOverlay
+              dropAnimation={{
+                sideEffects: defaultDropAnimationSideEffects({
+                  styles: { active: { opacity: "0.4" } },
+                }),
+              }}
+            >
+              {activeId && activeOrder ? (
+                <KanbanCard order={activeOrder} onClick={() => {}} disabled />
               ) : null}
             </DragOverlay>
           </DndContext>

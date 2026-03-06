@@ -733,6 +733,7 @@ export type Database = {
         Row: {
           archived_at: string | null
           assigned_to: string | null
+          bling_order_id: number | null
           client_id: string | null
           created_at: string
           created_by: string | null
@@ -754,6 +755,7 @@ export type Database = {
         Insert: {
           archived_at?: string | null
           assigned_to?: string | null
+          bling_order_id?: number | null
           client_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -775,6 +777,7 @@ export type Database = {
         Update: {
           archived_at?: string | null
           assigned_to?: string | null
+          bling_order_id?: number | null
           client_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -821,6 +824,8 @@ export type Database = {
         Row: {
           allows_custom_color: boolean | null
           available_colors: Json | null
+          bling_color_sku_map: Json | null
+          bling_sku: string | null
           canvas_height: number | null
           canvas_width: number | null
           category: string | null
@@ -842,6 +847,8 @@ export type Database = {
         Insert: {
           allows_custom_color?: boolean | null
           available_colors?: Json | null
+          bling_color_sku_map?: Json | null
+          bling_sku?: string | null
           canvas_height?: number | null
           canvas_width?: number | null
           category?: string | null
@@ -863,6 +870,8 @@ export type Database = {
         Update: {
           allows_custom_color?: boolean | null
           available_colors?: Json | null
+          bling_color_sku_map?: Json | null
+          bling_sku?: string | null
           canvas_height?: number | null
           canvas_width?: number | null
           category?: string | null

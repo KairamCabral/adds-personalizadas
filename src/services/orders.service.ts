@@ -271,14 +271,21 @@ export async function moveOrder(
   newStatus: OrderStatus,
   newPosition: number
 ) {
-  const { data, error } = await supabase
-    .from("orders")
-    .update({ status: newStatus, position: newPosition })
-    .eq("id", orderId)
-    .select()
-    .single();
+  const { error } = await (supabase.rpc as any)("move_order_atomic", {
+    p_order_id: orderId,
+    p_new_status: newStatus,
+    p_new_position: newPosition,
+  });
 
   if (error) throw error;
+
+  const { data, error: fetchError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .single();
+
+  if (fetchError) throw fetchError;
   return data;
 }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sendClientToBling } from "@/services/bling.service";
+import { sendOrderToBling } from "@/services/bling.service";
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,10 +47,13 @@ export async function POST(request: NextRequest) {
       supplierName: string;
       success: boolean;
       error?: string;
+      contactSent?: boolean;
+      orderSent?: boolean;
+      blingOrderNumber?: number;
     }> = [];
 
     for (const supplier of suppliers) {
-      const result = await sendClientToBling(
+      const result = await sendOrderToBling(
         supplier.id,
         orderId,
         user.id,
@@ -59,8 +62,11 @@ export async function POST(request: NextRequest) {
       results.push({
         supplierId: supplier.id,
         supplierName: supplier.name,
-        success: result.success,
+        success: result.orderSent,
         error: result.error,
+        contactSent: result.contactSent,
+        orderSent: result.orderSent,
+        blingOrderNumber: result.blingOrderNumber,
       });
     }
 
