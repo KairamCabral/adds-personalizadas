@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
@@ -23,6 +24,15 @@ function getServiceClient() {
 }
 
 export async function POST(request: NextRequest) {
+  // ═══ AUTH CHECK ═══
+  const supabaseAuth = await createServerClient();
+  const {
+    data: { user },
+  } = await supabaseAuth.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -81,28 +91,13 @@ export async function POST(request: NextRequest) {
       .from(BUCKET)
       .getPublicUrl(uploadData.path);
 
-    const authHeader = request.headers.get("authorization");
-    let userId: string | null = null;
-    if (authHeader?.startsWith("Bearer ")) {
-      try {
-        const { createClient: createBrowserClient } = await import(
-          "@/lib/supabase/client"
-        );
-        const client = createBrowserClient();
-        const { data: { user } } = await client.auth.getUser();
-        userId = user?.id ?? null;
-      } catch {
-        // ignore
-      }
-    }
-
     const { error: attachError } = await supabase.from("attachments").insert({
       order_id: orderId,
       file_url: urlData.publicUrl,
       file_name: file.name,
       file_size: file.size,
       file_type: file.type,
-      uploaded_by: userId,
+      uploaded_by: user.id,
     });
 
     if (attachError) {

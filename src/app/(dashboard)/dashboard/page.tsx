@@ -674,55 +674,91 @@ export default function DashboardPage() {
                   </p>
                 </CardHeader>
                 <CardContent>
-                  {data.funil.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-14 text-center">
-                      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-                        <TrendingDown className="h-7 w-7 text-muted-foreground" />
-                      </div>
-                      <p className="text-base font-bold text-foreground">
-                        Sem dados no período
-                      </p>
-                      <p className="mt-2 text-sm font-medium text-foreground/70">
-                        O funil será preenchido conforme os pedidos avançam
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {data.funil.map((item, index) => {
-                        const maxQtd = data.funil[0]?.quantidade || 1;
-                        const pct = (item.quantidade / maxQtd) * 100;
-                        const prevQtd =
-                          index > 0 ? data.funil[index - 1]?.quantidade : null;
-                        const conversionRate = prevQtd
-                          ? ((item.quantidade / prevQtd) * 100).toFixed(0)
-                          : null;
+                  {(() => {
+                    const FUNIL_ETAPAS_FIXAS = [
+                      { etapa: "Entrada", ordem: 1 },
+                      { etapa: "Aprovação", ordem: 2 },
+                      { etapa: "Produção", ordem: 3 },
+                      { etapa: "Expedição", ordem: 4 },
+                      { etapa: "Finalizado", ordem: 5 },
+                    ];
+                    const funilCompleto = FUNIL_ETAPAS_FIXAS.map((etapaFixa) => {
+                      const found = (data.funil ?? []).find(
+                        (f) => f.etapa === etapaFixa.etapa
+                      );
+                      return {
+                        etapa: etapaFixa.etapa,
+                        quantidade: found?.quantidade ?? 0,
+                        ordem: etapaFixa.ordem,
+                      };
+                    });
+                    const maxQtd = Math.max(
+                      ...funilCompleto.map((f) => f.quantidade),
+                      1
+                    );
 
-                        return (
-                          <div key={item.etapa} className="space-y-2">
-                            <div className="flex items-center justify-between text-base">
-                              <span className="font-bold text-foreground">{item.etapa}</span>
-                              <div className="flex items-center gap-3">
-                                {conversionRate != null && (
-                                  <span className="text-sm font-semibold text-foreground/70">
-                                    {conversionRate}% conv.
-                                  </span>
-                                )}
-                                <span className="text-lg font-bold tabular-nums text-foreground">
-                                  {item.quantidade}
+                    return (
+                      <div className="space-y-3">
+                        {funilCompleto.map((item, index) => {
+                          const pct =
+                            maxQtd > 0
+                              ? Math.max(
+                                  (item.quantidade / maxQtd) * 100,
+                                  item.quantidade > 0 ? 3 : 0
+                                )
+                              : 0;
+                          const prevQtd =
+                            index > 0
+                              ? funilCompleto[index - 1]?.quantidade
+                              : null;
+                          const conversionRate = prevQtd
+                            ? ((item.quantidade / prevQtd) * 100).toFixed(0)
+                            : null;
+
+                          return (
+                            <div key={item.etapa} className="space-y-2">
+                              <div className="flex items-center justify-between text-base">
+                                <span className="font-bold text-foreground">
+                                  {item.etapa}
                                 </span>
+                                <div className="flex items-center gap-3">
+                                  {conversionRate != null && (
+                                    <span className="text-sm font-semibold text-foreground/70">
+                                      {conversionRate}% conv.
+                                    </span>
+                                  )}
+                                  <span className="text-lg font-bold tabular-nums text-foreground">
+                                    {item.quantidade}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className="dashboard-progress-animate h-full rounded-full bg-gradient-to-r from-dashboard-primary to-dashboard-primary-strong"
+                                  style={{ width: `${pct}%` }}
+                                />
                               </div>
                             </div>
-                            <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted">
-                              <div
-                                className="dashboard-progress-animate h-full rounded-full bg-gradient-to-r from-dashboard-primary to-dashboard-primary-strong"
-                                style={{ width: `${Math.max(pct, 2)}%` }}
-                              />
-                            </div>
+                          );
+                        })}
+                        {funilCompleto[0].quantidade > 0 && (
+                          <div className="mt-4 flex items-center justify-between border-t pt-3 text-sm">
+                            <span className="text-muted-foreground">
+                              Conversão total (Entrada → Finalizado)
+                            </span>
+                            <span className="text-lg font-bold">
+                              {(
+                                (funilCompleto[4].quantidade /
+                                  funilCompleto[0].quantidade) *
+                                100
+                              ).toFixed(0)}
+                              %
+                            </span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </div>

@@ -40,7 +40,10 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/supplier") ||
     pathname.startsWith("/art/approve") ||
     pathname.startsWith("/api/art/approve") ||
-    pathname.startsWith("/api/webhooks");
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/api/quote") || // /api/quote/submit, /api/quote/upload-logo
+    pathname.startsWith("/api/products/public") || // Catálogo público para formulário de orçamento
+    pathname.startsWith("/api/clients/find-by-document"); // Busca por CPF/CNPJ no passo "Já sou cliente"
 
   if (isPublicRoute) {
     // Redirect authenticated users away from login

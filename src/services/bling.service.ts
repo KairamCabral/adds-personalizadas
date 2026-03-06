@@ -647,6 +647,53 @@ async function findBlingContact(
   return null;
 }
 
+const blingProductCache = new Map<string, number | null>();
+
+/**
+ * Busca um produto no Bling pelo código (SKU) e retorna o ID numérico.
+ * Usa cache em memória para evitar múltiplas chamadas na mesma execução.
+ */
+async function findBlingProductByCode(
+  codigo: string,
+  apiToken: string,
+  baseUrl: string
+): Promise<number | null> {
+  if (blingProductCache.has(codigo)) {
+    return blingProductCache.get(codigo) ?? null;
+  }
+
+  try {
+    const url = `${baseUrl}/produtos?codigo=${encodeURIComponent(codigo)}&limite=1`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+
+    if (!res.ok) {
+      console.log(`[findBlingProduct] Erro ao buscar ${codigo}: status ${res.status}`);
+      blingProductCache.set(codigo, null);
+      return null;
+    }
+
+    const data = (await res.json()) as { data?: { id?: number }[] };
+    const products = data?.data ?? [];
+
+    if (products.length > 0 && products[0].id != null) {
+      const productId = products[0].id;
+      console.log(`[findBlingProduct] ${codigo} → ID ${productId}`);
+      blingProductCache.set(codigo, productId);
+      return productId;
+    }
+
+    console.log(`[findBlingProduct] ${codigo} → não encontrado`);
+    blingProductCache.set(codigo, null);
+    return null;
+  } catch (err) {
+    console.log(`[findBlingProduct] Erro ao buscar ${codigo}:`, err);
+    blingProductCache.set(codigo, null);
+    return null;
+  }
+}
+
 interface BlingOrderPayload {
   numero?: number;
   data: string;
@@ -654,13 +701,10 @@ interface BlingOrderPayload {
   contato: { id: number };
   vendedor?: { id: number };
   itens: {
-    produto: {
-      id?: number;
-      codigo?: string;
-    };
+    produto?: { id: number };
+    descricao?: string;
     quantidade: number;
     valor: number;
-    descricao?: string;
   }[];
   observacoes?: string;
   observacoesInternas?: string;
@@ -699,6 +743,8 @@ function resolveBlingSkuForItem(
 async function buildBlingOrderPayload(
   orderId: string,
   blingContactId: number,
+  apiToken: string,
+  baseUrl: string,
   db: SupabaseClient<Database>
 ): Promise<BlingOrderPayload> {
   const { data: order, error: orderError } = await db
@@ -740,16 +786,26 @@ async function buildBlingOrderPayload(
     const blingSku = resolveBlingSkuForItem(product, colorKey);
 
     if (blingSku) {
-      itens.push({
-        produto: {
-          codigo: blingSku,
-        },
-        quantidade: item.quantity,
-        valor: 0.01,
-        descricao: colorLabel
-          ? `${item.product_name} - ${colorLabel}`
-          : item.product_name,
-      });
+      const blingProductId = await findBlingProductByCode(blingSku, apiToken, baseUrl);
+
+      if (blingProductId) {
+        itens.push({
+          produto: { id: blingProductId },
+          quantidade: item.quantity,
+          valor: 0.01,
+        });
+      } else {
+        itens.push({
+          descricao: colorLabel
+            ? `${item.product_name} - ${colorLabel}`
+            : item.product_name,
+          quantidade: item.quantity,
+          valor: 0.01,
+        } as BlingOrderPayload["itens"][number]);
+        unmappedItems.push(
+          `${item.product_name}${colorLabel ? ` (${colorLabel})` : ""} x${item.quantity} [SKU: ${blingSku} não encontrado no Bling]`
+        );
+      }
     } else {
       unmappedItems.push(
         `${item.product_name}${colorLabel ? ` (${colorLabel})` : ""} x${item.quantity}`
@@ -843,6 +899,8 @@ export async function createBlingOrder(
     throw new Error("Token do Bling não configurado");
   }
 
+  blingProductCache.clear();
+
   // Parte 1: Buscar bling_contact_id em logs — por order_id OU por client_id
   const { data: lastLogByOrder } = await db
     .from("supplier_data_logs")
@@ -915,7 +973,13 @@ export async function createBlingOrder(
 
   const clientId = orderData.client_id;
 
-  const payload = await buildBlingOrderPayload(orderId, blingContactId, db);
+  const payload = await buildBlingOrderPayload(
+    orderId,
+    blingContactId,
+    apiToken,
+    baseUrl,
+    db
+  );
 
   if (payload.itens.length === 0) {
     throw new Error(

@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import type { Database } from "@/types/database.types";
 
 type PublicQuoteInsert = Database["public"]["Tables"]["public_quotes"]["Insert"];
@@ -30,7 +31,15 @@ interface CreatePublicQuoteBody {
  * Recebe os dados do formulário público de orçamento e insere em public_quotes
  * usando o service role, evitando 401 por RLS/anon no cliente.
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // ═══ RATE LIMIT ═══
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    "unknown";
+  const { success } = rateLimit(`quote:${ip}`, { windowMs: 300000, max: 10 }); // 10 req / 5 min
+  if (!success) return rateLimitResponse();
+
   try {
     const data = (await request.json()) as CreatePublicQuoteBody;
 

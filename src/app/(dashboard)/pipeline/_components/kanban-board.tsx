@@ -49,12 +49,14 @@ export function KanbanBoard() {
   const [isPanning, setIsPanning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ lastX: number } | null>(null);
+  const dragOriginStatus = useRef<string | null>(null);
 
   const [busca, setBusca] = useQueryState("busca", parseAsString);
   const [responsavel] = useQueryState("responsavel", parseAsString);
   const [prioridade] = useQueryState("prioridade", parseAsString);
   const [tipo] = useQueryState("tipo", parseAsString);
   const [etiqueta] = useQueryState("etiqueta", parseAsString);
+  const [orderParam, setOrderParam] = useQueryState("order", parseAsString);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ordersQuery = useQuery<any[], Error>({
@@ -146,7 +148,7 @@ export function KanbanBoard() {
       toast.error("Erro ao mover pedido.");
     },
     onSuccess: async (data) => {
-      if (data.newStatus === "APROVADO" || data.newStatus === "ARTE_APROVADA") {
+      if (data.newStatus === "APROVADO") {
         try {
           const res = await fetch("/api/bling/sync-on-status", {
             method: "POST",
@@ -171,6 +173,13 @@ export function KanbanBoard() {
       }, 1500);
     },
   });
+
+  useEffect(() => {
+    if (orderParam) {
+      setSelectedOrderId(orderParam);
+      setOrderParam(null); // Limpar da URL depois de abrir
+    }
+  }, [orderParam, setSelectedOrderId, setOrderParam]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -268,6 +277,8 @@ export function KanbanBoard() {
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(event.active.id as string);
+    const order = (orders as any[]).find((o: any) => o.id === event.active.id);
+    dragOriginStatus.current = order?.status ?? null;
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -287,11 +298,16 @@ export function KanbanBoard() {
 
     if (!targetStatus || targetStatus === activeOrder.status) return;
 
+    // Mover visualmente para a nova coluna — posição no FINAL
+    const targetOrders = (orders as any[])
+      .filter((o: any) => o.status === targetStatus && o.id !== active.id)
+      .sort((a: any, b: any) => a.position - b.position);
+
     queryClient.setQueryData(["orders"], (old: unknown) => {
       if (!Array.isArray(old)) return old;
       return (old as any[]).map((o: any) =>
         o.id === active.id
-          ? { ...o, status: targetStatus, position: 999 }
+          ? { ...o, status: targetStatus, position: targetOrders.length }
           : o
       );
     });
@@ -321,7 +337,7 @@ export function KanbanBoard() {
       return;
     }
 
-    const isSameColumn = activeOrder.status === targetStatus;
+    const isSameColumn = dragOriginStatus.current === targetStatus;
 
     const targetOrders = (orders as any[])
       .filter((o: any) => o.status === targetStatus && o.id !== active.id)
@@ -346,6 +362,7 @@ export function KanbanBoard() {
         newPosition,
       });
     }
+    dragOriginStatus.current = null;
   }
 
   function handleAddOrder(status: OrderStatus) {
