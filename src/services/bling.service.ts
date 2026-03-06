@@ -648,6 +648,55 @@ async function findBlingContact(
 }
 
 const blingProductCache = new Map<string, number | null>();
+const blingVendedorCache = new Map<string, number | null>();
+
+/**
+ * Busca o ID do vendedor no Bling pelo e-mail do criador do pedido.
+ * Mapeamento: Ana (ana@adds.com.br), Maysa (maysa@adds.com.br), Helena (helena@adds.com.br).
+ * Usa cache em memória para evitar múltiplas chamadas na mesma execução.
+ */
+async function findBlingVendedorByEmail(
+  creatorEmail: string | null,
+  apiToken: string,
+  baseUrl: string
+): Promise<number | null> {
+  if (!creatorEmail?.trim()) return null;
+
+  const email = creatorEmail.trim().toLowerCase();
+  if (blingVendedorCache.has(email)) {
+    return blingVendedorCache.get(email) ?? null;
+  }
+
+  try {
+    const url = `${baseUrl}/vendedores?limite=100`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+
+    if (!res.ok) {
+      blingVendedorCache.set(email, null);
+      return null;
+    }
+
+    const data = (await res.json()) as { data?: { id?: number; nome?: string; email?: string }[] };
+    const vendedores = data?.data ?? [];
+
+    const vendedor = Array.isArray(vendedores)
+      ? vendedores.find((v) => (v.email ?? "").toLowerCase() === email)
+      : null;
+
+    if (vendedor?.id != null) {
+      blingVendedorCache.set(email, vendedor.id);
+      return vendedor.id;
+    }
+
+    blingVendedorCache.set(email, null);
+    return null;
+  } catch {
+    blingVendedorCache.set(email, null);
+    return null;
+  }
+}
 
 /**
  * Busca um produto no Bling pelo código (SKU) e retorna o ID numérico.
@@ -753,7 +802,7 @@ async function buildBlingOrderPayload(
       `
       *,
       client:clients(*),
-      created_by_profile:profiles!orders_created_by_fkey(full_name),
+      created_by_profile:profiles!orders_created_by_fkey(full_name, email),
       items:order_items(
         *,
         product:products(id, name, bling_sku, bling_color_sku_map)
@@ -839,12 +888,16 @@ async function buildBlingOrderPayload(
   // O cliente já está vinculado ao pedido como contato no Bling
 
   const today = new Date().toISOString().split("T")[0];
-  const createdByProfile = order.created_by_profile as { full_name?: string } | null;
+  const createdByProfile = order.created_by_profile as { full_name?: string; email?: string } | null;
+  const creatorEmail = createdByProfile?.email ?? null;
+
+  const blingVendedorId = await findBlingVendedorByEmail(creatorEmail, apiToken, baseUrl);
 
   const payload: BlingOrderPayload = {
     data: today,
     dataSaida: today,
     contato: { id: blingContactId },
+    ...(blingVendedorId ? { vendedor: { id: blingVendedorId } } : {}),
     itens,
     observacoes: obsLines.length > 0 ? obsLines.join("\n") : undefined,
     observacoesInternas: `Pedido CRM #${order.order_number ?? ""} | Criado por: ${createdByProfile?.full_name ?? "Sistema"}`,
@@ -900,6 +953,7 @@ export async function createBlingOrder(
   }
 
   blingProductCache.clear();
+  blingVendedorCache.clear();
 
   // Parte 1: Buscar bling_contact_id em logs — por order_id OU por client_id
   const { data: lastLogByOrder } = await db
