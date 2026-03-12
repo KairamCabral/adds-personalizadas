@@ -50,6 +50,7 @@ export function KanbanBoard() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ lastX: number } | null>(null);
   const dragOriginStatus = useRef<string | null>(null);
+  const blingSyncing = useRef(new Set<string>());
 
   const [busca, setBusca] = useQueryState("busca", parseAsString);
   const [responsavel] = useQueryState("responsavel", parseAsString);
@@ -149,6 +150,8 @@ export function KanbanBoard() {
     },
     onSuccess: async (data) => {
       if (data.newStatus === "APROVADO") {
+        if (blingSyncing.current.has(data.orderId)) return;
+        blingSyncing.current.add(data.orderId);
         try {
           const res = await fetch("/api/bling/sync-on-status", {
             method: "POST",
@@ -164,6 +167,8 @@ export function KanbanBoard() {
           }
         } catch {
           // Silencioso
+        } finally {
+          blingSyncing.current.delete(data.orderId);
         }
       }
     },

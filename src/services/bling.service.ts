@@ -648,54 +648,30 @@ async function findBlingContact(
 }
 
 const blingProductCache = new Map<string, number | null>();
-const blingVendedorCache = new Map<string, number | null>();
 
-/**
- * Busca o ID do vendedor no Bling pelo e-mail do criador do pedido.
- * Mapeamento: Ana (ana@adds.com.br), Maysa (maysa@adds.com.br), Helena (helena@adds.com.br).
- * Usa cache em memória para evitar múltiplas chamadas na mesma execução.
- */
-async function findBlingVendedorByEmail(
-  creatorEmail: string | null,
-  apiToken: string,
-  baseUrl: string
-): Promise<number | null> {
-  if (!creatorEmail?.trim()) return null;
+/** Fallback: mapeamento direto código SKU → ID numérico do produto no Bling.
+ *  Usado quando a busca via API falha (rate limit, timeout, etc.) */
+const BLING_PRODUCT_ID_MAP: Record<string, number> = {
+  // ADDS Implant
+  "PRD00011A": 16374933369, // ESCOVA ADDS IMPLANT EXTRA MACIA - AMARELA
+  "PRD00011L": 16374933665, // ESCOVA ADDS IMPLANT EXTRA MACIA - LILAS
+  "PRD00011V": 16374933877, // ESCOVA ADDS IMPLANT EXTRA MACIA - VERDE
+  // ADDS Ultra
+  "PRD00012A": 16615142495, // ESCOVA ADDS ULTRA 11400 - ULTRA MACIA - AZUL
+  "PRD00012L": 16615143863, // ESCOVA ADDS ULTRA 11400 - ULTRA MACIA - LARANJA
+  "PRD00012V": 16615143424, // ESCOVA ADDS ULTRA 11400 - ULTRA MACIA - VERMELHA
+};
 
-  const email = creatorEmail.trim().toLowerCase();
-  if (blingVendedorCache.has(email)) {
-    return blingVendedorCache.get(email) ?? null;
-  }
+/** Mapeamento direto email do criador → ID do vendedor no Bling */
+const EMAIL_TO_BLING_VENDEDOR_ID: Record<string, number> = {
+  "ana@adds.com.br": 15596870450,
+  "maysa@adds.com.br": 15596870451,
+  "helena@adds.com.br": 15596870453,
+};
 
-  try {
-    const url = `${baseUrl}/vendedores?limite=100`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiToken}` },
-    });
-
-    if (!res.ok) {
-      blingVendedorCache.set(email, null);
-      return null;
-    }
-
-    const data = (await res.json()) as { data?: { id?: number; nome?: string; email?: string }[] };
-    const vendedores = data?.data ?? [];
-
-    const vendedor = Array.isArray(vendedores)
-      ? vendedores.find((v) => (v.email ?? "").toLowerCase() === email)
-      : null;
-
-    if (vendedor?.id != null) {
-      blingVendedorCache.set(email, vendedor.id);
-      return vendedor.id;
-    }
-
-    blingVendedorCache.set(email, null);
-    return null;
-  } catch {
-    blingVendedorCache.set(email, null);
-    return null;
-  }
+function getBlingVendedorId(creatorEmail: string | null): number | null {
+  if (!creatorEmail) return null;
+  return EMAIL_TO_BLING_VENDEDOR_ID[creatorEmail.toLowerCase().trim()] ?? null;
 }
 
 /**
@@ -707,8 +683,10 @@ async function findBlingProductByCode(
   apiToken: string,
   baseUrl: string
 ): Promise<number | null> {
-  if (blingProductCache.has(codigo)) {
-    return blingProductCache.get(codigo) ?? null;
+  const upperCodigo = codigo.toUpperCase().trim();
+
+  if (blingProductCache.has(upperCodigo)) {
+    return blingProductCache.get(upperCodigo) ?? null;
   }
 
   try {
@@ -718,8 +696,12 @@ async function findBlingProductByCode(
     });
 
     if (!res.ok) {
-      console.log(`[findBlingProduct] Erro ao buscar ${codigo}: status ${res.status}`);
-      blingProductCache.set(codigo, null);
+      const fallbackId = BLING_PRODUCT_ID_MAP[upperCodigo];
+      if (fallbackId && fallbackId > 0) {
+        blingProductCache.set(upperCodigo, fallbackId);
+        return fallbackId;
+      }
+      blingProductCache.set(upperCodigo, null);
       return null;
     }
 
@@ -728,17 +710,25 @@ async function findBlingProductByCode(
 
     if (products.length > 0 && products[0].id != null) {
       const productId = products[0].id;
-      console.log(`[findBlingProduct] ${codigo} → ID ${productId}`);
-      blingProductCache.set(codigo, productId);
+      blingProductCache.set(upperCodigo, productId);
       return productId;
     }
 
-    console.log(`[findBlingProduct] ${codigo} → não encontrado`);
-    blingProductCache.set(codigo, null);
+    const fallbackId = BLING_PRODUCT_ID_MAP[upperCodigo];
+    if (fallbackId && fallbackId > 0) {
+      blingProductCache.set(upperCodigo, fallbackId);
+      return fallbackId;
+    }
+
+    blingProductCache.set(upperCodigo, null);
     return null;
   } catch (err) {
-    console.log(`[findBlingProduct] Erro ao buscar ${codigo}:`, err);
-    blingProductCache.set(codigo, null);
+    const fallbackId = BLING_PRODUCT_ID_MAP[upperCodigo];
+    if (fallbackId && fallbackId > 0) {
+      blingProductCache.set(upperCodigo, fallbackId);
+      return fallbackId;
+    }
+    blingProductCache.set(upperCodigo, null);
     return null;
   }
 }
@@ -767,6 +757,7 @@ function resolveBlingSkuForItem(
   } | null,
   colorKey: string | null
 ): string | null {
+  console.log("[resolveSku] colorKey:", colorKey, "map:", JSON.stringify(product?.bling_color_sku_map));
   if (!product) return null;
 
   // 1. Se tem cor e tem mapeamento de cor → usar SKU da cor
@@ -889,15 +880,13 @@ async function buildBlingOrderPayload(
 
   const today = new Date().toISOString().split("T")[0];
   const createdByProfile = order.created_by_profile as { full_name?: string; email?: string } | null;
-  const creatorEmail = createdByProfile?.email ?? null;
-
-  const blingVendedorId = await findBlingVendedorByEmail(creatorEmail, apiToken, baseUrl);
+  const vendedorId = getBlingVendedorId(createdByProfile?.email ?? null);
 
   const payload: BlingOrderPayload = {
     data: today,
     dataSaida: today,
     contato: { id: blingContactId },
-    ...(blingVendedorId ? { vendedor: { id: blingVendedorId } } : {}),
+    ...(vendedorId ? { vendedor: { id: vendedorId } } : {}),
     itens,
     observacoes: obsLines.length > 0 ? obsLines.join("\n") : undefined,
     observacoesInternas: `Pedido CRM #${order.order_number ?? ""} | Criado por: ${createdByProfile?.full_name ?? "Sistema"}`,
@@ -953,7 +942,6 @@ export async function createBlingOrder(
   }
 
   blingProductCache.clear();
-  blingVendedorCache.clear();
 
   // Parte 1: Buscar bling_contact_id em logs — por order_id OU por client_id
   const { data: lastLogByOrder } = await db
@@ -1126,12 +1114,19 @@ export async function sendOrderToBling(
     error: undefined as string | undefined,
   };
 
-  try {
-    await sendClientToBling(supplierId, orderId, userId, db);
+  const contactResult = await sendClientToBling(supplierId, orderId, userId, db);
+  if (contactResult.success) {
     result.contactSent = true;
-  } catch (e) {
-    result.error = `Erro ao enviar contato: ${e instanceof Error ? e.message : String(e)}`;
+  } else {
+    const msg = contactResult.error ?? "";
+    if (msg.includes("já está cadastrado") || msg.includes("já cadastrado")) {
+      result.contactSent = true;
+    } else {
+      result.error = `Erro ao enviar contato: ${msg}`;
+    }
   }
+
+  await new Promise((r) => setTimeout(r, 500));
 
   try {
     const orderResult = await createBlingOrder(supplierId, orderId, userId, db);
@@ -1144,4 +1139,191 @@ export async function sendOrderToBling(
   }
 
   return result;
+}
+
+// ════════════════════════════════════════════════
+// DADOS DO BLING (vendedores e produtos)
+// ════════════════════════════════════════════════
+
+export type BlingVendedorItem = {
+  id?: number;
+  codigo?: number | string;
+  nome?: string;
+  email?: string;
+};
+
+export type BlingProdutoItem = {
+  id?: number;
+  codigo?: string;
+  nome?: string;
+};
+
+export type BlingDataResult = {
+  success: boolean;
+  vendedores: BlingVendedorItem[];
+  produtos: BlingProdutoItem[];
+  error?: string;
+};
+
+/**
+ * Busca vendedores e produtos cadastrados no Bling.
+ * Usado para validar integração e mapeamentos (ex.: aba "Dados Bling" no fornecedor).
+ */
+export async function fetchBlingData(
+  supplierId: string,
+  supabaseClient?: SupabaseClient<Database>
+): Promise<BlingDataResult> {
+  const db = supabaseClient ?? supabase;
+
+  const { data: supplier, error: supplierError } = await db
+    .from("suppliers")
+    .select("*")
+    .eq("id", supplierId)
+    .single();
+
+  if (supplierError || !supplier) {
+    return { success: false, vendedores: [], produtos: [], error: "Fornecedor não encontrado." };
+  }
+
+  const apiToken = await getValidBlingToken(supplierId, supplier, db);
+  const baseUrl =
+    (supplier.bling_base_url as string) ??
+    process.env.BLING_API_URL ??
+    "https://api.bling.com.br/Api/v3";
+
+  if (!apiToken) {
+    return {
+      success: false,
+      vendedores: [],
+      produtos: [],
+      error: "Token Bling não configurado. Conecte o Bling em Editar fornecedor.",
+    };
+  }
+
+  const headers = { Authorization: `Bearer ${apiToken}` };
+  const result: BlingDataResult = { success: true, vendedores: [], produtos: [] };
+
+  try {
+    // Vendedores: GET /vendedores
+    const vendedoresRes = await fetch(`${baseUrl}/vendedores?limite=100`, { headers });
+    if (vendedoresRes.ok) {
+      const vData = (await vendedoresRes.json()) as { data?: unknown[] | { data?: unknown[] } };
+      const raw = Array.isArray(vData?.data)
+        ? vData.data
+        : Array.isArray((vData?.data as { data?: unknown[] })?.data)
+          ? (vData.data as { data: unknown[] }).data
+          : [];
+      result.vendedores = raw.map((v) => {
+        const item = v as Record<string, unknown>;
+        const contato = item?.contato as Record<string, unknown> | undefined;
+        return {
+          id: (item.id ?? contato?.id) as number | undefined,
+          codigo: (item.codigo ?? item.id ?? contato?.id) as number | string | undefined,
+          nome: (contato?.nome ?? item.nome) as string | undefined,
+          email: (contato?.email ?? item.email) as string | undefined,
+        } satisfies BlingVendedorItem;
+      });
+    } else if (!result.error) {
+      result.error = `Erro vendedores: ${(await vendedoresRes.text()).slice(0, 80)}`;
+    }
+
+    // Produtos: paginar (criterio=5 = Todos) + variações (tipo=V)
+    const allProdutos: BlingProdutoItem[] = [];
+    let pagina = 1;
+    const limite = 100;
+    let hasMore = true;
+    const delayMs = 450; // evita 429 (limite 3 req/s)
+
+    while (hasMore) {
+      if (pagina > 1) await new Promise((r) => setTimeout(r, delayMs));
+
+      const produtosRes = await fetch(
+        `${baseUrl}/produtos?limite=${limite}&pagina=${pagina}&criterio=5`,
+        { headers }
+      );
+      if (!produtosRes.ok) {
+        result.error = result.error
+          ? `${result.error} | Erro produtos: ${(await produtosRes.text()).slice(0, 80)}`
+          : `Erro ao buscar produtos: ${(await produtosRes.text()).slice(0, 80)}`;
+        break;
+      }
+      const pData = (await produtosRes.json()) as { data?: unknown[] | { data?: unknown[] } };
+      const raw = Array.isArray(pData?.data)
+        ? pData.data
+        : Array.isArray((pData?.data as { data?: unknown[] })?.data)
+          ? (pData.data as { data: unknown[] }).data
+          : [];
+
+      // Normaliza: API pode retornar { id, codigo, nome } ou { id, produto: { codigo, nome } }
+      // Também extrai variações aninhadas (variacoes: [{ id, codigo, nome }])
+      for (const p of raw) {
+        const item = p as Record<string, unknown>;
+        const variacoes = item?.variacoes as Array<Record<string, unknown>> | undefined;
+        const pushItem = (obj: Record<string, unknown>) => {
+          const nested = obj?.produto as Record<string, unknown> | undefined;
+          allProdutos.push({
+            id: (obj.id ?? nested?.id) as number | undefined,
+            codigo: (obj.codigo ?? nested?.codigo) as string | undefined,
+            nome: (obj.nome ?? nested?.nome) as string | undefined,
+          });
+        };
+        pushItem(item);
+        if (Array.isArray(variacoes)) {
+          for (const v of variacoes) {
+            if (v && typeof v === "object") pushItem(v as Record<string, unknown>);
+          }
+        }
+      }
+
+      hasMore = raw.length >= limite;
+      pagina++;
+      if (pagina > 50) break; // segurança: máximo ~5000 produtos
+    }
+
+    // Variações (tipo=V): PRD00012A, PRD00012L etc podem vir só aqui
+    const seenIds = new Set(allProdutos.map((p) => p.id).filter(Boolean));
+    let paginaV = 1;
+    let hasMoreV = true;
+    while (hasMoreV) {
+      if (paginaV > 1) await new Promise((r) => setTimeout(r, delayMs));
+      const varRes = await fetch(
+        `${baseUrl}/produtos?limite=${limite}&pagina=${paginaV}&criterio=5&tipo=V`,
+        { headers }
+      );
+      if (!varRes.ok) break;
+      const vData = (await varRes.json()) as { data?: unknown[] | { data?: unknown[] } };
+      const vRaw = Array.isArray(vData?.data)
+        ? vData.data
+        : Array.isArray((vData?.data as { data?: unknown[] })?.data)
+          ? (vData.data as { data: unknown[] }).data
+          : [];
+      for (const p of vRaw) {
+        const item = p as Record<string, unknown>;
+        const produto = item?.produto as Record<string, unknown> | undefined;
+        const id = (item.id ?? produto?.id) as number | undefined;
+        if (id && !seenIds.has(id)) {
+          seenIds.add(id);
+          allProdutos.push({
+            id,
+            codigo: (item.codigo ?? produto?.codigo) as string | undefined,
+            nome: (item.nome ?? produto?.nome) as string | undefined,
+          });
+        }
+      }
+      hasMoreV = vRaw.length >= limite;
+      paginaV++;
+      if (paginaV > 50) break;
+    }
+
+    result.produtos = allProdutos;
+
+    return result;
+  } catch (e) {
+    return {
+      success: false,
+      vendedores: [],
+      produtos: [],
+      error: e instanceof Error ? e.message : "Erro de conexão",
+    };
+  }
 }

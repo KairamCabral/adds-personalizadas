@@ -35,6 +35,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -58,6 +59,12 @@ import {
   CardContent,
   CardHeader,
 } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -371,9 +378,34 @@ export function OrderDetailSheet() {
                         showLabel
                       />
                     </div>
-                    <SheetTitle className="mt-2 text-xl font-semibold leading-tight">
-                      {order.title}
-                    </SheetTitle>
+                    <div className="mt-2 flex items-center gap-1">
+                      <SheetTitle className="min-w-0 flex-1 text-xl font-semibold leading-tight">
+                        {order.title}
+                      </SheetTitle>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!order.title?.trim()) return;
+                                try {
+                                  await navigator.clipboard.writeText(order.title.trim());
+                                  toast.success("Nome copiado");
+                                } catch {
+                                  toast.error("Erro ao copiar");
+                                }
+                              }}
+                              className="-mr-1 shrink-0 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+                              aria-label="Copiar nome"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="pointer-events-none">Copiar nome</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                     {order.bling_order_id && (
                       <Badge variant="outline" className="mt-2 text-xs border-green-500/50 text-green-600 dark:text-green-400">
                         Bling #{order.bling_order_id}

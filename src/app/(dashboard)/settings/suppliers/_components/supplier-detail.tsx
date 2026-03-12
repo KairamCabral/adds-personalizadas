@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sheet,
@@ -23,6 +23,10 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  Database,
+  Search,
+  Users,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getSupplierById, updateSupplier } from "@/services/suppliers.service";
@@ -35,6 +39,14 @@ import { AgreementStatus } from "./agreement-status";
 import { SharedFieldsConfig } from "./shared-fields-config";
 import { SupplierForm } from "./supplier-form";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -44,7 +56,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { formatDate } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { normalizeSharedFields } from "@/services/bling.service";
 import type { Supplier, SupplierAgreement, SupplierDataLog } from "@/types/database.types";
 
@@ -123,7 +136,7 @@ export function SupplierDetail({
   return (
     <>
       <Sheet open={!!supplierId} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetContent className="w-full overflow-y-auto sm:max-w-4xl">
           {isLoading ? (
             <div className="flex h-64 items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -135,7 +148,7 @@ export function SupplierDetail({
               </SheetHeader>
 
               <Tabs defaultValue="config" className="mt-6">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="config" className="gap-1.5">
                     <Settings className="h-4 w-4" />
                     Config
@@ -147,6 +160,10 @@ export function SupplierDetail({
                   <TabsTrigger value="logs" className="gap-1.5">
                     <History className="h-4 w-4" />
                     Logs
+                  </TabsTrigger>
+                  <TabsTrigger value="bling" className="gap-1.5">
+                    <Database className="h-4 w-4" />
+                    Dados Bling
                   </TabsTrigger>
                 </TabsList>
 
@@ -260,6 +277,13 @@ export function SupplierDetail({
                 <TabsContent value="logs" className="mt-4">
                   <LogsTab supplierId={supplierId} />
                 </TabsContent>
+
+                <TabsContent value="bling" className="mt-4">
+                  <BlingDataTab
+                    supplierId={supplierId}
+                    hasBlingConnection={!!(supplier.bling_access_token || supplier.bling_api_token)}
+                  />
+                </TabsContent>
               </Tabs>
             </>
           ) : null}
@@ -318,6 +342,253 @@ export function SupplierDetail({
   );
 }
 
+function BlingDataTab({
+  supplierId,
+  hasBlingConnection,
+}: {
+  supplierId: string;
+  hasBlingConnection: boolean;
+}) {
+  const [data, setData] = useState<{
+    vendedores: { id?: number; codigo?: number | string; nome?: string; email?: string }[];
+    produtos: { id?: number; codigo?: string; nome?: string }[];
+    error?: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [searchVendedores, setSearchVendedores] = useState("");
+  const [searchProdutos, setSearchProdutos] = useState("");
+
+  const [tick, setTick] = useState(0);
+  const cooldownSeconds = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+  const isCooldown = cooldownSeconds > 0;
+
+  const filterTerm = (term: string) => term.trim().toLowerCase();
+  const filteredVendedores =
+    data?.vendedores.filter((v) => {
+      const q = filterTerm(searchVendedores);
+      if (!q) return true;
+      const nome = (v.nome ?? "").toLowerCase();
+      const email = (v.email ?? "").toLowerCase();
+      const codigo = String(v.codigo ?? "").toLowerCase();
+      const id = String(v.id ?? "").toLowerCase();
+      return nome.includes(q) || email.includes(q) || codigo.includes(q) || id.includes(q);
+    }) ?? [];
+  const filteredProdutos =
+    data?.produtos.filter((p) => {
+      const q = filterTerm(searchProdutos);
+      if (!q) return true;
+      const nome = (p.nome ?? "").toLowerCase();
+      const codigo = (p.codigo ?? "").toLowerCase();
+      const id = String(p.id ?? "").toLowerCase();
+      return nome.includes(q) || codigo.includes(q) || id.includes(q);
+    }) ?? [];
+
+  useEffect(() => {
+    if (!isCooldown) return;
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [isCooldown, cooldownUntil]);
+
+  async function handleLoad() {
+    if (!hasBlingConnection || loading || isCooldown) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/bling/data?supplier_id=${supplierId}`);
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Erro ao buscar dados.");
+        return;
+      }
+      setData({
+        vendedores: json.vendedores ?? [],
+        produtos: json.produtos ?? [],
+        error: json.error,
+      });
+      setCooldownUntil(Date.now() + 30000);
+    } catch {
+      setError("Erro de conexão.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!hasBlingConnection) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Conecte o Bling em Editar fornecedor para visualizar vendedores e produtos.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Button
+          size="sm"
+          onClick={handleLoad}
+          disabled={loading || isCooldown}
+        >
+          {loading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Carregando vendedores e produtos...
+            </>
+          ) : isCooldown ? (
+            `Aguarde ${cooldownSeconds}s`
+          ) : (
+            "Carregar dados"
+          )}
+        </Button>
+        {loading && (
+          <p className="text-muted-foreground text-xs">
+            Catálogos grandes podem levar alguns segundos.
+          </p>
+        )}
+      </div>
+
+      {error && (
+        <p className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      {data?.error && (
+        <p className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+          {data.error}
+        </p>
+      )}
+
+      {data && (
+        <Tabs defaultValue="vendedores" className="w-full">
+          <TabsList className="mb-4 grid w-full grid-cols-2">
+            <TabsTrigger value="vendedores" className="gap-2">
+              <Users className="h-4 w-4" />
+              Vendedores ({data.vendedores.length})
+            </TabsTrigger>
+            <TabsTrigger value="produtos" className="gap-2">
+              <Package className="h-4 w-4" />
+              Produtos ({data.produtos.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="vendedores" className="mt-0">
+            <div className="flex flex-col rounded-lg border border-border">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-3">
+                {data.vendedores.length > 0 && (
+                  <div className="relative w-full max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por ID ou nome..."
+                      value={searchVendedores}
+                      onChange={(e) => setSearchVendedores(e.target.value)}
+                      className="h-9 pl-8"
+                    />
+                  </div>
+                )}
+                <span className="text-muted-foreground text-sm">
+                  {searchVendedores
+                    ? `${filteredVendedores.length} de ${data.vendedores.length}`
+                    : `${data.vendedores.length} vendedores`}
+                </span>
+              </div>
+              {data.vendedores.length === 0 ? (
+                <p className="p-6 text-center text-muted-foreground">Nenhum vendedor encontrado.</p>
+              ) : (
+                <ScrollArea className="h-[min(400px,60vh)]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="w-28 font-semibold">ID</TableHead>
+                        <TableHead className="font-semibold">Nome</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredVendedores.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={2} className="py-12 text-center text-muted-foreground">
+                            Nenhum resultado para &quot;{searchVendedores}&quot;
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredVendedores.map((v, i) => (
+                          <TableRow key={v.id ?? i}>
+                            <TableCell className="font-mono text-sm">{v.id ?? "—"}</TableCell>
+                            <TableCell>{v.nome ?? "—"}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="produtos" className="mt-0">
+            <div className="flex flex-col rounded-lg border border-border">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-3">
+                {data.produtos.length > 0 && (
+                  <div className="relative w-full max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por código ou nome..."
+                      value={searchProdutos}
+                      onChange={(e) => setSearchProdutos(e.target.value)}
+                      className="h-9 pl-8"
+                    />
+                  </div>
+                )}
+                <span className="text-muted-foreground text-sm">
+                  {searchProdutos
+                    ? `${filteredProdutos.length} de ${data.produtos.length}`
+                    : `${data.produtos.length} produtos`}
+                </span>
+              </div>
+              {data.produtos.length === 0 ? (
+                <p className="p-6 text-center text-muted-foreground">Nenhum produto encontrado.</p>
+              ) : (
+                <ScrollArea className="h-[min(400px,60vh)]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="w-28 font-semibold">ID</TableHead>
+                        <TableHead className="w-32 font-semibold">Código</TableHead>
+                        <TableHead className="font-semibold">Nome</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredProdutos.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="py-12 text-center text-muted-foreground">
+                            Nenhum resultado para &quot;{searchProdutos}&quot;
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredProdutos.map((p, i) => (
+                          <TableRow key={p.id ?? i}>
+                            <TableCell className="font-mono text-sm">{p.id ?? "—"}</TableCell>
+                            <TableCell className="font-mono text-sm">{p.codigo ?? "—"}</TableCell>
+                            <TableCell className="min-w-0 max-w-[280px] truncate" title={p.nome}>
+                              {p.nome ?? "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  );
+}
+
 function LogsTab({ supplierId }: { supplierId: string }) {
   const [page, setPage] = useState(1);
   const { data, isLoading } = useQuery({
@@ -367,7 +638,7 @@ function LogsTab({ supplierId }: { supplierId: string }) {
                 </span>
               </div>
               <p className="mt-1 text-muted-foreground">
-                {log.clients?.name ?? log.client?.name ?? "—"} • {formatDate(log.sent_at)}
+                {log.clients?.name ?? log.client?.name ?? "—"} • {formatDateTime(log.sent_at)}
               </p>
               {log.error_message && (
                 <p className="mt-1 text-xs text-destructive">

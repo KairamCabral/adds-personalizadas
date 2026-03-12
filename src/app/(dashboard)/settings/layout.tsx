@@ -97,7 +97,7 @@ export default function SettingsLayout({
 
   return (
     <div className="flex min-h-[calc(100vh-60px)]">
-      <aside className="w-56 shrink-0 border-r border-border bg-muted/30 p-4">
+      <aside className="w-56 shrink-0 overflow-x-hidden overflow-y-auto border-r border-border bg-muted/30 p-4">
         <nav className="flex flex-col gap-1">
           {visibleItems.map((item) => {
             const Icon = item.icon;
