@@ -79,7 +79,7 @@ export function OrderLabels({ orderId, currentLabels, canEdit = true }: OrderLab
               {currentLabels.length > 0 ? "Editar etiquetas" : "Adicionar etiqueta"}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-56 p-2">
+          <PopoverContent align="start" className="z-[110] w-56 p-2">
             <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
               Etiquetas disponíveis
             </p>

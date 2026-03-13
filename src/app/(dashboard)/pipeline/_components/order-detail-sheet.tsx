@@ -362,7 +362,7 @@ export function OrderDetailSheet() {
                             <SelectTrigger className="h-8 w-[130px]">
                               <SelectValue placeholder="Alterar etapa" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="z-[110]">
                               {ORDER_STATUSES.map((s) => (
                                 <SelectItem key={s.key} value={s.key}>
                                   {s.label}
