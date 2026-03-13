@@ -449,7 +449,7 @@ export function OrderDetailSheet() {
                               Enviar ao Fornecedor
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" className="z-[110]">
                             {activeSuppliers.map(
                               (s: { id: string; name: string }) => (
                                 <DropdownMenuItem
@@ -497,7 +497,7 @@ export function OrderDetailSheet() {
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align="end" className="z-[110]">
                         {can("orders.archive") &&
                           (order.archived_at ? (
                             <DropdownMenuItem
@@ -585,7 +585,7 @@ export function OrderDetailSheet() {
                               : "Enviar ao Fornecedor"}
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
+                        <DropdownMenuContent align="start" className="z-[110]">
                           {activeSuppliers.map(
                             (supplier: { id: string; name: string }) => (
                               <DropdownMenuItem
