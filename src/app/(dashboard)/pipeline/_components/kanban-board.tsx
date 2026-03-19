@@ -6,7 +6,6 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
-  defaultDropAnimationSideEffects,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -15,12 +14,19 @@ import {
   type DragEndEvent,
   type DragOverEvent,
 } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { KANBAN_COLUMN_STATUSES, type OrderStatus } from "@/lib/constants";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
-import { getOrders, getArchivedOrders, moveOrder, archiveOrder, unarchiveOrder } from "@/services/orders.service";
+import {
+  getOrders,
+  getArchivedOrders,
+  moveOrder,
+  reorderColumn,
+  archiveOrder,
+  unarchiveOrder,
+} from "@/services/orders.service";
 import { KanbanColumn } from "./kanban-column";
 import { KanbanCard } from "./kanban-card";
 import { KanbanCardSkeleton } from "./kanban-card-skeleton";
@@ -30,6 +36,16 @@ import { OrderFilters } from "./order-filters";
 import { Plus, Search, Archive, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+/** Mesma regra de getOrdersByStatus: position e desempate por id (evita ordem diferente do RPC quando há empate). */
+function sortOrdersByPositionThenId(
+  a: { position?: number; id: string },
+  b: { position?: number; id: string }
+) {
+  const dp = (a.position ?? 0) - (b.position ?? 0);
+  if (dp !== 0) return dp;
+  return String(a.id).localeCompare(String(b.id));
+}
 
 export function KanbanBoard() {
   const {
@@ -44,13 +60,15 @@ export function KanbanBoard() {
   const queryClient = useQueryClient();
 
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ lastX: number } | null>(null);
   const dragOriginStatus = useRef<string | null>(null);
-  const blingSyncing = useRef(new Set<string>());
+  const isDragLocked = useRef(false);
+  const ordersListVersion = useRef(0);
+  const blingSyncingRef = useRef(new Set<string>());
 
   const [busca, setBusca] = useQueryState("busca", parseAsString);
   const [responsavel] = useQueryState("responsavel", parseAsString);
@@ -62,7 +80,18 @@ export function KanbanBoard() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ordersQuery = useQuery<any[], Error>({
     queryKey: showArchived ? ["archived-orders"] : ["orders"],
-    queryFn: showArchived ? getArchivedOrders : getOrders,
+    queryFn: async () => {
+      if (showArchived) {
+        return getArchivedOrders();
+      }
+      const versionAtStart = ordersListVersion.current;
+      const data = await getOrders();
+      if (versionAtStart !== ordersListVersion.current) {
+        const cur = queryClient.getQueryData<any[]>(["orders"]);
+        if (Array.isArray(cur)) return cur;
+      }
+      return data ?? [];
+    },
   });
   const orders = ordersQuery.data ?? [];
   const { isLoading, error } = ordersQuery;
@@ -100,20 +129,26 @@ export function KanbanBoard() {
       const result = await moveOrder(orderId, newStatus, newPosition);
       return { result, orderId, newStatus };
     },
+
     onMutate: async ({ orderId, newStatus, newPosition }) => {
+      ordersListVersion.current += 1;
       await queryClient.cancelQueries({ queryKey: ["orders"] });
+
       const previousOrders = queryClient.getQueryData(["orders"]);
-      queryClient.setQueryData(["orders"], (old: unknown) => {
+
+      queryClient.setQueryData(["orders"], (old: any) => {
         if (!Array.isArray(old)) return old;
-        const movedOrder = (old as any[]).find((o: any) => o.id === orderId);
-        if (!movedOrder) return old as any[];
+
+        const movedOrder = old.find((o: any) => o.id === orderId);
+        if (!movedOrder) return old;
 
         const oldStatus = movedOrder.status;
-        const withoutMoved = (old as any[]).filter((o: any) => o.id !== orderId);
+        const withoutMoved = old.filter((o: any) => o.id !== orderId);
 
+        // Recalcular posições da coluna destino
         const targetCards = withoutMoved
           .filter((o: any) => o.status === newStatus)
-          .sort((a: any, b: any) => a.position - b.position);
+          .sort(sortOrdersByPositionThenId);
 
         targetCards.splice(newPosition, 0, {
           ...movedOrder,
@@ -126,11 +161,12 @@ export function KanbanBoard() {
           position: i,
         }));
 
+        // Se mudou de coluna, recalcular posições da coluna de origem
         let otherCards = withoutMoved.filter((o: any) => o.status !== newStatus);
         if (oldStatus !== newStatus) {
           const oldColumnCards = otherCards
             .filter((o: any) => o.status === oldStatus)
-            .sort((a: any, b: any) => a.position - b.position)
+            .sort(sortOrdersByPositionThenId)
             .map((o: any, i: number) => ({ ...o, position: i }));
           otherCards = [
             ...otherCards.filter((o: any) => o.status !== oldStatus),
@@ -140,26 +176,29 @@ export function KanbanBoard() {
 
         return [...otherCards, ...updatedTarget];
       });
+
       return { previousOrders };
     },
+
     onError: (_err, _vars, context) => {
-      if (context?.previousOrders != null) {
+      if (context?.previousOrders) {
         queryClient.setQueryData(["orders"], context.previousOrders);
       }
-      toast.error("Erro ao mover pedido.");
+      toast.error("Erro ao mover pedido");
     },
+
     onSuccess: async (data) => {
-      if (data.newStatus === "APROVADO") {
-        if (blingSyncing.current.has(data.orderId)) return;
-        blingSyncing.current.add(data.orderId);
+      // Refetch completo: aplicar só o card movido quebraria o sort se o RPC usar positions esparsas.
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+
+      if (data.newStatus === "ARTE_APROVADA") {
+        if (blingSyncingRef.current.has(data.orderId)) return;
+        blingSyncingRef.current.add(data.orderId);
         try {
           const res = await fetch("/api/bling/sync-on-status", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              orderId: data.orderId,
-              newStatus: data.newStatus,
-            }),
+            body: JSON.stringify({ orderId: data.orderId, newStatus: data.newStatus }),
           });
           const json = await res.json().catch(() => ({}));
           if (json.results?.some((r: { success: boolean }) => r.success)) {
@@ -168,14 +207,65 @@ export function KanbanBoard() {
         } catch {
           // Silencioso
         } finally {
-          blingSyncing.current.delete(data.orderId);
+          blingSyncingRef.current.delete(data.orderId);
         }
       }
     },
+
     onSettled: () => {
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["orders"] });
-      }, 1500);
+      isDragLocked.current = false;
+    },
+  });
+
+  /** Reordena pelo array completo de ids (0..n-1 no DB) — evita move_order_atomic com coluna esparsa. */
+  const reorderKanbanMutation = useMutation({
+    mutationFn: async (vars: {
+      sourceStatus: OrderStatus;
+      sourceOrderIds: string[];
+      destStatus: OrderStatus;
+      destOrderIds: string[];
+    }) => {
+      if (vars.sourceStatus === vars.destStatus) {
+        await reorderColumn(vars.destStatus, vars.destOrderIds);
+        return;
+      }
+      if (vars.sourceOrderIds.length > 0) {
+        await reorderColumn(vars.sourceStatus, vars.sourceOrderIds);
+      }
+      await reorderColumn(vars.destStatus, vars.destOrderIds);
+    },
+    onMutate: async (vars) => {
+      ordersListVersion.current += 1;
+      await queryClient.cancelQueries({ queryKey: ["orders"] });
+      const previousOrders = queryClient.getQueryData(["orders"]);
+      const { sourceStatus, sourceOrderIds, destStatus, destOrderIds } = vars;
+      const sPos = new Map(sourceOrderIds.map((id, i) => [id, i]));
+      const dPos = new Map(destOrderIds.map((id, i) => [id, i]));
+      queryClient.setQueryData(["orders"], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((o: any) => {
+          if (destOrderIds.includes(o.id)) {
+            return { ...o, status: destStatus, position: dPos.get(o.id)! };
+          }
+          if (sourceOrderIds.includes(o.id)) {
+            return { ...o, status: sourceStatus, position: sPos.get(o.id)! };
+          }
+          return o;
+        });
+      });
+      return { previousOrders };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousOrders) {
+        queryClient.setQueryData(["orders"], context.previousOrders);
+      }
+      toast.error("Erro ao reordenar pedidos");
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onSettled: () => {
+      isDragLocked.current = false;
     },
   });
 
@@ -275,99 +365,183 @@ export function KanbanBoard() {
           }
           return true;
         })
-        .sort((a: any, b: any) => a.position - b.position);
+        .sort((a: any, b: any) => {
+          const dp = (a.position ?? 0) - (b.position ?? 0);
+          if (dp !== 0) return dp;
+          return String(a.id).localeCompare(String(b.id));
+        });
     },
     [orders, busca, responsavel, prioridade, tipo, etiqueta]
   );
 
   function handleDragStart(event: DragStartEvent) {
+    if (isDragLocked.current || moveMutation.isPending || reorderKanbanMutation.isPending) {
+      return;
+    }
     setActiveId(event.active.id as string);
     const order = (orders as any[]).find((o: any) => o.id === event.active.id);
     dragOriginStatus.current = order?.status ?? null;
   }
 
   function handleDragOver(event: DragOverEvent) {
-    const { active, over } = event;
-    setOverId(over ? (over.id as string) : null);
-
-    if (showArchived || !over) return;
-
-    const activeOrder = (orders as any[]).find((o: any) => o.id === active.id);
-    if (!activeOrder) return;
-
-    const overOrder = (orders as any[]).find((o: any) => o.id === over.id);
+    const { over } = event;
+    if (!over) {
+      setDragOverColumnId(null);
+      return;
+    }
     const overColumnId = over.data.current?.sortable?.containerId ?? over.id;
-    const targetStatus = visibleColumns.some((s) => s.key === overColumnId)
-      ? overColumnId
-      : overOrder?.status;
-
-    if (!targetStatus || targetStatus === activeOrder.status) return;
-
-    // Mover visualmente para a nova coluna — posição no FINAL
-    const targetOrders = (orders as any[])
-      .filter((o: any) => o.status === targetStatus && o.id !== active.id)
-      .sort((a: any, b: any) => a.position - b.position);
-
-    queryClient.setQueryData(["orders"], (old: unknown) => {
-      if (!Array.isArray(old)) return old;
-      return (old as any[]).map((o: any) =>
-        o.id === active.id
-          ? { ...o, status: targetStatus, position: targetOrders.length }
-          : o
-      );
-    });
+    const isColumn = visibleColumns.some((s) => s.key === overColumnId);
+    setDragOverColumnId(isColumn ? (overColumnId as string) : null);
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    setActiveId(null);
-    setOverId(null);
+    const originalStatus = dragOriginStatus.current;
 
-    if (showArchived || !over) return;
+    setDragOverColumnId(null);
+    dragOriginStatus.current = null;
 
-    const activeOrder = (orders as any[]).find((o: any) => o.id === active.id);
-    if (!activeOrder) return;
+    const clearDrag = () => setActiveId(null);
+
+    if (isDragLocked.current || moveMutation.isPending || reorderKanbanMutation.isPending) {
+      clearDrag();
+      return;
+    }
+
+    if (showArchived || !over || !originalStatus) {
+      clearDrag();
+      return;
+    }
 
     const overOrder = (orders as any[]).find((o: any) => o.id === over.id);
     const overColumnId = over.data.current?.sortable?.containerId ?? over.id;
     const targetStatus =
       (visibleColumns.some((s) => s.key === overColumnId) ? overColumnId : null) ??
       overOrder?.status;
-    if (!targetStatus) return;
+
+    if (!targetStatus) {
+      clearDrag();
+      return;
+    }
 
     if (targetStatus === "ARQUIVADO") {
       if (can("orders.archive")) {
         archiveMutation.mutate(active.id as string);
       }
+      clearDrag();
       return;
     }
 
-    const isSameColumn = dragOriginStatus.current === targetStatus;
+    const isSameColumn = originalStatus === targetStatus;
+    const activeIdStr = active.id as string;
+    const overIdStr = String(over.id);
+
+    const noKanbanFilters =
+      !busca?.trim() && !responsavel && !prioridade && !tipo && !etiqueta;
 
     const targetOrders = (orders as any[])
-      .filter((o: any) => o.status === targetStatus && o.id !== active.id)
-      .sort((a: any, b: any) => a.position - b.position);
+      .filter((o: any) => o.id !== active.id && o.status === targetStatus)
+      .sort(sortOrdersByPositionThenId);
+
+    const fullSortedExcludingActive = (orders as any[])
+      .filter((o: any) => o.id !== active.id && o.status === targetStatus)
+      .sort(sortOrdersByPositionThenId);
 
     let newPosition: number;
+
     if (isSameColumn) {
-      const overIndex = over.data.current?.sortable?.index;
-      newPosition =
-        typeof overIndex === "number" ? overIndex : targetOrders.length;
+      const visibleIds = getOrdersByStatus(targetStatus).map((o) => o.id);
+      const oldIndex = visibleIds.indexOf(activeIdStr);
+      if (oldIndex === -1) {
+        clearDrag();
+        return;
+      }
+
+      const droppedOnColumnOnly = visibleColumns.some((s) => s.key === overIdStr);
+      let newIndex: number;
+      if (droppedOnColumnOnly) {
+        newIndex = visibleIds.length - 1;
+      } else if (visibleIds.includes(overIdStr)) {
+        newIndex = visibleIds.indexOf(overIdStr);
+      } else {
+        newIndex = visibleIds.length - 1;
+      }
+
+      if (oldIndex === newIndex) {
+        clearDrag();
+        return;
+      }
+
+      const reordered = arrayMove(visibleIds, oldIndex, newIndex);
+      const rankInVisible = reordered.indexOf(activeIdStr);
+
+      const allVisible =
+        visibleIds.length === fullSortedExcludingActive.length + 1;
+
+      if (allVisible && noKanbanFilters) {
+        isDragLocked.current = true;
+        reorderKanbanMutation.mutate({
+          sourceStatus: targetStatus as OrderStatus,
+          sourceOrderIds: reordered,
+          destStatus: targetStatus as OrderStatus,
+          destOrderIds: reordered,
+        });
+        clearDrag();
+        return;
+      }
+
+      if (allVisible) {
+        newPosition = rankInVisible;
+      } else {
+        const predId = rankInVisible > 0 ? reordered[rankInVisible - 1] : null;
+        const succId =
+          rankInVisible < reordered.length - 1 ? reordered[rankInVisible + 1] : null;
+
+        if (predId && succId) {
+          const succ = fullSortedExcludingActive.find((o: any) => o.id === succId);
+          newPosition = succ ? Number(succ.position) : rankInVisible;
+        } else if (!predId && succId) {
+          const succ = fullSortedExcludingActive.find((o: any) => o.id === succId);
+          newPosition = succ ? Number(succ.position) : 0;
+        } else if (predId && !succId) {
+          const pred = fullSortedExcludingActive.find((o: any) => o.id === predId);
+          newPosition = pred ? Number(pred.position) + 1 : fullSortedExcludingActive.length;
+        } else {
+          newPosition = 0;
+        }
+      }
     } else {
       newPosition = targetOrders.length;
     }
 
-    if (
-      activeOrder.status !== targetStatus ||
-      activeOrder.position !== newPosition
-    ) {
-      moveMutation.mutate({
-        orderId: active.id as string,
-        newStatus: targetStatus as OrderStatus,
-        newPosition,
+    const maxPos = isSameColumn ? fullSortedExcludingActive.length : targetOrders.length;
+    newPosition = Math.max(0, Math.min(newPosition, maxPos));
+
+    if (!isSameColumn && noKanbanFilters) {
+      const sourceOrderIds = (orders as any[])
+        .filter((o: any) => o.id !== activeIdStr && o.status === originalStatus)
+        .sort(sortOrdersByPositionThenId)
+        .map((o: any) => o.id);
+      const destOrderIds = [...targetOrders.map((o: any) => o.id), activeIdStr];
+      isDragLocked.current = true;
+      reorderKanbanMutation.mutate({
+        sourceStatus: originalStatus as OrderStatus,
+        sourceOrderIds,
+        destStatus: targetStatus as OrderStatus,
+        destOrderIds,
       });
+      clearDrag();
+      return;
     }
-    dragOriginStatus.current = null;
+
+    isDragLocked.current = true;
+
+    moveMutation.mutate({
+      orderId: activeIdStr,
+      newStatus: targetStatus as OrderStatus,
+      newPosition,
+    });
+    clearDrag();
   }
 
   function handleAddOrder(status: OrderStatus) {
@@ -503,6 +677,7 @@ export function KanbanBoard() {
                   key={status.key}
                   status={status}
                   orders={getOrdersByStatus(status.key)}
+                  isDropTarget={dragOverColumnId === status.key}
                   canAddOrder={can("orders.create") && !showArchived && status.key !== "ARQUIVADO"}
                   onAddOrder={() => handleAddOrder(status.key)}
                   onOrderClick={(id) => setSelectedOrderId(id)}
@@ -522,13 +697,7 @@ export function KanbanBoard() {
               ))}
             </div>
 
-            <DragOverlay
-              dropAnimation={{
-                sideEffects: defaultDropAnimationSideEffects({
-                  styles: { active: { opacity: "0.4" } },
-                }),
-              }}
-            >
+            <DragOverlay dropAnimation={null}>
               {activeId && activeOrder ? (
                 <KanbanCard order={activeOrder} onClick={() => {}} disabled />
               ) : null}

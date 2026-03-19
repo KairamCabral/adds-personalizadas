@@ -13,6 +13,7 @@ import type { Order, OrderLabel, Profile } from "@/types/database.types";
 
 interface KanbanColumnProps {
   status: StatusConfig;
+  isDropTarget?: boolean;
   canAddOrder?: boolean;
   readOnly?: boolean;
   onArchive?: (orderId: string) => void;
@@ -31,6 +32,7 @@ interface KanbanColumnProps {
 export function KanbanColumn({
   status,
   orders,
+  isDropTarget = false,
   canAddOrder = true,
   readOnly = false,
   onArchive,
@@ -51,7 +53,7 @@ export function KanbanColumn({
       data-kanban-column
       className={cn(
         "flex h-full w-[280px] min-w-[280px] flex-col rounded-xl bg-primary/5 shadow-sm transition-colors duration-200 cursor-default backdrop-blur-[2px] dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
-        isOver && "bg-primary/5 ring-2 ring-primary/20 ring-inset"
+        (isOver || isDropTarget) && "bg-primary/5 ring-2 ring-primary/20 ring-inset"
       )}
       style={{ animationDelay: `${index * 40}ms` }}
     >

@@ -190,8 +190,8 @@ export function OrderDetailSheet() {
       toast.success("Etapa alterada.");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
-      // Envio automático ao Bling quando status muda para APROVADO
-      if (variables.newStatus === "APROVADO") {
+      // Envio automático ao Bling quando status muda para ARTE_APROVADA (coluna "Aprovado")
+      if (variables.newStatus === "ARTE_APROVADA") {
         try {
           const res = await fetch("/api/bling/sync-on-status", {
             method: "POST",

@@ -27,7 +27,9 @@ export async function getOrders() {
     `)
     .is("tiny_order_id", null)
     .is("archived_at", null)
-    .order("position", { ascending: true });
+    .order("status", { ascending: true })
+    .order("position", { ascending: true })
+    .order("id", { ascending: true });
 
   if (error) throw error;
   return data;
@@ -281,7 +283,7 @@ export async function moveOrder(
 
   const { data, error: fetchError } = await supabase
     .from("orders")
-    .select("*")
+    .select("id, status, position")
     .eq("id", orderId)
     .single();
 

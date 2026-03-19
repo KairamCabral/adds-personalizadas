@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (newStatus !== "APROVADO") {
+    if (newStatus !== "ARTE_APROVADA") {
       return NextResponse.json({
         success: true,
         message: "Status não dispara envio ao fornecedor.",
