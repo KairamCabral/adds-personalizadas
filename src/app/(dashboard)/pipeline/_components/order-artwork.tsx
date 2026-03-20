@@ -13,7 +13,18 @@ import {
 import { formatDateTime, formatFileSize } from "@/lib/utils";
 import { FileUpload } from "@/components/shared/file-upload";
 import { Button } from "@/components/ui/button";
-import { Image, FileText, Copy, Check, Link2, Plus, Download, Trash2 } from "lucide-react";
+import {
+  Image,
+  FileText,
+  Copy,
+  Check,
+  Link2,
+  Plus,
+  Download,
+  Trash2,
+  AlertTriangle,
+  MessageSquare,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
@@ -36,11 +47,6 @@ interface OrderArtworkProps {
   orderId: string;
 }
 
-function isImageUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.includes("image");
-}
-
 export function OrderArtwork({ orderId }: OrderArtworkProps) {
   const queryClient = useQueryClient();
   const [showNewVersion, setShowNewVersion] = useState(false);
@@ -53,9 +59,21 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
     queryFn: () => getArtworksByOrder(orderId),
   });
 
+  const byVersion = groupArtworksByVersion(artworks);
+  const versions = Array.from(byVersion.keys()).sort((a, b) => b - a);
+  const latestVersion = versions[0];
+  const latestVariations = latestVersion != null ? (byVersion.get(latestVersion) ?? []) : [];
+  const historyVersions = versions.slice(1);
+  const hasAdjustmentOnLatest = latestVariations.some((v) => v.status === "AJUSTE_SOLICITADO");
+
   const uploadMutation = useMutation({
-    mutationFn: ({ file, asVariation }: { file: File; asVariation?: boolean }) =>
-      uploadArtwork(orderId, file, { asVariation }),
+    mutationFn: ({ file, asVariation }: { file: File; asVariation?: boolean }) => {
+      const adjustmentNote = latestVariations.find((v) => v.status === "AJUSTE_SOLICITADO")?.adjustment_notes;
+      return uploadArtwork(orderId, file, {
+        asVariation,
+        notes: asVariation ? undefined : adjustmentNote ? `Revisão do ajuste: ${adjustmentNote}` : undefined,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artworks", orderId] });
       queryClient.invalidateQueries({ queryKey: ["order", orderId] });
@@ -76,12 +94,6 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
     },
     onError: (err: Error) => toast.error(err.message),
   });
-
-  const byVersion = groupArtworksByVersion(artworks);
-  const versions = Array.from(byVersion.keys()).sort((a, b) => b - a);
-  const latestVersion = versions[0];
-  const latestVariations = latestVersion != null ? (byVersion.get(latestVersion) ?? []) : [];
-  const historyVersions = versions.slice(1);
 
   if (isLoading) {
     return (
@@ -137,7 +149,7 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
       {showNewVersion && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
           <p className="mb-3 text-sm font-medium text-foreground">
-            Enviar nova versão
+            {hasAdjustmentOnLatest ? "Enviar nova revisão" : "Enviar nova versão"}
           </p>
           <FileUpload
             accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
@@ -240,10 +252,13 @@ function LatestArtworkCard({
   const representativeId = primary?.id ?? "";
   const hasMultiple = variations.length > 1;
   const allPending = variations.every((v) => v.status === "PENDENTE");
+  const hasAdjustmentRequested = variations.some((v) => v.status === "AJUSTE_SOLICITADO");
+  const adjustmentDetail = variations.find((v) => v.status === "AJUSTE_SOLICITADO");
 
   const { data: activeToken } = useQuery({
     queryKey: ["approval-token", representativeId],
     queryFn: () => getActiveToken(representativeId),
+    enabled: !hasAdjustmentRequested && !!representativeId,
   });
 
   const generateMutation = useMutation({
@@ -291,6 +306,29 @@ function LatestArtworkCard({
         )}
       </div>
 
+      {hasAdjustmentRequested && adjustmentDetail && (
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                Cliente solicitou ajuste
+              </p>
+              {adjustmentDetail.adjustment_notes && (
+                <p className="mt-1 text-sm italic text-foreground">
+                  &ldquo;{adjustmentDetail.adjustment_notes}&rdquo;
+                </p>
+              )}
+              {adjustmentDetail.approved_by && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  — {adjustmentDetail.approved_by}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4">
         {hasMultiple ? (
           <div className="space-y-3">
@@ -318,80 +356,87 @@ function LatestArtworkCard({
         )}
       </div>
 
-      <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3">
-        <p className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
-          <Link2 className="h-4 w-4" />
-          Link de aprovação
-        </p>
-        {activeToken ? (
-          <div className="space-y-2">
-            <p className="break-all font-mono text-xs text-muted-foreground">
-              {typeof window !== "undefined"
-                ? `${window.location.origin}/art/approve/${activeToken.token}`
-                : `/art/approve/${activeToken.token}`}
-            </p>
+      {!hasAdjustmentRequested && (
+        <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3">
+          <p className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+            <Link2 className="h-4 w-4" />
+            Link de aprovação
+          </p>
+          {activeToken ? (
+            <div className="space-y-2">
+              <p className="break-all font-mono text-xs text-muted-foreground">
+                {typeof window !== "undefined"
+                  ? `${window.location.origin}/art/approve/${activeToken.token}`
+                  : `/art/approve/${activeToken.token}`}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  const url = `${typeof window !== "undefined" ? window.location.origin : ""}/art/approve/${activeToken.token}`;
+                  navigator.clipboard.writeText(url);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                  toast.success("Link copiado.");
+                }}
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? "Copiado!" : "Copiar link"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Expira em {formatDateTime(activeToken.expires_at)}
+              </p>
+            </div>
+          ) : (
             <Button
               size="sm"
               variant="outline"
               className="gap-2"
+              disabled={linkLoading || isUploading}
               onClick={() => {
-                const url = `${typeof window !== "undefined" ? window.location.origin : ""}/art/approve/${activeToken.token}`;
-                navigator.clipboard.writeText(url);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-                toast.success("Link copiado.");
+                setLinkLoading(true);
+                generateMutation.mutate();
               }}
             >
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {copied ? "Copiado!" : "Copiar link"}
+              {linkLoading ? "Gerando..." : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  Gerar link de aprovação
+                </>
+              )}
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Expira em {formatDateTime(activeToken.expires_at)}
-            </p>
-          </div>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2"
-            disabled={linkLoading || isUploading}
-            onClick={() => {
-              setLinkLoading(true);
-              generateMutation.mutate();
-            }}
-          >
-            {linkLoading ? "Gerando..." : (
-              <>
-                <Plus className="h-4 w-4" />
-                Gerar link de aprovação
-              </>
-            )}
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
-      {allPending && (
+      {(allPending || hasAdjustmentRequested) && (
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
-            variant="outline"
+            variant={hasAdjustmentRequested ? "default" : "outline"}
             size="sm"
-            className="gap-2"
+            className={cn(
+              "gap-2",
+              hasAdjustmentRequested && "bg-primary hover:bg-primary/90"
+            )}
             onClick={onUploadNew}
             disabled={isUploading}
           >
             <Plus className="h-4 w-4" />
-            Enviar nova versão
+            {hasAdjustmentRequested ? "Enviar nova revisão" : "Enviar nova versão"}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 border-adds-orange/50 text-adds-orange hover:bg-adds-orange/10"
-            onClick={onAddVariation}
-            disabled={isUploading}
-          >
-            <Plus className="h-4 w-4" />
-            Adicionar variação
-          </Button>
+          {allPending && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 border-adds-orange/50 text-adds-orange hover:bg-adds-orange/10"
+              onClick={onAddVariation}
+              disabled={isUploading}
+            >
+              <Plus className="h-4 w-4" />
+              Adicionar variação
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -479,9 +524,12 @@ function HistoryVersionItem({
         </span>
       </div>
       {primary?.adjustment_notes && (
-        <p className="mt-1 text-xs text-muted-foreground italic">
-          "{primary.adjustment_notes}"
-        </p>
+        <div className="mt-1.5 flex items-start gap-1.5">
+          <MessageSquare className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+          <p className="text-xs italic text-muted-foreground">
+            &ldquo;{primary.adjustment_notes}&rdquo;
+          </p>
+        </div>
       )}
       {primary?.approved_by && (
         <p className="mt-1 text-xs text-muted-foreground">— {primary.approved_by}</p>
