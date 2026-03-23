@@ -480,12 +480,14 @@ function LatestArtworkCard({
                     .from('order_labels')
                     .select('id')
                     .eq('order_id', orderId)
-                    .eq('label', 'LINK_ENVIADO')
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    .eq('label', 'LINK_ENVIADO' as any)
                     .maybeSingle();
                   if (!existingLabel) {
                     await supabase.from('order_labels').insert({
                       order_id: orderId,
-                      label: 'LINK_ENVIADO',
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      label: 'LINK_ENVIADO' as any,
                       added_by: user?.id ?? null,
                     });
                   }
