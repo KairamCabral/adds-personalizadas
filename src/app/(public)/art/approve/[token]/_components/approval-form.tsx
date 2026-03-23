@@ -233,7 +233,7 @@ export function ApprovalForm({
               <Label htmlFor="approverName">Seu nome</Label>
               <Input
                 id="approverName"
-                placeholder="João Silva"
+                placeholder="Coloque seu nome completo"
                 disabled={isLoading}
                 className="text-base"
                 {...form.register("approverName")}

@@ -99,8 +99,15 @@ export async function POST(request: NextRequest) {
         await supabase.from("artworks").update({ status: "DESCARTADA" }).eq("id", a.id);
       }
 
+      const { count: confirmacaoCount } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "CONFIRMACAO")
+        .is("archived_at", null);
+
       await supabase.from("orders").update({
         status: "CONFIRMACAO",
+        position: confirmacaoCount ?? 0,
         updated_at: now,
       }).eq("id", tokenRow.order_id);
 
@@ -150,8 +157,15 @@ export async function POST(request: NextRequest) {
           .eq("version", tokenArtwork.version);
       }
 
+      const { count: ajusteCount } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "AJUSTE")
+        .is("archived_at", null);
+
       await supabase.from("orders").update({
         status: "AJUSTE",
+        position: ajusteCount ?? 0,
         updated_at: now,
       }).eq("id", tokenRow.order_id);
 
