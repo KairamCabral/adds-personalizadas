@@ -184,8 +184,15 @@ export function OrderDetailSheet() {
   });
 
   const moveMutation = useMutation({
-    mutationFn: ({ orderId, newStatus }: { orderId: string; newStatus: OrderStatus }) =>
-      moveOrder(orderId, newStatus, 0),
+    mutationFn: async ({ orderId, newStatus }: { orderId: string; newStatus: OrderStatus }) => {
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      const { count } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', newStatus)
+        .is('archived_at', null)
+      return moveOrder(orderId, newStatus, count ?? 0)
+    },
     onSuccess: async (_data, variables) => {
       toast.success("Etapa alterada.");
       queryClient.invalidateQueries({ queryKey: ["orders"] });

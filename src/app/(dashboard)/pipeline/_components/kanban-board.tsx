@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { KANBAN_COLUMN_STATUSES, type OrderStatus } from "@/lib/constants";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useKanbanRealtime } from "@/hooks/use-kanban-realtime";
 import {
   getOrders,
   getArchivedOrders,
@@ -58,6 +59,8 @@ export function KanbanBoard() {
   } = useUIStore();
   const { can } = usePermissions();
   const queryClient = useQueryClient();
+
+  useKanbanRealtime();
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null);

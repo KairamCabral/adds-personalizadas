@@ -24,6 +24,7 @@ import {
   Trash2,
   AlertTriangle,
   MessageSquare,
+  Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -247,6 +248,8 @@ function LatestArtworkCard({
   const [copied, setCopied] = useState(false);
   const [linkLoading, setLinkLoading] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null);
 
   const primary = variations[0];
   const representativeId = primary?.id ?? "";
@@ -265,10 +268,8 @@ function LatestArtworkCard({
     mutationFn: () => generateApprovalLink(representativeId),
     onSuccess: (url) => {
       queryClient.invalidateQueries({ queryKey: ["approval-token", representativeId] });
-      navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      toast.success("Link copiado para a área de transferência.");
+      setGeneratedLink(url);
+      setShowLinkDialog(true);
     },
     onError: (err: Error) => toast.error(err.message),
     onSettled: () => setLinkLoading(false),
@@ -375,10 +376,8 @@ function LatestArtworkCard({
                 className="gap-2"
                 onClick={() => {
                   const url = `${typeof window !== "undefined" ? window.location.origin : ""}/art/approve/${activeToken.token}`;
-                  navigator.clipboard.writeText(url);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                  toast.success("Link copiado.");
+                  setGeneratedLink(url);
+                  setShowLinkDialog(true);
                 }}
               >
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -439,6 +438,72 @@ function LatestArtworkCard({
           )}
         </div>
       )}
+
+      <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
+        <DialogContent className="z-[200] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enviará para o cliente agora?</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-lg bg-muted p-3">
+            <p className="break-all font-mono text-xs text-muted-foreground">
+              {generatedLink}
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => {
+                if (generatedLink) {
+                  navigator.clipboard.writeText(generatedLink);
+                  toast.success("Link copiado!");
+                }
+                setShowLinkDialog(false);
+              }}
+            >
+              <Copy className="h-4 w-4" />
+              Só copiar
+            </Button>
+            <Button
+              size="sm"
+              className="gap-2"
+              onClick={async () => {
+                if (generatedLink) {
+                  navigator.clipboard.writeText(generatedLink);
+                }
+                try {
+                  const { createClient } = await import('@/lib/supabase/client');
+                  const supabase = createClient();
+                  const { data: { user } } = await supabase.auth.getUser();
+                  const { data: existingLabel } = await supabase
+                    .from('order_labels')
+                    .select('id')
+                    .eq('order_id', orderId)
+                    .eq('label', 'LINK_ENVIADO')
+                    .maybeSingle();
+                  if (!existingLabel) {
+                    await supabase.from('order_labels').insert({
+                      order_id: orderId,
+                      label: 'LINK_ENVIADO',
+                      added_by: user?.id ?? null,
+                    });
+                  }
+                  queryClient.invalidateQueries({ queryKey: ["orders"] });
+                  queryClient.invalidateQueries({ queryKey: ["order", orderId] });
+                  toast.success("Link copiado e marcado como enviado!");
+                } catch {
+                  toast.success("Link copiado!");
+                }
+                setShowLinkDialog(false);
+              }}
+            >
+              <Send className="h-4 w-4" />
+              Enviar ao cliente
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

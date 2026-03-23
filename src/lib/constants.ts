@@ -159,6 +159,9 @@ export const STATUS_MAP = Object.fromEntries(
 ) as Record<OrderStatus, StatusConfig>;
 
 /** Colunas exibidas no kanban (exclui ENTREGUE e FATURADO) */
+// TODO [FASE 2]: Adicionar etapa AUTOMATICO antes de FAZER
+// - Pedidos do Tiny com produtos personalizados criam card automaticamente
+// - Ao registrar pagamento no Tiny, adicionar label PAGO automaticamente
 export const KANBAN_COLUMN_STATUSES = ORDER_STATUSES.filter(
   (s) => s.key !== "ENTREGUE" && s.key !== "FATURADO"
 );
@@ -174,7 +177,8 @@ export type LabelType =
   | "APROV_AGUARDANDO_PAGAMENTO"
   | "AMOSTRAS"
   | "PAGO"
-  | "ORCAMENTO_PUBLICO";
+  | "ORCAMENTO_PUBLICO"
+  | "LINK_ENVIADO";
 
 export interface LabelConfig {
   key: LabelType;
@@ -232,6 +236,13 @@ export const LABELS: LabelConfig[] = [
     label: "Orçamento Público",
     color: "#21add6",
     bgColor: "bg-[#21add6]",
+    textColor: "text-white",
+  },
+  {
+    key: "LINK_ENVIADO",
+    label: "Link enviado",
+    color: "#3b82f6",
+    bgColor: "bg-blue-500",
     textColor: "text-white",
   },
 ];
