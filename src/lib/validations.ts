@@ -50,7 +50,7 @@ export const orderSchema = z.object({
   description: z.string().nullable().optional(),
   client_id: z.string().uuid().nullable().optional(),
   status: z.enum([
-    "FAZER", "AJUSTE", "APROVACAO", "APROVADO", "ARTE_APROVADA",
+    "FAZER", "AJUSTE", "APROVACAO", "CONFIRMACAO", "APROVADO",
     "PRODUCAO", "EXPEDICAO",
     "FINALIZADO", "ENTREGUE", "FATURADO", "ARQUIVADO",
   ]),

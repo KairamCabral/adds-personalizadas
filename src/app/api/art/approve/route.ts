@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       }
 
       await supabase.from("orders").update({
-        status: "APROVADO",
+        status: "CONFIRMACAO",
         updated_at: now,
       }).eq("id", tokenRow.order_id);
 

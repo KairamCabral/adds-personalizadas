@@ -50,7 +50,7 @@ const TINY_SITUACAO_TO_STATUS: Record<
 > = {
   // Pedidos
   "Em aberto": "FAZER",
-  "Aprovado": "APROVADO",
+  "Aprovado": "CONFIRMACAO",
   "Em andamento": "PRODUCAO",
   "Preparando envio": "EXPEDICAO",
   "Faturado": "FATURADO",

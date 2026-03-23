@@ -21,8 +21,8 @@ export type OrderStatus =
   | "FAZER"
   | "AJUSTE"
   | "APROVACAO"
+  | "CONFIRMACAO"
   | "APROVADO"
-  | "ARTE_APROVADA"
   | "PRODUCAO"
   | "EXPEDICAO"
   | "FINALIZADO"
@@ -73,7 +73,7 @@ export const ORDER_STATUSES: StatusConfig[] = [
     dotColor: "bg-sky-400",
   },
   {
-    key: "APROVADO",
+    key: "CONFIRMACAO",
     label: "Confirmação",
     shortLabel: "Confirmação",
     icon: ThumbsUp,
@@ -83,7 +83,7 @@ export const ORDER_STATUSES: StatusConfig[] = [
     dotColor: "bg-emerald-400",
   },
   {
-    key: "ARTE_APROVADA",
+    key: "APROVADO",
     label: "Aprovado",
     shortLabel: "Aprovado",
     icon: Image,

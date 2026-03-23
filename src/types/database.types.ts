@@ -1424,8 +1424,8 @@ export type Database = {
         | "AJUSTE"
         | "APROVACAO"
         | "AGUARDANDO_APROVACAO"
+        | "CONFIRMACAO"
         | "APROVADO"
-        | "ARTE_APROVADA"
         | "PRODUCAO"
         | "EXPEDICAO"
         | "FINALIZADO"
@@ -1608,8 +1608,8 @@ export const Constants = {
         "AJUSTE",
         "APROVACAO",
         "AGUARDANDO_APROVACAO",
+        "CONFIRMACAO",
         "APROVADO",
-        "ARTE_APROVADA",
         "PRODUCAO",
         "EXPEDICAO",
         "FINALIZADO",

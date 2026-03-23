@@ -191,7 +191,7 @@ export function KanbanBoard() {
       // Refetch completo: aplicar só o card movido quebraria o sort se o RPC usar positions esparsas.
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
 
-      if (data.newStatus === "ARTE_APROVADA") {
+      if (data.newStatus === "APROVADO") {
         if (blingSyncingRef.current.has(data.orderId)) return;
         blingSyncingRef.current.add(data.orderId);
         try {

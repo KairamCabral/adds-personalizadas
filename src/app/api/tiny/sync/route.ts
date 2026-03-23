@@ -314,7 +314,7 @@ function mapTinySituacaoToStatus(situacao: number | string): string {
     case 0: // Aberta
       return "FAZER";
     case 3: // Aprovada
-      return "APROVADO";
+      return "CONFIRMACAO";
     case 4: // Preparando Envio
       return "PRODUCAO";
     case 1: // Faturada
