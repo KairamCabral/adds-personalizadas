@@ -1381,12 +1381,16 @@ export type Database = {
       validate_approval_token: {
         Args: { p_token: string }
         Returns: {
-          artwork_id: string
-          artwork_url: string
           is_valid: boolean
-          order_id: string
-          order_title: string
+          is_viewable: boolean
           token_id: string
+          order_id: string
+          artwork_id: string
+          order_title: string
+          artwork_url: string
+          used_at: string | null
+          used_by_name: string | null
+          artwork_status: string | null
           variation_index: number
         }[]
       }
