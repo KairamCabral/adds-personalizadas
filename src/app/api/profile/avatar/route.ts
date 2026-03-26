@@ -70,6 +70,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    /**
+     * Caminho canônico (igual às policies RLS: avatars/{uid}/avatar.ext).
+     * Arquivos antigos em {uid}/avatar.ext (sem pasta "avatars/") faziam o banco apontar
+     * para .../avatars/uid/... enquanto o ficheiro estava em .../uid/... → 404 e Avatar só mostrava iniciais.
+     */
     const filePath = `avatars/${user.id}/avatar.${safeExt}`;
 
     const arrayBuffer = await file.arrayBuffer();
@@ -95,6 +100,19 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    // Só após upload OK: remove cópia legada em {userId}/avatar.* (caminho errado, sem pasta "avatars/")
+    try {
+      const { data: rootFiles } = await admin.storage.from(BUCKET).list(user.id);
+      const legacyPaths = (rootFiles ?? [])
+        .filter((f) => /^avatar\.(jpe?g|png|webp)$/i.test(f.name))
+        .map((f) => `${user.id}/${f.name}`);
+      if (legacyPaths.length > 0) {
+        await admin.storage.from(BUCKET).remove(legacyPaths);
+      }
+    } catch (e) {
+      console.warn("[profile/avatar] limpeza legado:", e);
     }
 
     const pathForUrl = uploadData?.path ?? filePath;

@@ -95,7 +95,7 @@ function getMarginStyle(margin: number | null): string {
 
 function parseColors(raw: Json | null): ColorEntry[] {
   if (!Array.isArray(raw)) return [];
-  return raw as ColorEntry[];
+  return raw as unknown as ColorEntry[];
 }
 
 function parseTinyColorMap(raw: Json | null): TinyColorMap {

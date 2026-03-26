@@ -135,7 +135,8 @@ async function fetchRepresentantes(): Promise<RepresentanteSimple[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select("id, full_name")
-    .eq("role", "REPRESENTANTE")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .eq("role", "REPRESENTANTE" as any)
     .eq("is_active", true)
     .order("full_name");
   if (error) throw new Error(error.message);
@@ -145,7 +146,8 @@ async function fetchRepresentantes(): Promise<RepresentanteSimple[]> {
 async function fetchTerritories(): Promise<RepTerritory[]> {
   const supabase = createClient();
   const { data, error } = await supabase
-    .from("rep_territories")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .from("rep_territories" as any)
     .select("rep_id, city, state, rep:profiles!rep_id(full_name)");
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as RepTerritory[];
