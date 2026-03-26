@@ -13,7 +13,7 @@
     },
     {
       "path": "/api/push/send",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
