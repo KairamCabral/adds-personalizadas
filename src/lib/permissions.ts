@@ -71,6 +71,9 @@ export const PERMISSIONS = {
   "quotes.view": ["MASTER", "GESTOR"],
   "quotes.manage": ["MASTER", "GESTOR"],
 
+  // Representantes
+  "representantes.view": ["MASTER", "GESTOR"],
+
   // Backup
   "backup.manage": ["MASTER"],
 

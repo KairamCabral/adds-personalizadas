@@ -1,13 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState, useCallback } from "react";
 import { Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { createClient } from "@/lib/supabase/client";
-
+import { useUser } from "@/hooks/use-user";
 const ROLE_LABELS: Record<string, string> = {
   MASTER: "Administrador",
   GESTOR: "Gestor",
@@ -29,13 +27,24 @@ interface ProfileHeaderProps {
     role: string;
     created_at: string;
   };
-  onProfileUpdated?: () => void;
+  onProfileUpdated?: () => void | Promise<void>;
 }
 
 export function ProfileHeader({ profile, onProfileUpdated }: ProfileHeaderProps) {
+  const { patchProfile } = useUser();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const loadErrorForUrl = useRef<string | null>(null);
+
+  const handleAvatarImageError = useCallback(() => {
+    const url = profile.avatar_url ?? "";
+    if (!url || loadErrorForUrl.current === url) return;
+    loadErrorForUrl.current = url;
+    toast.error(
+      "A foto não carregou. No Supabase → Storage → bucket «adds-crm»: ative «Public bucket» e a política de leitura pública nos arquivos.",
+      { duration: 8000 }
+    );
+  }, [profile.avatar_url]);
 
   const initials = profile.full_name
     .split(" ")
@@ -60,36 +69,39 @@ export function ProfileHeader({ profile, onProfileUpdated }: ProfileHeaderProps)
 
     setUploading(true);
     try {
-      const supabase = createClient();
-      const fileExt = file.name.split(".").pop();
-      const filePath = `avatars/${profile.id}/avatar.${fileExt}`;
+      const formData = new FormData();
+      formData.append("file", file);
 
-      const { error: uploadError } = await supabase.storage
-        .from("adds-crm")
-        .upload(filePath, file, { upsert: true });
+      const res = await fetch("/api/profile/avatar", {
+        method: "POST",
+        body: formData,
+        credentials: "same-origin",
+      });
 
-      if (uploadError) throw uploadError;
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        avatar_url?: string;
+      };
 
-      const { data: urlData } = supabase.storage
-        .from("adds-crm")
-        .getPublicUrl(filePath);
+      if (!res.ok) {
+        throw new Error(json.error ?? "Erro ao enviar a foto");
+      }
 
-      const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ avatar_url: avatarUrl })
-        .eq("id", profile.id);
-
-      if (updateError) throw updateError;
+      if (json.avatar_url) {
+        patchProfile({ avatar_url: json.avatar_url });
+      }
 
       toast.success("Foto atualizada!");
-      queryClient.invalidateQueries({ queryKey: ["user"] });
-      onProfileUpdated?.();
+      // Não chamar refetch aqui: o refetch imediato pode voltar antes do commit e sobrescrever
+      // avatar_url no contexto com null — o Avatar volta a mostrar só as iniciais ("AA").
     } catch (error) {
-      toast.error("Erro ao atualizar foto");
+      const msg =
+        error instanceof Error ? error.message : "Erro ao atualizar foto";
+      toast.error(msg);
       console.error(error);
     } finally {
       setUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -97,7 +109,14 @@ export function ProfileHeader({ profile, onProfileUpdated }: ProfileHeaderProps)
     <div className="flex items-center gap-5 p-6 rounded-xl border bg-card">
       <div className="relative group">
         <Avatar className="h-20 w-20 text-lg">
-          <AvatarImage src={profile.avatar_url || undefined} />
+          <AvatarImage
+            key={profile.avatar_url ?? "no-avatar"}
+            src={profile.avatar_url || undefined}
+            className="object-cover"
+            alt=""
+            referrerPolicy="no-referrer"
+            onError={handleAvatarImageError}
+          />
           <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xl">
             {initials}
           </AvatarFallback>

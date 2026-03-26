@@ -10,6 +10,7 @@ import {
   Truck,
   Receipt,
   Archive,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -18,6 +19,7 @@ import {
 // ============================================
 
 export type OrderStatus =
+  | "AUTOMATICO"
   | "FAZER"
   | "AJUSTE"
   | "APROVACAO"
@@ -42,6 +44,16 @@ export interface StatusConfig {
 }
 
 export const ORDER_STATUSES: StatusConfig[] = [
+  {
+    key: "AUTOMATICO",
+    label: "Automático",
+    shortLabel: "Auto",
+    icon: Zap,
+    color: "text-violet-600 dark:text-violet-400",
+    bgColor: "bg-violet-50 dark:bg-violet-900/20",
+    borderColor: "border-violet-200 dark:border-violet-800",
+    dotColor: "bg-violet-500",
+  },
   {
     key: "FAZER",
     label: "Fazer",
@@ -159,9 +171,6 @@ export const STATUS_MAP = Object.fromEntries(
 ) as Record<OrderStatus, StatusConfig>;
 
 /** Colunas exibidas no kanban (exclui ENTREGUE e FATURADO) */
-// TODO [FASE 2]: Adicionar etapa AUTOMATICO antes de FAZER
-// - Pedidos do Tiny com produtos personalizados criam card automaticamente
-// - Ao registrar pagamento no Tiny, adicionar label PAGO automaticamente
 export const KANBAN_COLUMN_STATUSES = ORDER_STATUSES.filter(
   (s) => s.key !== "ENTREGUE" && s.key !== "FATURADO"
 );

@@ -5,11 +5,23 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { useUIStore } from "@/stores/ui.store";
-import { useUser } from "@/hooks/use-user";
+import { UserProvider, useUser } from "@/hooks/use-user";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
 
 export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <UserProvider>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </UserProvider>
+  );
+}
+
+function DashboardLayoutInner({
   children,
 }: {
   children: React.ReactNode;
@@ -61,3 +73,4 @@ export default function DashboardLayout({
     </div>
   );
 }
+

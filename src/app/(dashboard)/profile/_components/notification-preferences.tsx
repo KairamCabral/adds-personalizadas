@@ -55,7 +55,7 @@ const NOTIFICATION_TYPES = [
 
 type NotificationPrefs = Record<
   string,
-  { in_app?: boolean; email?: boolean }
+  { in_app?: boolean; email?: boolean; push?: boolean }
 > | null;
 
 interface NotificationPreferencesProps {
@@ -74,7 +74,7 @@ export function NotificationPreferences({
   const defaultPrefs = profile.notification_preferences ?? {};
 
   const [prefs, setPrefs] = useState<
-    Record<string, { in_app: boolean; email: boolean }>
+    Record<string, { in_app: boolean; email: boolean; push: boolean }>
   >(
     Object.fromEntries(
       NOTIFICATION_TYPES.map((t) => [
@@ -82,6 +82,7 @@ export function NotificationPreferences({
         {
           in_app: defaultPrefs[t.key]?.in_app ?? true,
           email: defaultPrefs[t.key]?.email ?? false,
+          push: defaultPrefs[t.key]?.push ?? true,
         },
       ])
     )
@@ -89,7 +90,7 @@ export function NotificationPreferences({
 
   const [isDirty, setIsDirty] = useState(false);
 
-  const togglePref = (key: string, channel: "in_app" | "email") => {
+  const togglePref = (key: string, channel: "in_app" | "email" | "push") => {
     setPrefs((prev) => ({
       ...prev,
       [key]: { ...prev[key], [channel]: !prev[key][channel] },
@@ -138,16 +139,17 @@ export function NotificationPreferences({
       </CardHeader>
       <CardContent>
         <div className="space-y-1">
-          <div className="grid grid-cols-[1fr,80px,80px] gap-2 px-3 py-2 text-xs font-medium text-muted-foreground">
+          <div className="grid grid-cols-[1fr,72px,72px,72px] gap-2 px-3 py-2 text-xs font-medium text-muted-foreground">
             <span>Tipo</span>
             <span className="text-center">No app</span>
             <span className="text-center">E-mail</span>
+            <span className="text-center">Push</span>
           </div>
 
           {NOTIFICATION_TYPES.map((type) => (
             <div
               key={type.key}
-              className="grid grid-cols-[1fr,80px,80px] gap-2 items-center px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
+              className="grid grid-cols-[1fr,72px,72px,72px] gap-2 items-center px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
             >
               <div>
                 <p className="text-sm font-medium">{type.label}</p>
@@ -166,6 +168,12 @@ export function NotificationPreferences({
                   checked={prefs[type.key]?.email ?? false}
                   onCheckedChange={() => togglePref(type.key, "email")}
                   disabled
+                />
+              </div>
+              <div className="flex justify-center">
+                <Switch
+                  checked={prefs[type.key]?.push ?? true}
+                  onCheckedChange={() => togglePref(type.key, "push")}
                 />
               </div>
             </div>

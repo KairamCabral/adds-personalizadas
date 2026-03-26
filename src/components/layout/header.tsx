@@ -6,6 +6,7 @@ import { useUser } from "@/hooks/use-user";
 import { useUIStore } from "@/stores/ui.store";
 import { useTheme } from "@/providers/theme-provider";
 import { cn, getInitials, generateAvatarColor } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Sun,
   Moon,
@@ -117,15 +118,22 @@ export function Header() {
             aria-haspopup="true"
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-secondary"
           >
-            <div
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white",
-                avatarColor
-              )}
-              aria-hidden="true"
-            >
-              {initials}
-            </div>
+            <Avatar className="h-8 w-8 border border-border/60">
+              <AvatarImage
+                key={profile?.avatar_url ?? "no-photo"}
+                src={profile?.avatar_url ?? undefined}
+                alt=""
+                className="object-cover"
+              />
+              <AvatarFallback
+                className={cn(
+                  "text-xs font-semibold text-white",
+                  avatarColor
+                )}
+              >
+                {initials}
+              </AvatarFallback>
+            </Avatar>
             {profile && (
               <div className="hidden text-left sm:block">
                 <p className="text-xs font-medium text-foreground leading-tight">

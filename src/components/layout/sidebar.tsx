@@ -12,6 +12,7 @@ import {
   Columns3,
   LayoutDashboard,
   Users,
+  UsersRound,
   FileText,
   Link as LinkIcon,
   Settings,
@@ -19,6 +20,10 @@ import {
   ChevronsRight,
   Pin,
   PinOff,
+  BarChart3,
+  Route,
+  Percent,
+  Activity,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Logo } from "@/components/brand/logo";
@@ -51,6 +56,36 @@ const NAV_SECTIONS = [
         href: "/contacts",
         icon: Users,
         permission: "clients.view" as const,
+      },
+      {
+        label: "Representantes",
+        href: "/representantes",
+        icon: UsersRound,
+        permission: "representantes.view" as const,
+      },
+      {
+        label: "Dashboard Reps",
+        href: "/representantes/dashboard",
+        icon: BarChart3,
+        permission: "representantes.view" as const,
+      },
+      {
+        label: "Regras de Leads",
+        href: "/representantes/regras-leads",
+        icon: Route,
+        permission: "representantes.view" as const,
+      },
+      {
+        label: "Descontos",
+        href: "/representantes/descontos",
+        icon: Percent,
+        permission: "representantes.view" as const,
+      },
+      {
+        label: "Atividade Reps",
+        href: "/representantes/atividade",
+        icon: Activity,
+        permission: "representantes.view" as const,
       },
     ],
   },
@@ -242,7 +277,15 @@ export function Sidebar() {
                     const isActive =
                       pathname === item.href ||
                       (item.href !== "/pipeline" &&
-                        pathname.startsWith(item.href));
+                        item.href !== "/representantes" &&
+                        pathname.startsWith(item.href)) ||
+                      (item.href === "/representantes" &&
+                        (pathname === "/representantes" ||
+                          (pathname.startsWith("/representantes/") &&
+                            !pathname.startsWith("/representantes/dashboard") &&
+                            !pathname.startsWith("/representantes/regras-leads") &&
+                            !pathname.startsWith("/representantes/descontos") &&
+                            !pathname.startsWith("/representantes/atividade"))));
                     const Icon = item.icon;
                     const pendingCount =
                       "showPendingBadge" in item && item.showPendingBadge

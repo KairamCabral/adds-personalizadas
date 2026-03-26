@@ -484,6 +484,7 @@ export type Database = {
           data: Json | null
           id: string
           message: string | null
+          push_sent: boolean
           read_at: string | null
           title: string
           type: string
@@ -494,6 +495,7 @@ export type Database = {
           data?: Json | null
           id?: string
           message?: string | null
+          push_sent?: boolean
           read_at?: string | null
           title: string
           type: string
@@ -504,6 +506,7 @@ export type Database = {
           data?: Json | null
           id?: string
           message?: string | null
+          push_sent?: boolean
           read_at?: string | null
           title?: string
           type?: string
@@ -738,13 +741,19 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          discount_pending_approval: boolean | null
+          discount_percentage: number | null
           due_date: string | null
           id: string
+          is_personalized: boolean | null
           order_date: string | null
           order_number: number
           order_type: Database["public"]["Enums"]["order_type"]
+          origin: string | null
+          personalization_data: Json | null
           position: number
           priority: Database["public"]["Enums"]["order_priority"]
+          rep_id: string | null
           start_date: string | null
           status: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id: number | null
@@ -760,13 +769,19 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          discount_pending_approval?: boolean | null
+          discount_percentage?: number | null
           due_date?: string | null
           id?: string
+          is_personalized?: boolean | null
           order_date?: string | null
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
+          origin?: string | null
+          personalization_data?: Json | null
           position?: number
           priority?: Database["public"]["Enums"]["order_priority"]
+          rep_id?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id?: number | null
@@ -782,13 +797,19 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          discount_pending_approval?: boolean | null
+          discount_percentage?: number | null
           due_date?: string | null
           id?: string
+          is_personalized?: boolean | null
           order_date?: string | null
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
+          origin?: string | null
+          personalization_data?: Json | null
           position?: number
           priority?: Database["public"]["Enums"]["order_priority"]
+          rep_id?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id?: number | null
@@ -829,18 +850,26 @@ export type Database = {
           canvas_height: number | null
           canvas_width: number | null
           category: string | null
+          cost_price: number | null
           created_at: string
           description: string | null
           id: string
           image_url: string | null
           is_active: boolean
+          last_stock_sync: string | null
+          lead_time_days: number | null
+          min_order_qty: number | null
           name: string
           price: number | null
           print_area_image_url: string | null
           product_type: string | null
           stock: number | null
+          supplier_code: string | null
+          supplier_name: string | null
           tiny_code: string | null
+          tiny_color_map: Json | null
           tiny_id: number | null
+          tiny_stock: number | null
           tiny_synced_at: string | null
           updated_at: string
         }
@@ -852,18 +881,26 @@ export type Database = {
           canvas_height?: number | null
           canvas_width?: number | null
           category?: string | null
+          cost_price?: number | null
           created_at?: string
           description?: string | null
           id?: string
           image_url?: string | null
           is_active?: boolean
+          last_stock_sync?: string | null
+          lead_time_days?: number | null
+          min_order_qty?: number | null
           name: string
           price?: number | null
           print_area_image_url?: string | null
           product_type?: string | null
           stock?: number | null
+          supplier_code?: string | null
+          supplier_name?: string | null
           tiny_code?: string | null
+          tiny_color_map?: Json | null
           tiny_id?: number | null
+          tiny_stock?: number | null
           tiny_synced_at?: string | null
           updated_at?: string
         }
@@ -875,18 +912,26 @@ export type Database = {
           canvas_height?: number | null
           canvas_width?: number | null
           category?: string | null
+          cost_price?: number | null
           created_at?: string
           description?: string | null
           id?: string
           image_url?: string | null
           is_active?: boolean
+          last_stock_sync?: string | null
+          lead_time_days?: number | null
+          min_order_qty?: number | null
           name?: string
           price?: number | null
           print_area_image_url?: string | null
           product_type?: string | null
           stock?: number | null
+          supplier_code?: string | null
+          supplier_name?: string | null
           tiny_code?: string | null
+          tiny_color_map?: Json | null
           tiny_id?: number | null
+          tiny_stock?: number | null
           tiny_synced_at?: string | null
           updated_at?: string
         }
@@ -939,6 +984,41 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      push_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          platform: string | null
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          platform?: string | null
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          platform?: string | null
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       public_quotes: {
         Row: {
@@ -1424,6 +1504,7 @@ export type Database = {
         | "ORCAMENTO_PUBLICO"
       order_priority: "NORMAL" | "ALTA"
       order_status:
+        | "AUTOMATICO"
         | "FAZER"
         | "AJUSTE"
         | "APROVACAO"
@@ -1608,6 +1689,7 @@ export const Constants = {
       ],
       order_priority: ["NORMAL", "ALTA"],
       order_status: [
+        "AUTOMATICO",
         "FAZER",
         "AJUSTE",
         "APROVACAO",
@@ -1662,3 +1744,4 @@ export type OrderWatcher = Database["public"]["Tables"]["order_watchers"]["Row"]
 export type Supplier = Database["public"]["Tables"]["suppliers"]["Row"]
 export type SupplierAgreement = Database["public"]["Tables"]["supplier_agreements"]["Row"]
 export type SupplierDataLog = Database["public"]["Tables"]["supplier_data_logs"]["Row"]
+export type PushToken = Database["public"]["Tables"]["push_tokens"]["Row"]

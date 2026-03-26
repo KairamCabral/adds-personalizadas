@@ -20,9 +20,25 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // ═══ HEADERS DE SEGURANÇA ═══
+  // ═══ HEADERS HTTP ═══
   async headers() {
     return [
+      // CORS — APIs consumidas pelo app mobile (representantes)
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          {
+            key: "Access-Control-Allow-Methods",
+            value: "GET, POST, PUT, DELETE, OPTIONS",
+          },
+          {
+            key: "Access-Control-Allow-Headers",
+            value: "Content-Type, Authorization",
+          },
+        ],
+      },
+      // Segurança — todas as rotas
       {
         source: "/(.*)",
         headers: [

@@ -681,7 +681,7 @@ export function KanbanBoard() {
                   status={status}
                   orders={getOrdersByStatus(status.key)}
                   isDropTarget={dragOverColumnId === status.key}
-                  canAddOrder={can("orders.create") && !showArchived && status.key !== "ARQUIVADO"}
+                  canAddOrder={can("orders.create") && !showArchived && status.key !== "ARQUIVADO" && status.key !== "AUTOMATICO"}
                   onAddOrder={() => handleAddOrder(status.key)}
                   onOrderClick={(id) => setSelectedOrderId(id)}
                   index={index}

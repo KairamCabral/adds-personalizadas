@@ -20,6 +20,7 @@ import {
   Copy,
   Loader2,
   Image as ImageIcon,
+  Trash2,
 } from "lucide-react";
 import {
   getQuoteById,
@@ -27,9 +28,11 @@ import {
   approveQuote,
   rejectQuote,
   markAsContacted,
+  deleteQuote,
   type QuoteStatus,
   type QuoteItem,
 } from "@/services/quotes.service";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -118,6 +121,7 @@ export function QuoteDetailSheet({
   onClose,
 }: QuoteDetailSheetProps) {
   const queryClient = useQueryClient();
+  const { isMaster } = usePermissions();
   const [internalNotes, setInternalNotes] = useState("");
   const [orcamentoGerado, setOrcamentoGerado] = useState("");
   const [rejectReason, setRejectReason] = useState("");
@@ -206,10 +210,26 @@ export function QuoteDetailSheet({
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteQuote(quoteId!),
+    onSuccess: () => {
+      toast.success("Orçamento excluído");
+      invalidateQueries();
+      onClose();
+    },
+    onError: (error) => {
+      toast.error("Erro ao excluir orçamento", {
+        description:
+          error instanceof Error ? error.message : "Tente novamente",
+      });
+    },
+  });
+
   const isActionDisabled =
     approveMutation.isPending ||
     rejectMutation.isPending ||
-    contactMutation.isPending;
+    contactMutation.isPending ||
+    deleteMutation.isPending;
 
   if (!quoteId) return null;
 
@@ -664,6 +684,67 @@ export function QuoteDetailSheet({
                     </AlertDialog>
                   </div>
                 </div>
+              )}
+
+              {isMaster && (
+                <>
+                  <Separator />
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-destructive">
+                        Zona de Perigo
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Ações irreversíveis. Disponível apenas para administradores.
+                      </p>
+                    </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 border-destructive/50 text-destructive hover:bg-destructive/10 hover:border-destructive"
+                          disabled={deleteMutation.isPending}
+                        >
+                          {deleteMutation.isPending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                          Excluir orçamento
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir orçamento permanentemente?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta ação é <strong>irreversível</strong>. O orçamento de{" "}
+                            <strong>{quote.client_name}</strong> será removido definitivamente
+                            do banco de dados.
+                            {quote.order_id && (
+                              <span className="mt-2 block rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-400">
+                                Atenção: este orçamento já gerou um pedido no Pipeline. O pedido
+                                não será excluído automaticamente.
+                              </span>
+                            )}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive hover:bg-destructive/90"
+                            onClick={() => deleteMutation.mutate()}
+                          >
+                            {deleteMutation.isPending && (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Excluir permanentemente
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </>
               )}
             </div>
           </>

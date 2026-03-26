@@ -43,7 +43,9 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api/webhooks") ||
     pathname.startsWith("/api/quote") || // /api/quote/submit, /api/quote/upload-logo
     pathname.startsWith("/api/products/public") || // Catálogo público para formulário de orçamento
-    pathname.startsWith("/api/clients/find-by-document"); // Busca por CPF/CNPJ no passo "Já sou cliente"
+    pathname.startsWith("/api/clients/find-by-document") || // Busca por CPF/CNPJ no passo "Já sou cliente"
+    pathname.startsWith("/api/orders/create-from-app") || // App representantes — auth via Bearer token
+    pathname.startsWith("/api/tiny/create-contact"); // App representantes — auth via Bearer token
 
   if (isPublicRoute) {
     // Redirect authenticated users away from login

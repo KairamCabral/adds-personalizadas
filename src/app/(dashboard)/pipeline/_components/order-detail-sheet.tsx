@@ -17,7 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PriorityIndicator } from "@/components/shared/priority-indicator";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
-import { getOrderById, deleteOrder, moveOrder, archiveOrder, unarchiveOrder } from "@/services/orders.service";
+import { getOrderById, deleteOrder, moveOrder, archiveOrder, unarchiveOrder, updateOrder } from "@/services/orders.service";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
@@ -36,6 +36,12 @@ import {
   PanelLeftOpen,
   Palette,
   Copy,
+  User,
+  Smartphone,
+  Sparkles,
+  Percent,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -222,6 +228,33 @@ export function OrderDetailSheet() {
     onError: () => {
       toast.error("Erro ao alterar etapa.");
     },
+  });
+
+  const approveDiscountMutation = useMutation({
+    mutationFn: () =>
+      updateOrder(selectedOrderId!, {
+        discount_pending_approval: false,
+      } as any),
+    onSuccess: () => {
+      toast.success("Desconto aprovado.");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
+    },
+    onError: () => toast.error("Erro ao aprovar desconto."),
+  });
+
+  const rejectDiscountMutation = useMutation({
+    mutationFn: () =>
+      updateOrder(selectedOrderId!, {
+        discount_pending_approval: false,
+        discount_percentage: 0,
+      } as any),
+    onSuccess: () => {
+      toast.success("Desconto rejeitado.");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
+    },
+    onError: () => toast.error("Erro ao rejeitar desconto."),
   });
 
   function handleClose() {
@@ -670,6 +703,125 @@ export function OrderDetailSheet() {
                     </div>
                   </CardContent>
                 </Card>
+
+              {/* Seção: Pedido do App de Representantes */}
+              {((order as any).rep_id || (order as any).origin === "APP_REPRESENTANTE") && (
+                <Card className="border-violet-200 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-900/10">
+                  <CardHeader className="pb-1.5 pt-3 px-4">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-violet-700 dark:text-violet-400">
+                      <Smartphone className="h-4 w-4" />
+                      Pedido via App de Representantes
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="pt-0 px-4 pb-3 space-y-1 text-xs text-muted-foreground">
+                    {(order as any).rep?.full_name && (
+                      <div className="flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          Representante:{" "}
+                          <span className="font-medium text-foreground">
+                            {(order as any).rep.full_name}
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                    {(order as any).is_personalized && (
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">
+                          Produto personalizado
+                        </span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Personalização do cliente final (dados do app) */}
+              {(order as any).is_personalized && (order as any).personalization_data && (
+                <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-900/10">
+                  <CardHeader className="pb-1.5 pt-3 px-4">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-blue-700 dark:text-blue-400">
+                      <Sparkles className="h-4 w-4" />
+                      Personalização
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="pt-0 px-4 pb-3 space-y-1 text-xs text-muted-foreground">
+                    {(order as any).personalization_data?.name && (
+                      <p>
+                        Nome:{" "}
+                        <span className="font-medium text-foreground">
+                          {(order as any).personalization_data.name}
+                        </span>
+                      </p>
+                    )}
+                    {(order as any).personalization_data?.phone && (
+                      <p>
+                        Telefone:{" "}
+                        <span className="font-medium text-foreground">
+                          {(order as any).personalization_data.phone}
+                        </span>
+                      </p>
+                    )}
+                    {(order as any).personalization_data?.other && (
+                      <p>
+                        Outros:{" "}
+                        <span className="font-medium text-foreground">
+                          {(order as any).personalization_data.other}
+                        </span>
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Desconto pendente de aprovação */}
+              {(order as any).discount_pending_approval && (
+                <Card className="border-orange-200 bg-orange-50/50 dark:border-orange-800 dark:bg-orange-900/10">
+                  <CardHeader className="pb-1.5 pt-3 px-4">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-orange-700 dark:text-orange-400">
+                      <Percent className="h-4 w-4" />
+                      Desconto aguardando aprovação
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="pt-0 px-4 pb-3 space-y-3">
+                    <div className="text-xs text-muted-foreground">
+                      <p>
+                        Desconto solicitado:{" "}
+                        <span className="font-semibold text-foreground">
+                          {(order as any).discount_percentage ?? 0}%
+                        </span>
+                      </p>
+                      <p className="mt-1">
+                        O representante solicitou desconto acima do limite permitido.
+                        Aprove ou rejeite abaixo.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => approveDiscountMutation.mutate()}
+                        disabled={approveDiscountMutation.isPending || rejectDiscountMutation.isPending}
+                      >
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        Aprovar
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => rejectDiscountMutation.mutate()}
+                        disabled={approveDiscountMutation.isPending || rejectDiscountMutation.isPending}
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                        Rejeitar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Tabs */}
               <Tabs defaultValue="details" className="w-full">

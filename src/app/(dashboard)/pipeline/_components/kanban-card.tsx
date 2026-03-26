@@ -16,6 +16,10 @@ import {
   Paperclip,
   Archive,
   ArchiveRestore,
+  User,
+  Sparkles,
+  Percent,
+  Smartphone,
 } from "lucide-react";
 import {
   Tooltip,
@@ -41,6 +45,7 @@ interface KanbanCardProps {
     client_name?: string;
     assigned_user?: Pick<Profile, "full_name" | "avatar_url">;
     created_user?: Pick<Profile, "full_name" | "avatar_url">;
+    rep?: { full_name: string } | null;
     labels: Pick<OrderLabel, "label">[];
     bling_logs?: BlingLog[];
     items?: OrderItem[];
@@ -127,6 +132,43 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
             );
           })}
         </div>
+      )}
+
+      {/* Badges do app de representantes */}
+      {((order as any).rep_id || (order as any).is_personalized || (order as any).discount_pending_approval || (order as any).origin === "APP_REPRESENTANTE") && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {(order as any).origin === "APP_REPRESENTANTE" && (
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400">
+              <Smartphone className="h-2.5 w-2.5" />
+              App
+            </span>
+          )}
+          {(order as any).rep_id && (
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+              <User className="h-2.5 w-2.5" />
+              Rep
+            </span>
+          )}
+          {(order as any).is_personalized && (
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+              <Sparkles className="h-2.5 w-2.5" />
+              Personalizado
+            </span>
+          )}
+          {(order as any).discount_pending_approval && (
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+              <Percent className="h-2.5 w-2.5" />
+              {(order as any).discount_percentage ? `${(order as any).discount_percentage}% pendente` : "Desconto pendente"}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Nome do representante */}
+      {order.rep?.full_name && (
+        <p className="mb-1 text-[10px] text-muted-foreground">
+          Rep: {order.rep.full_name}
+        </p>
       )}
 
       {/* Title */}

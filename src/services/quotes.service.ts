@@ -416,6 +416,19 @@ export async function markAsContacted(quoteId: string): Promise<PublicQuote> {
 }
 
 // ============================================
+// EXCLUIR ORÇAMENTO (apenas MASTER)
+// Via API: valida papel no servidor e usa service role (RLS não tinha DELETE em public_quotes).
+// ============================================
+export async function deleteQuote(quoteId: string): Promise<void> {
+  const res = await fetch(`/api/quotes/${quoteId}`, { method: "DELETE" });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+
+  if (!res.ok) {
+    throw new Error(json.error ?? "Erro ao excluir orçamento");
+  }
+}
+
+// ============================================
 // CONTAGEM POR STATUS (para badges)
 // ============================================
 export async function getQuoteCounts() {
