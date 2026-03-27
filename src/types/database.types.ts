@@ -865,6 +865,7 @@ export type Database = {
           product_type: string | null
           stock: number | null
           supplier_code: string | null
+          supplier_color_map: Json | null
           supplier_name: string | null
           tiny_code: string | null
           tiny_color_map: Json | null
@@ -896,6 +897,7 @@ export type Database = {
           product_type?: string | null
           stock?: number | null
           supplier_code?: string | null
+          supplier_color_map?: Json | null
           supplier_name?: string | null
           tiny_code?: string | null
           tiny_color_map?: Json | null
@@ -927,6 +929,7 @@ export type Database = {
           product_type?: string | null
           stock?: number | null
           supplier_code?: string | null
+          supplier_color_map?: Json | null
           supplier_name?: string | null
           tiny_code?: string | null
           tiny_color_map?: Json | null

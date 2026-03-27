@@ -19,6 +19,7 @@ node_modules
 
 # debug
 npm-debug.log*
+debug-*.log
 yarn-debug.log*
 yarn-error.log*
 
@@ -35,3 +36,5 @@ next-env.d.ts
 
 # supabase
 supabase/.temp/
+
+.vercel
