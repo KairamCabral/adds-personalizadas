@@ -11,6 +11,8 @@ import {
   Pencil,
   ArrowLeft,
   ChevronRight,
+  Clock,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -320,16 +322,16 @@ function MultipleVariationsView({
         ))}
       </div>
 
-      <div className="pt-1 text-center">
-        <button
-          type="button"
-          onClick={onRevision}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#f07d00] underline-offset-2 hover:underline"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          Não gostou de nenhuma? Solicitar ajuste
-        </button>
-      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        onClick={onRevision}
+        className="h-12 w-full gap-2 border-2 border-[#f07d00]/50 font-semibold text-[#f07d00] hover:border-[#f07d00] hover:bg-[#f07d00]/10 hover:shadow-md active:scale-[0.98]"
+      >
+        <Pencil className="h-4 w-4" />
+        Não gostou de nenhuma? Solicitar ajuste
+      </Button>
     </div>
   );
 }
@@ -375,38 +377,50 @@ function ApproveStep({
 
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-5">
-      {/* Back + header */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={isLoading}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
-          aria-label="Voltar"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div>
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">
-            Confirmar Aprovação
-          </h1>
-          <p className="text-sm text-muted-foreground">Pedido: {orderTitle}</p>
+      {/* Back + header + progress */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={isLoading}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
+            aria-label="Voltar"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <h1 className="text-xl font-bold text-foreground sm:text-2xl">
+                Confirmar Aprovação
+              </h1>
+              <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                Etapa 2 de 2
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">Pedido: {orderTitle}</p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-full rounded-full bg-emerald-500 transition-all duration-500" />
         </div>
       </div>
 
-      {/* Approval badge */}
-      <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-4 py-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
-          <Check className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+      {/* Pending alert — principal gancho psicológico */}
+      <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/20">
+          <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-            {hasMultiple && selectedVariation
-              ? `Opção ${selectedVariation.variationIndex} selecionada`
-              : "Arte pronta para aprovação"}
+          <p className="text-sm font-bold text-amber-700 dark:text-amber-300">
+            Aprovação pendente — ainda não concluída
           </p>
-          <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
-            Após confirmar, a arte seguirá para produção
+          <p className="mt-0.5 text-xs text-amber-600/80 dark:text-amber-400/70">
+            {hasMultiple && selectedVariation
+              ? `Opção ${selectedVariation.variationIndex} escolhida. Confirme abaixo para registrar sua decisão.`
+              : "Confirme seu nome abaixo para registrar a aprovação oficialmente."}
           </p>
         </div>
       </div>
@@ -414,13 +428,13 @@ function ApproveStep({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="approverName">
+          <Label htmlFor="approverName" className="text-sm font-semibold">
             Seu nome completo <span className="text-destructive">*</span>
           </Label>
           <Input
             id="approverName"
             placeholder="Ex: Maria da Silva"
-            className="h-12 text-base"
+            className="h-12 text-base ring-2 ring-emerald-500/30 focus:ring-emerald-500/60"
             disabled={isLoading}
             {...nameRest}
             ref={(el) => {
@@ -428,12 +442,14 @@ function ApproveStep({
               nameRef.current = el;
             }}
           />
-          {errors.approverName && (
+          {errors.approverName ? (
             <p className="text-xs text-destructive">{errors.approverName.message}</p>
+          ) : (
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              Sem confirmar, sua aprovação não será registrada.
+            </p>
           )}
-          <p className="text-xs text-muted-foreground">
-            Seu nome será registrado como responsável pela aprovação.
-          </p>
         </div>
 
         {apiError && (
@@ -446,20 +462,24 @@ function ApproveStep({
           type="submit"
           size="lg"
           disabled={isLoading}
-          className="h-14 w-full gap-2 bg-emerald-600 text-base font-semibold hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-500/20 active:scale-[0.98] disabled:opacity-60"
+          className="h-14 w-full animate-pulse gap-2 bg-emerald-600 text-base font-bold shadow-lg shadow-emerald-500/30 hover:animate-none hover:bg-emerald-700 hover:shadow-emerald-500/40 active:scale-[0.98] disabled:animate-none disabled:opacity-60"
         >
           {isLoading ? (
             <>
               <Loader2 className="h-5 w-5 animate-spin" />
-              Processando...
+              Registrando aprovação...
             </>
           ) : (
             <>
               <Check className="h-5 w-5" />
-              Confirmar aprovação
+              Confirmar aprovação agora
             </>
           )}
         </Button>
+
+        <p className="text-center text-xs text-muted-foreground">
+          Leva menos de 10 segundos · Você pode voltar e rever a arte a qualquer momento
+        </p>
       </form>
     </div>
   );
