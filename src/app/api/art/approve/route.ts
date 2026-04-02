@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { token, approved, approver_name, feedback, approved_artwork_id } = body;
+    const { token, approved, approver_name, feedback, approved_artwork_id, adjusted_artwork_id } = body;
 
     if (!token || typeof token !== "string") {
       return NextResponse.json(
@@ -58,7 +58,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const targetArtworkId = approved && approved_artwork_id ? approved_artwork_id : tokenRow.artwork_id;
+    // For approval: use approved_artwork_id if provided (specific variation chosen)
+    // For revision: use adjusted_artwork_id if provided (specific variation to adjust), else token's artwork
+    const targetArtworkId = approved
+      ? (approved_artwork_id ?? tokenRow.artwork_id)
+      : (adjusted_artwork_id ?? tokenRow.artwork_id);
 
     const { data: artwork } = await supabase
       .from("artworks")
@@ -150,11 +154,20 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (tokenArtwork) {
-        await supabase
-          .from("artworks")
-          .update({ status: "AJUSTE_SOLICITADO", adjustment_notes: feedbackText })
-          .eq("order_id", tokenArtwork.order_id)
-          .eq("version", tokenArtwork.version);
+        if (adjusted_artwork_id) {
+          // Specific variation adjustment: update only that artwork
+          await supabase
+            .from("artworks")
+            .update({ status: "AJUSTE_SOLICITADO", adjustment_notes: feedbackText })
+            .eq("id", adjusted_artwork_id);
+        } else {
+          // Global adjustment: update all artworks of the same version (existing behaviour)
+          await supabase
+            .from("artworks")
+            .update({ status: "AJUSTE_SOLICITADO", adjustment_notes: feedbackText })
+            .eq("order_id", tokenArtwork.order_id)
+            .eq("version", tokenArtwork.version);
+        }
       }
 
       const { count: ajusteCount } = await supabase

@@ -43,7 +43,6 @@ export default async function ArtApprovalPage({ params }: PageProps) {
     );
   }
 
-  // Token expirado E não visualizável (passou de 15 dias desde o uso, ou nunca usado e vencido)
   if (!result.is_valid && !result.is_viewable) {
     return (
       <div className="rounded-2xl border border-destructive/20 bg-card p-6 text-center shadow-xl ring-1 ring-border/50 dark:bg-gray-900 sm:p-8">
@@ -57,10 +56,14 @@ export default async function ArtApprovalPage({ params }: PageProps) {
     );
   }
 
+  const isBundle = result.is_bundle ?? false;
+
   const variations = rows.map((r) => ({
     id: r.artwork_id,
     url: r.artwork_url ?? "",
-    variationIndex: (r as { variation_index?: number }).variation_index ?? 1,
+    variationIndex: r.variation_index ?? 1,
+    label: r.artwork_label ?? null,
+    status: r.artwork_status ?? "PENDENTE",
   }));
 
   const isReadOnly = !result.is_valid && result.is_viewable;
@@ -73,12 +76,14 @@ export default async function ArtApprovalPage({ params }: PageProps) {
           variations={variations}
           artworkStatus={result.artwork_status ?? null}
           approvedBy={result.used_by_name ?? null}
+          isBundle={isBundle}
         />
       ) : (
         <ApprovalForm
           token={token}
           orderTitle={result.order_title ?? ""}
           variations={variations}
+          isBundle={isBundle}
         />
       )}
     </div>

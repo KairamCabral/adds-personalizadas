@@ -32,6 +32,48 @@ export type Database = {
         }
         Relationships: []
       }
+      approval_bundle_items: {
+        Row: {
+          artwork_id: string
+          artwork_label: string
+          created_at: string
+          id: string
+          sort_order: number
+          token_id: string
+        }
+        Insert: {
+          artwork_id: string
+          artwork_label?: string
+          created_at?: string
+          id?: string
+          sort_order?: number
+          token_id: string
+        }
+        Update: {
+          artwork_id?: string
+          artwork_label?: string
+          created_at?: string
+          id?: string
+          sort_order?: number
+          token_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_bundle_items_artwork_id_fkey"
+            columns: ["artwork_id"]
+            isOneToOne: false
+            referencedRelation: "artworks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_bundle_items_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "approval_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       approval_tokens: {
         Row: {
           artwork_id: string
@@ -39,6 +81,7 @@ export type Database = {
           created_by: string | null
           expires_at: string
           id: string
+          is_bundle: boolean
           order_id: string
           token: string
           used_at: string | null
@@ -50,6 +93,7 @@ export type Database = {
           created_by?: string | null
           expires_at: string
           id?: string
+          is_bundle?: boolean
           order_id: string
           token?: string
           used_at?: string | null
@@ -61,6 +105,7 @@ export type Database = {
           created_by?: string | null
           expires_at?: string
           id?: string
+          is_bundle?: boolean
           order_id?: string
           token?: string
           used_at?: string | null
@@ -1466,6 +1511,7 @@ export type Database = {
         Returns: {
           is_valid: boolean
           is_viewable: boolean
+          is_bundle: boolean
           token_id: string
           order_id: string
           artwork_id: string
@@ -1475,6 +1521,7 @@ export type Database = {
           used_by_name: string | null
           artwork_status: string | null
           variation_index: number
+          artwork_label: string | null
         }[]
       }
     }

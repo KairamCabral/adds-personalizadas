@@ -6,6 +6,7 @@ import {
   getArtworksByOrder,
   uploadArtwork,
   generateApprovalLink,
+  generateBundleApprovalLink,
   getActiveToken,
   deleteArtwork,
   groupArtworksByVersion,
@@ -25,6 +26,8 @@ import {
   AlertTriangle,
   MessageSquare,
   Send,
+  Layers,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -250,6 +253,9 @@ function LatestArtworkCard({
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+  const [showBundleDialog, setShowBundleDialog] = useState(false);
+  const [bundleLabels, setBundleLabels] = useState<Record<string, string>>({});
+  const [bundleLinkLoading, setBundleLinkLoading] = useState(false);
 
   const primary = variations[0];
   const representativeId = primary?.id ?? "";
@@ -409,6 +415,36 @@ function LatestArtworkCard({
         </div>
       )}
 
+      {/* Bundle link — only when there are 2+ pending variations */}
+      {!hasAdjustmentRequested && allPending && hasMultiple && (
+        <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+          <p className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+            <Layers className="h-4 w-4 text-primary" />
+            Link de aprovação independente
+          </p>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Cada arte terá decisão individual (aprovar ou ajustar separadamente).
+            Ideal para clínicas com 2+ dentistas ou produtos diferentes.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 border-primary/40 text-primary hover:border-primary hover:bg-primary/10"
+            onClick={() => {
+              const initial: Record<string, string> = {};
+              variations.forEach((v, i) => {
+                initial[v.id] = `Arte ${i + 1}`;
+              });
+              setBundleLabels(initial);
+              setShowBundleDialog(true);
+            }}
+          >
+            <Layers className="h-4 w-4" />
+            Gerar link por arte
+          </Button>
+        </div>
+      )}
+
       {(allPending || hasAdjustmentRequested) && (
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
@@ -438,6 +474,81 @@ function LatestArtworkCard({
           )}
         </div>
       )}
+
+      {/* Bundle link generation dialog */}
+      <Dialog open={showBundleDialog} onOpenChange={setShowBundleDialog}>
+        <DialogContent className="z-[200] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5 text-primary" />
+              Gerar link por arte
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Dê um nome a cada arte para o cliente identificar facilmente.
+            </p>
+            {variations.map((v, i) => (
+              <div key={v.id} className="space-y-1">
+                <label className="text-xs font-medium text-foreground">
+                  Arte {i + 1}
+                </label>
+                <div className="flex items-center gap-2">
+                  <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    value={bundleLabels[v.id] ?? `Arte ${i + 1}`}
+                    placeholder={`Ex: Dr. João Silva`}
+                    onChange={(e) =>
+                      setBundleLabels((prev) => ({ ...prev, [v.id]: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowBundleDialog(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="gap-2"
+              disabled={bundleLinkLoading}
+              onClick={async () => {
+                setBundleLinkLoading(true);
+                try {
+                  const items = variations.map((v) => ({
+                    artworkId: v.id,
+                    label: bundleLabels[v.id]?.trim() || `Arte ${v.variation_index ?? 1}`,
+                    orderId: orderId,
+                  }));
+                  const link = await generateBundleApprovalLink(items);
+                  setGeneratedLink(link);
+                  setShowBundleDialog(false);
+                  setShowLinkDialog(true);
+                  queryClient.invalidateQueries({ queryKey: ["approval-token", representativeId] });
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Erro ao gerar link");
+                } finally {
+                  setBundleLinkLoading(false);
+                }
+              }}
+            >
+              {bundleLinkLoading ? "Gerando..." : (
+                <>
+                  <Layers className="h-4 w-4" />
+                  Gerar link
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
         <DialogContent className="z-[200] sm:max-w-md">

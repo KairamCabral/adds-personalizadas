@@ -198,6 +198,62 @@ export async function generateApprovalLink(
   return `${baseUrl}/art/approve/${token}`;
 }
 
+export async function generateBundleApprovalLink(
+  items: { artworkId: string; label: string; orderId: string }[],
+  expiresInDays: number = DEFAULT_EXPIRES_DAYS
+): Promise<string> {
+  if (items.length === 0) throw new Error("Nenhuma arte selecionada");
+
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Não autenticado");
+
+  // All artworks must belong to the same order
+  const orderId = items[0].orderId;
+  if (items.some((i) => i.orderId !== orderId)) {
+    throw new Error("Todas as artes devem pertencer ao mesmo pedido");
+  }
+
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + expiresInDays);
+
+  // Insert token with is_bundle = true, artwork_id = first item (representative)
+  const { data: tokenRow, error: tokenError } = await supabase
+    .from("approval_tokens")
+    .insert({
+      order_id: orderId,
+      artwork_id: items[0].artworkId,
+      token,
+      expires_at: expiresAt.toISOString(),
+      created_by: user.id,
+      is_bundle: true,
+    } as Database["public"]["Tables"]["approval_tokens"]["Insert"])
+    .select("id")
+    .single();
+
+  if (tokenError || !tokenRow) throw tokenError ?? new Error("Erro ao criar token");
+
+  // Insert bundle items
+  const bundleItems = items.map((item, idx) => ({
+    token_id: tokenRow.id,
+    artwork_id: item.artworkId,
+    artwork_label: item.label,
+    sort_order: idx,
+  }));
+
+  const { error: itemsError } = await supabase
+    .from("approval_bundle_items")
+    .insert(bundleItems);
+
+  if (itemsError) throw itemsError;
+
+  const baseUrl = typeof window !== "undefined"
+    ? window.location.origin
+    : process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return `${baseUrl}/art/approve/${token}`;
+}
+
 export async function getActiveToken(artworkId: string): Promise<ApprovalToken | null> {
   const supabase = createClient();
   const { data } = await supabase
