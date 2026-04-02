@@ -151,7 +151,11 @@ function BundleApprovalForm({
     setIsLoading(true);
     setApiError(null);
     try {
-      const decisionsArr = Object.values(decisions);
+      const decisionsArr = Object.values(decisions).map((d) => ({
+        artwork_id: d.artworkId,
+        approved: d.approved,
+        feedback: d.feedback,
+      }));
       const res = await fetch("/api/art/approve-bundle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
