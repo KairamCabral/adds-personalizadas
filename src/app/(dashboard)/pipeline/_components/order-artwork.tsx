@@ -28,6 +28,9 @@ import {
   Send,
   Layers,
   Pencil,
+  Users,
+  Loader2,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -417,31 +420,51 @@ function LatestArtworkCard({
 
       {/* Bundle link — only when there are 2+ pending variations */}
       {!hasAdjustmentRequested && allPending && hasMultiple && (
-        <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
-          <p className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
-            <Layers className="h-4 w-4 text-primary" />
-            Link de aprovação independente
-          </p>
-          <p className="mb-2 text-xs text-muted-foreground">
-            Cada arte terá decisão individual (aprovar ou ajustar separadamente).
-            Ideal para clínicas com 2+ dentistas ou produtos diferentes.
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2 border-primary/40 text-primary hover:border-primary hover:bg-primary/10"
-            onClick={() => {
-              const initial: Record<string, string> = {};
-              variations.forEach((v, i) => {
-                initial[v.id] = `Arte ${i + 1}`;
-              });
-              setBundleLabels(initial);
-              setShowBundleDialog(true);
-            }}
-          >
-            <Layers className="h-4 w-4" />
-            Gerar link por arte
-          </Button>
+        <div className="mt-4 overflow-hidden rounded-xl border-2 border-primary/25 bg-gradient-to-br from-primary/5 via-primary/5 to-primary/10">
+          {/* Header */}
+          <div className="flex items-start gap-3 p-4 pb-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 ring-1 ring-primary/20">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-foreground leading-tight">
+                Aprovação individual por arte
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                O cliente decide em cada arte separadamente — pode aprovar uma e pedir ajuste na outra.
+              </p>
+            </div>
+          </div>
+
+          {/* Use cases chips */}
+          <div className="flex flex-wrap gap-1.5 px-4 pb-3">
+            <span className="inline-flex items-center gap-1 rounded-full bg-background/80 px-2.5 py-1 text-xs font-medium text-foreground ring-1 ring-border">
+              🦷 Clínica com 2+ dentistas
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-background/80 px-2.5 py-1 text-xs font-medium text-foreground ring-1 ring-border">
+              📦 Produtos diferentes
+            </span>
+          </div>
+
+          {/* Divider + CTA */}
+          <div className="border-t border-primary/15 bg-primary/5 px-4 py-3">
+            <Button
+              size="sm"
+              className="w-full gap-2 bg-primary font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-[0.98]"
+              onClick={() => {
+                const initial: Record<string, string> = {};
+                variations.forEach((v, i) => {
+                  initial[v.id] = `Arte ${i + 1}`;
+                });
+                setBundleLabels(initial);
+                setShowBundleDialog(true);
+              }}
+            >
+              <Users className="h-4 w-4" />
+              Gerar link com decisão por arte
+              <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
+            </Button>
+          </div>
         </div>
       )}
 
@@ -477,75 +500,115 @@ function LatestArtworkCard({
 
       {/* Bundle link generation dialog */}
       <Dialog open={showBundleDialog} onOpenChange={setShowBundleDialog}>
-        <DialogContent className="z-[200] sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-primary" />
-              Gerar link por arte
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Dê um nome a cada arte para o cliente identificar facilmente.
-            </p>
-            {variations.map((v, i) => (
-              <div key={v.id} className="space-y-1">
-                <label className="text-xs font-medium text-foreground">
-                  Arte {i + 1}
-                </label>
-                <div className="flex items-center gap-2">
-                  <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <input
-                    className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    value={bundleLabels[v.id] ?? `Arte ${i + 1}`}
-                    placeholder={`Ex: Dr. João Silva`}
-                    onChange={(e) =>
-                      setBundleLabels((prev) => ({ ...prev, [v.id]: e.target.value }))
-                    }
-                  />
-                </div>
+        <DialogContent className="z-[200] gap-0 overflow-hidden p-0 sm:max-w-lg">
+          {/* Dialog header */}
+          <div className="border-b border-border bg-muted/30 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 ring-1 ring-primary/20">
+                <Users className="h-5 w-5 text-primary" />
               </div>
-            ))}
+              <div>
+                <DialogHeader>
+                  <DialogTitle className="text-base font-semibold leading-tight">
+                    Nomeie cada arte
+                  </DialogTitle>
+                </DialogHeader>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  O cliente verá esse nome ao revisar — use o nome do dentista ou produto.
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowBundleDialog(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              size="sm"
-              className="gap-2"
-              disabled={bundleLinkLoading}
-              onClick={async () => {
-                setBundleLinkLoading(true);
-                try {
-                  const items = variations.map((v) => ({
-                    artworkId: v.id,
-                    label: bundleLabels[v.id]?.trim() || `Arte ${v.variation_index ?? 1}`,
-                    orderId: orderId,
-                  }));
-                  const link = await generateBundleApprovalLink(items);
-                  setGeneratedLink(link);
-                  setShowBundleDialog(false);
-                  setShowLinkDialog(true);
-                  queryClient.invalidateQueries({ queryKey: ["approval-token", representativeId] });
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Erro ao gerar link");
-                } finally {
-                  setBundleLinkLoading(false);
-                }
-              }}
-            >
-              {bundleLinkLoading ? "Gerando..." : (
-                <>
-                  <Layers className="h-4 w-4" />
-                  Gerar link
-                </>
-              )}
-            </Button>
+
+          {/* Arts list with thumbnails */}
+          <div className="space-y-3 px-6 py-5">
+            {variations.map((v, i) => {
+              const isPdf = v.file_url?.toLowerCase().includes(".pdf");
+              return (
+                <div
+                  key={v.id}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors focus-within:border-primary/40 focus-within:bg-primary/5"
+                >
+                  {/* Thumbnail */}
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted flex items-center justify-center">
+                    {isPdf ? (
+                      <FileText className="h-6 w-6 text-muted-foreground" />
+                    ) : (
+                      <img
+                        src={v.file_url}
+                        alt={`Arte ${i + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                  </div>
+
+                  {/* Input */}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Arte {i + 1}
+                    </label>
+                    <input
+                      autoFocus={i === 0}
+                      className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium placeholder-muted-foreground/60 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={bundleLabels[v.id] ?? `Arte ${i + 1}`}
+                      placeholder="Ex: Dr. João Silva"
+                      onChange={(e) =>
+                        setBundleLabels((prev) => ({ ...prev, [v.id]: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer hint + actions */}
+          <div className="border-t border-border bg-muted/30 px-6 py-4">
+            <p className="mb-3 flex items-start gap-2 text-xs text-muted-foreground">
+              <span className="mt-px shrink-0 text-sm">💡</span>
+              <span>O link gerado abre uma página onde o cliente revisa cada arte e decide individualmente.</span>
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => setShowBundleDialog(false)}
+                disabled={bundleLinkLoading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1 gap-2 bg-primary font-semibold hover:bg-primary/90"
+                disabled={bundleLinkLoading}
+                onClick={async () => {
+                  setBundleLinkLoading(true);
+                  try {
+                    const items = variations.map((v) => ({
+                      artworkId: v.id,
+                      label: bundleLabels[v.id]?.trim() || `Arte ${v.variation_index ?? 1}`,
+                      orderId: orderId,
+                    }));
+                    const link = await generateBundleApprovalLink(items);
+                    setGeneratedLink(link);
+                    setShowBundleDialog(false);
+                    setShowLinkDialog(true);
+                    queryClient.invalidateQueries({ queryKey: ["approval-token", representativeId] });
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Erro ao gerar link");
+                  } finally {
+                    setBundleLinkLoading(false);
+                  }
+                }}
+              >
+                {bundleLinkLoading ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Gerando...</>
+                ) : (
+                  <><Link2 className="h-4 w-4" /> Gerar link</>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
