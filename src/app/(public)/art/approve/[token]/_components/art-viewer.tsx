@@ -49,23 +49,27 @@ export function ArtViewer({ imageUrl, title, variationLabel }: ArtViewerProps) {
 
         {/* Preview inline para desktop via iframe */}
         <div className="hidden lg:block">
-          <div className="relative w-full overflow-hidden rounded-xl border border-border bg-muted/20" style={{ height: 340 }}>
-            <iframe
-              src={`${imageUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-              className="h-full w-full"
-              title={variationLabel ?? title}
-              onLoad={() => setPdfOpened(true)}
-            />
-            <a
-              href={imageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setPdfOpened(true)}
-              className="absolute right-2 top-2 flex items-center gap-1.5 rounded-lg bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/75"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Abrir em tela cheia
-            </a>
+          <div className="overflow-hidden rounded-xl border border-border bg-muted/20">
+            <div className="relative w-full" style={{ height: 340 }}>
+              <iframe
+                src={`${imageUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                className="h-full w-full"
+                title={variationLabel ?? title}
+                onLoad={() => setPdfOpened(true)}
+              />
+            </div>
+            <div className="flex items-center justify-center border-t border-border bg-muted/30 px-4 py-3">
+              <a
+                href={imageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setPdfOpened(true)}
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/40 hover:bg-muted hover:shadow-md active:scale-[0.98]"
+              >
+                <ExternalLink className="h-4 w-4 text-primary" />
+                Abrir em tela cheia
+              </a>
+            </div>
           </div>
         </div>
 
@@ -113,28 +117,36 @@ export function ArtViewer({ imageUrl, title, variationLabel }: ArtViewerProps) {
       {!variationLabel && (
         <h3 className="shrink-0 text-sm font-medium text-foreground">{title}</h3>
       )}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setIsFullscreen(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setIsFullscreen(true);
-          }
-        }}
-        className="group relative flex min-h-0 flex-1 cursor-pointer overflow-hidden rounded-lg border border-border bg-muted/30 transition-all hover:border-primary/30 hover:shadow-md"
-      >
-        <div className="relative flex min-h-[180px] flex-1 items-center justify-center sm:min-h-[220px] lg:aspect-video lg:min-h-0">
-          <img
-            src={imageUrl}
-            alt={variationLabel ?? title}
-            className="max-h-[35vh] w-full object-contain transition-transform duration-300 group-hover:scale-[1.02] sm:max-h-[40vh] lg:max-h-none lg:h-full"
-          />
+      <div className="overflow-hidden rounded-xl border border-border bg-muted/30">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setIsFullscreen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setIsFullscreen(true);
+            }
+          }}
+          className="group relative flex min-h-0 flex-1 cursor-zoom-in transition-all"
+        >
+          <div className="relative flex min-h-[180px] flex-1 items-center justify-center sm:min-h-[220px] lg:aspect-video lg:min-h-0">
+            <img
+              src={imageUrl}
+              alt={variationLabel ?? title}
+              className="max-h-[35vh] w-full object-contain transition-transform duration-300 group-hover:scale-[1.01] sm:max-h-[40vh] lg:max-h-none lg:h-full"
+            />
+          </div>
         </div>
-        <div className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-lg bg-black/60 px-3 py-2 text-xs text-white backdrop-blur-sm transition-opacity group-hover:bg-black/70">
-          <ZoomIn className="h-3.5 w-3.5" />
-          Clique para ampliar
+        <div className="flex items-center justify-center border-t border-border bg-muted/30 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(true)}
+            className="flex items-center gap-2 rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/40 hover:bg-muted hover:shadow-md active:scale-[0.98]"
+          >
+            <ZoomIn className="h-4 w-4 text-primary" />
+            Ver em tela cheia
+          </button>
         </div>
       </div>
 
