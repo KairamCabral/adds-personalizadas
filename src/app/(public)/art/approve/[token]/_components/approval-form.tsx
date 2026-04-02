@@ -404,7 +404,7 @@ function ApproveStep({
 
         {/* Progress bar */}
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-full rounded-full bg-emerald-500 transition-all duration-500" />
+          <div className="h-full w-[90%] rounded-full bg-emerald-500 transition-all duration-500" />
         </div>
       </div>
 
