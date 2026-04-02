@@ -226,6 +226,33 @@ export async function tinyApiPost<T = any>(
   return res.json();
 }
 
+export async function tinyApiPatch<T = any>(
+  endpoint: string,
+  body: unknown
+): Promise<T> {
+  const token = await getValidAccessToken();
+  const base = getTinyApiBase();
+  const url = `${base}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Tiny API PATCH ${endpoint} failed: ${res.status} ${text}`);
+  }
+
+  // 204 No Content is a valid success response for PATCH
+  if (res.status === 204) return {} as T;
+  return res.json();
+}
+
 export async function isTinyConnected(): Promise<boolean> {
   const supabase = getServiceClient();
   const { data } = await supabase

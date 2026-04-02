@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Loader2,
   UserPlus,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,9 +69,11 @@ export function OrderContactCard({
   const [nameVal, setNameVal] = useState(contactName ?? "");
   const [phoneVal, setPhoneVal] = useState(contactPhone ?? "");
   const [copied, setCopied] = useState(false);
+  const [syncToTiny, setSyncToTiny] = useState(!!tinyId);
   const [showTinyPeople, setShowTinyPeople] = useState(false);
   const [tinyPeople, setTinyPeople] = useState<TinyContactPerson[]>([]);
   const [loadingTiny, setLoadingTiny] = useState(false);
+  const [tinySyncStatus, setTinySyncStatus] = useState<"idle" | "syncing" | "ok" | "error">("idle");
   const nameRef = useRef<HTMLInputElement>(null);
 
   const isEmpty = !contactName && !contactPhone;
@@ -79,16 +82,50 @@ export function OrderContactCard({
     if (isEditing) {
       setNameVal(contactName ?? "");
       setPhoneVal(contactPhone ?? "");
+      setSyncToTiny(!!tinyId);
+      setTinySyncStatus("idle");
       setTimeout(() => nameRef.current?.focus(), 50);
     }
-  }, [isEditing, contactName, contactPhone]);
+  }, [isEditing, contactName, contactPhone, tinyId]);
 
   const saveMutation = useMutation({
-    mutationFn: () => updateOrderContact(orderId, nameVal, phoneVal),
+    mutationFn: async () => {
+      // 1. Save to Supabase
+      await updateOrderContact(orderId, nameVal, phoneVal);
+
+      // 2. Optionally sync to Tiny
+      if (syncToTiny && tinyId && nameVal.trim()) {
+        setTinySyncStatus("syncing");
+        try {
+          const digits = phoneVal.replace(/\D/g, "");
+          const res = await fetch(`/api/tiny/contacts/${tinyId}/contact-persons`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              nome: nameVal.trim(),
+              celular: digits || undefined,
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok || !json.success) throw new Error(json.error ?? "Falha no Tiny");
+          setTinySyncStatus("ok");
+        } catch (err) {
+          setTinySyncStatus("error");
+          toast.warning(
+            `Contato salvo no CRM, mas não foi possível sincronizar com o Tiny: ${err instanceof Error ? err.message : "erro desconhecido"}`
+          );
+          return;
+        }
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["order", orderId] });
       setIsEditing(false);
-      toast.success("Contato atualizado");
+      if (syncToTiny && tinyId) {
+        toast.success("Contato salvo e sincronizado com o Tiny");
+      } else {
+        toast.success("Contato atualizado");
+      }
     },
     onError: () => toast.error("Erro ao salvar contato"),
   });
@@ -222,6 +259,22 @@ export function OrderContactCard({
         )}
         {showTinyPeople && tinyPeople.length === 0 && (
           <p className="text-xs text-muted-foreground">Nenhuma pessoa de contato encontrada no Tiny.</p>
+        )}
+
+        {/* Tiny sync option */}
+        {tinyId && (
+          <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:bg-muted/50">
+            <input
+              type="checkbox"
+              checked={syncToTiny}
+              onChange={(e) => setSyncToTiny(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+              Salvar também nas Pessoas de Contato do Tiny
+            </span>
+          </label>
         )}
 
         <div className="flex gap-2 pt-1">
