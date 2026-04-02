@@ -93,6 +93,7 @@ import { OrderAttachments } from "./order-attachments";
 import { OrderArtwork } from "./order-artwork";
 import { OrderActivityPanel } from "./order-activity-panel";
 import { OrderEditSheet } from "./order-edit-sheet";
+import { OrderContactCard } from "./order-contact-card";
 
 const APROVADO_AND_AFTER = [
   "CONFIRMACAO",
@@ -581,6 +582,16 @@ export function OrderDetailSheet() {
                     }))
                   }
                   canEdit={can("labels.add_to_order")}
+                />
+
+                {/* Contact person — quick access for the chat */}
+                <OrderContactCard
+                  orderId={order.id}
+                  contactName={(order as any).contact_name ?? null}
+                  contactPhone={(order as any).contact_phone ?? null}
+                  clientName={(order as any).client?.name ?? null}
+                  clientPhone={(order as any).client?.phone ?? null}
+                  tinyId={(order as any).client?.tiny_id ?? null}
                 />
 
                 {/* Enviar ao fornecedor — visível quando pedido aprovado e com cliente */}

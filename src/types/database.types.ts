@@ -783,6 +783,8 @@ export type Database = {
           assigned_to: string | null
           bling_order_id: number | null
           client_id: string | null
+          contact_name: string | null
+          contact_phone: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -811,6 +813,8 @@ export type Database = {
           assigned_to?: string | null
           bling_order_id?: number | null
           client_id?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -839,6 +843,8 @@ export type Database = {
           assigned_to?: string | null
           bling_order_id?: number | null
           client_id?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null

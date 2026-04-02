@@ -306,6 +306,27 @@ export async function reorderColumn(
 }
 
 // ============================================
+// CONTACT
+// ============================================
+
+export async function updateOrderContact(
+  orderId: string,
+  contactName: string | null,
+  contactPhone: string | null
+) {
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      contact_name: contactName?.trim() || null,
+      contact_phone: contactPhone?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
+
+  if (error) throw error;
+}
+
+// ============================================
 // LABELS
 // ============================================
 
