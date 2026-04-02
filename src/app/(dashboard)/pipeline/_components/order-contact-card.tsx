@@ -49,11 +49,13 @@ function whatsappUrl(phone: string): string {
   return `https://wa.me/${international}`;
 }
 
+// Tiny v3 pessoasContato uses fone (not celular) and setor (not cargo)
 interface TinyContactPerson {
   nome?: string;
-  celular?: string;
   fone?: string;
-  cargo?: string;
+  setor?: string;
+  email?: string;
+  ramal?: string;
 }
 
 export function OrderContactCard({
@@ -97,13 +99,14 @@ export function OrderContactCard({
       if (syncToTiny && tinyId && nameVal.trim()) {
         setTinySyncStatus("syncing");
         try {
+          // Tiny pessoasContato uses "fone" for phone
           const digits = phoneVal.replace(/\D/g, "");
           const res = await fetch(`/api/tiny/contacts/${tinyId}/contact-persons`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               nome: nameVal.trim(),
-              celular: digits || undefined,
+              fone: digits || undefined,
             }),
           });
           const json = await res.json();
@@ -161,7 +164,7 @@ export function OrderContactCard({
 
   function handleSelectTinyPerson(p: TinyContactPerson) {
     setNameVal(p.nome ?? "");
-    setPhoneVal(p.celular ?? p.fone ?? "");
+    setPhoneVal(p.fone ?? "");
     setShowTinyPeople(false);
   }
 
@@ -249,9 +252,9 @@ export function OrderContactCard({
               >
                 <User className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="font-medium">{p.nome}</span>
-                {p.cargo && <span className="text-xs text-muted-foreground">({p.cargo})</span>}
-                {(p.celular ?? p.fone) && (
-                  <span className="ml-auto text-xs text-muted-foreground">{p.celular ?? p.fone}</span>
+                {p.setor && <span className="text-xs text-muted-foreground">({p.setor})</span>}
+                {p.fone && (
+                  <span className="ml-auto text-xs text-muted-foreground">{p.fone}</span>
                 )}
               </button>
             ))}
