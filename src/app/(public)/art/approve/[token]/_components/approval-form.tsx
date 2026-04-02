@@ -66,6 +66,17 @@ export function ApprovalForm({ token, orderTitle, variations }: ApprovalFormProp
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
+  // Aviso ao tentar fechar/sair sem concluir
+  useEffect(() => {
+    if (isSuccess) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isSuccess]);
+
   function goToApprove(variationId?: string) {
     if (variationId) setSelectedVariationId(variationId);
     setApiError(null);
@@ -402,9 +413,43 @@ function ApproveStep({
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-[90%] rounded-full bg-emerald-500 transition-all duration-500" />
+        {/* Step progress indicator */}
+        <div className="space-y-1.5">
+          <div className="relative flex items-center justify-between">
+            {/* Linha de fundo */}
+            <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded-full bg-muted" />
+            {/* Linha de progresso (90%) */}
+            <div className="absolute left-4 top-1/2 h-1 w-[calc(90%-2rem)] -translate-y-1/2 rounded-full bg-emerald-500 transition-all duration-700" />
+
+            {/* Etapa 1 — concluída */}
+            <div className="relative z-10 flex flex-col items-center gap-1">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 shadow-md shadow-emerald-500/30 ring-2 ring-background">
+                <Check className="h-4 w-4 text-white" />
+              </div>
+              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                Ver arte
+              </span>
+            </div>
+
+            {/* Etapa 2 — pendente */}
+            <div className="relative z-10 flex flex-col items-center gap-1">
+              <div className="flex h-8 w-8 animate-pulse items-center justify-center rounded-full bg-amber-500 shadow-md shadow-amber-500/30 ring-2 ring-background">
+                <span className="text-xs font-bold text-white">2</span>
+              </div>
+              <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                Confirmar
+              </span>
+            </div>
+          </div>
+
+          {/* Porcentagem */}
+          <div className="flex items-center justify-between px-0.5">
+            <span className="text-[10px] text-muted-foreground">0%</span>
+            <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+              90% concluído — falta apenas confirmar
+            </span>
+            <span className="text-[10px] text-muted-foreground">100%</span>
+          </div>
         </div>
       </div>
 
