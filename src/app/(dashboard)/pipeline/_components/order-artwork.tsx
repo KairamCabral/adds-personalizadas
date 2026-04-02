@@ -253,7 +253,11 @@ function LatestArtworkCard({
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const [linkLoading, setLinkLoading] = useState(false);
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [selectedIdx, setSelectedIdx] = useState(() => {
+    // Auto-select the variation that needs adjustment so the designer sees it first
+    const adjIdx = variations.findIndex((v) => v.status === "AJUSTE_SOLICITADO");
+    return adjIdx >= 0 ? adjIdx : 0;
+  });
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   const [showBundleDialog, setShowBundleDialog] = useState(false);
@@ -265,7 +269,10 @@ function LatestArtworkCard({
   const hasMultiple = variations.length > 1;
   const allPending = variations.every((v) => v.status === "PENDENTE");
   const hasAdjustmentRequested = variations.some((v) => v.status === "AJUSTE_SOLICITADO");
-  const adjustmentDetail = variations.find((v) => v.status === "AJUSTE_SOLICITADO");
+  const adjustmentVariations = variations.filter((v) => v.status === "AJUSTE_SOLICITADO");
+  const approvedVariations = variations.filter((v) => v.status === "APROVADA");
+  // Deprecated single-detail kept for compatibility in non-bundle context
+  const adjustmentDetail = adjustmentVariations[0] ?? null;
 
   const { data: activeToken } = useQuery({
     queryKey: ["approval-token", representativeId],
@@ -316,26 +323,60 @@ function LatestArtworkCard({
         )}
       </div>
 
-      {hasAdjustmentRequested && adjustmentDetail && (
-        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
-                Cliente solicitou ajuste
+      {hasAdjustmentRequested && (
+        <div className="mt-3 space-y-2">
+          {/* One card per variation that needs adjustment — crystal clear */}
+          {adjustmentVariations.map((v) => {
+            const optionNumber = variations.findIndex((x) => x.id === v.id) + 1;
+            return (
+              <div
+                key={v.id}
+                className="rounded-xl border-2 border-amber-500/40 bg-amber-500/8 p-3"
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                      {hasMultiple
+                        ? `Ajuste solicitado na Opção ${optionNumber}`
+                        : "Cliente solicitou ajuste"}
+                    </p>
+                    {v.adjustment_notes && (
+                      <p className="mt-1 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-sm italic text-foreground">
+                        &ldquo;{v.adjustment_notes}&rdquo;
+                      </p>
+                    )}
+                    {v.approved_by && (
+                      <p className="mt-1 text-xs text-muted-foreground">— {v.approved_by}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Approved variations (in a mixed bundle scenario) */}
+          {approvedVariations.length > 0 && (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2.5">
+              <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                <Check className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                {approvedVariations
+                  .map((v) => {
+                    const n = variations.findIndex((x) => x.id === v.id) + 1;
+                    return hasMultiple ? `Opção ${n}` : "Arte";
+                  })
+                  .join(", ")}{" "}
+                aprovada{approvedVariations.length > 1 ? "s" : ""}
+                {approvedVariations[0]?.approved_by && (
+                  <span className="ml-auto text-xs font-normal text-muted-foreground">
+                    por {approvedVariations[0].approved_by}
+                  </span>
+                )}
               </p>
-              {adjustmentDetail.adjustment_notes && (
-                <p className="mt-1 text-sm italic text-foreground">
-                  &ldquo;{adjustmentDetail.adjustment_notes}&rdquo;
-                </p>
-              )}
-              {adjustmentDetail.approved_by && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  — {adjustmentDetail.approved_by}
-                </p>
-              )}
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -343,21 +384,37 @@ function LatestArtworkCard({
         {hasMultiple ? (
           <div className="space-y-3">
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {variations.map((aw, i) => (
-                <button
-                  key={aw.id}
-                  type="button"
-                  onClick={() => setSelectedIdx(i)}
-                  className={cn(
-                    "shrink-0 rounded-lg border-2 px-3 py-1.5 text-xs font-medium transition-colors",
-                    selectedIdx === i
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-muted/30 text-muted-foreground hover:border-primary/50"
-                  )}
-                >
-                  Opção {i + 1}
-                </button>
-              ))}
+              {variations.map((aw, i) => {
+                const isAdj = aw.status === "AJUSTE_SOLICITADO";
+                const isApproved = aw.status === "APROVADA";
+                return (
+                  <button
+                    key={aw.id}
+                    type="button"
+                    onClick={() => setSelectedIdx(i)}
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-1.5 rounded-lg border-2 px-3 py-1.5 text-xs font-semibold transition-colors",
+                      selectedIdx === i
+                        ? isAdj
+                          ? "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                          : isApproved
+                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                          : "border-primary bg-primary/10 text-primary"
+                        : isAdj
+                        ? "border-amber-500/40 bg-amber-500/5 text-amber-600/80 hover:border-amber-500/70 dark:text-amber-400/80"
+                        : isApproved
+                        ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-600/80 hover:border-emerald-500/70 dark:text-emerald-400/80"
+                        : "border-border bg-muted/30 text-muted-foreground hover:border-primary/50"
+                    )}
+                  >
+                    {isAdj && <AlertTriangle className="h-3 w-3" />}
+                    {isApproved && <Check className="h-3 w-3" />}
+                    Opção {i + 1}
+                    {isAdj && <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">AJUSTAR</span>}
+                    {isApproved && <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">OK</span>}
+                  </button>
+                );
+              })}
             </div>
             <VariationPreview artwork={current} onZoom={() => current && onZoom(current)} />
           </div>
