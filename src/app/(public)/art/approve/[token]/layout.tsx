@@ -1,4 +1,15 @@
+import type { Metadata } from "next";
 import { Logo } from "@/components/brand/logo";
+
+export const metadata: Metadata = {
+  title: "Aprovação de Arte | ADDS Brasil",
+  description: "Visualize e aprove a arte criada pela equipe ADDS.",
+  openGraph: {
+    title: "Aprovação de Arte | ADDS Brasil",
+    description: "Visualize e aprove a arte criada pela equipe ADDS.",
+    siteName: "ADDS Brasil",
+  },
+};
 
 export default function ArtApproveLayout({
   children,

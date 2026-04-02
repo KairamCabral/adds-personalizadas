@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -54,12 +54,19 @@ interface ApprovalFormProps {
   variations: ArtworkVariation[];
 }
 
+function isPdfUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.endsWith(".pdf") || lower.includes(".pdf?");
+}
+
 export function ApprovalForm({
   token,
   orderTitle,
   variations,
 }: ApprovalFormProps) {
   const hasMultiple = variations.length > 1;
+  const hasPdf = variations.some((v) => isPdfUrl(v.url));
+
   const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(
     hasMultiple ? null : variations[0]?.id ?? null
   );
@@ -67,6 +74,8 @@ export function ApprovalForm({
   const [successType, setSuccessType] = useState<"approve" | "revision">("approve");
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<ApprovalFormData>({
     resolver: zodResolver(approvalSchema),
@@ -80,6 +89,11 @@ export function ApprovalForm({
   useEffect(() => {
     if (hasMultiple) form.setValue("decision", "revision");
   }, [hasMultiple, form]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => nameInputRef.current?.focus(), 200);
+    return () => clearTimeout(timer);
+  }, []);
 
   const decision = form.watch("decision");
   const feedback = form.watch("feedback");
@@ -125,6 +139,7 @@ export function ApprovalForm({
     if (data.decision === "approve" || (hasMultiple && artworkId)) {
       if (!data.approverName?.trim()) {
         form.setError("approverName", { message: "Informe seu nome" });
+        nameInputRef.current?.focus();
         return;
       }
       if (hasMultiple && artworkId) setSelectedApprovalId(artworkId);
@@ -156,6 +171,7 @@ export function ApprovalForm({
 
   return (
     <div className="animate-in fade-in duration-300 space-y-4 lg:flex lg:min-h-0 lg:flex-row lg:items-stretch lg:gap-6 lg:space-y-0">
+      {/* Coluna da arte */}
       <div className="lg:flex lg:min-w-0 lg:flex-1 lg:flex-col">
         <div className="mb-3 text-center lg:mb-4 lg:text-left">
           <h1 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
@@ -166,22 +182,36 @@ export function ApprovalForm({
           </p>
         </div>
 
+        {/* Passo 1 — visualizar a arte */}
         <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-4 lg:min-h-0 lg:flex-1">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+              1
+            </span>
+            <p className="text-sm font-medium text-foreground">
+              {hasMultiple
+                ? "Abra e compare as opções abaixo"
+                : hasPdf
+                ? "Abra o PDF para visualizar a arte"
+                : "Visualize a arte"}
+            </p>
+          </div>
+
           {hasMultiple ? (
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-foreground">
-                Escolha a opção que mais gostou
-              </h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 {variations.map((v) => (
                   <div
                     key={v.id}
                     className="overflow-hidden rounded-lg border-2 border-border transition-colors has-[button:focus]:border-primary hover:border-primary/50"
                   >
-                    <ArtViewer
-                      imageUrl={v.url}
-                      title={`Opção ${v.variationIndex}`}
-                    />
+                    <div className="p-2">
+                      <ArtViewer
+                        imageUrl={v.url}
+                        title={`Opção ${v.variationIndex}`}
+                        variationLabel={`Opção ${v.variationIndex}`}
+                      />
+                    </div>
                     <div className="border-t border-border bg-muted/30 p-2">
                       <Button
                         type="button"
@@ -202,13 +232,25 @@ export function ApprovalForm({
             <ArtViewer
               imageUrl={variations[0]?.url ?? ""}
               title="Visualização da arte"
+              variationLabel={hasPdf ? "Arquivo PDF" : undefined}
             />
           )}
         </div>
       </div>
 
+      {/* Coluna do formulário */}
       <div className="flex shrink-0 flex-col rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5 lg:min-w-[320px] lg:max-w-md">
-          <form
+        {/* Passo 2 — tomar decisão */}
+        <div className="mb-3 flex items-center gap-2">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+            2
+          </span>
+          <p className="text-sm font-medium text-foreground">
+            {hasMultiple ? "Não gostou? Solicite ajuste" : "Tome sua decisão"}
+          </p>
+        </div>
+
+        <form
           onSubmit={form.handleSubmit((d) => {
             if (d.decision === "approve" && !hasMultiple) {
               setShowApproveConfirm(true);
@@ -228,15 +270,21 @@ export function ApprovalForm({
               defaultValue="revision"
             />
           )}
+
           <div className="space-y-3">
+            {/* Nome */}
             <div className="space-y-1.5">
               <Label htmlFor="approverName">Seu nome</Label>
               <Input
                 id="approverName"
-                placeholder="Coloque seu nome completo"
+                placeholder="Seu nome completo"
                 disabled={isLoading}
                 className="text-base"
                 {...form.register("approverName")}
+                ref={(el) => {
+                  form.register("approverName").ref(el);
+                  (nameInputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+                }}
               />
               {form.formState.errors.approverName && (
                 <p className="text-xs text-destructive">
@@ -245,6 +293,7 @@ export function ApprovalForm({
               )}
             </div>
 
+            {/* Decisão — apenas para arte única */}
             {!hasMultiple && (
               <div className="space-y-1.5">
                 <Label>Decisão</Label>
@@ -279,15 +328,17 @@ export function ApprovalForm({
                 )}
               </div>
             )}
+
             {hasMultiple && (
               <p className="text-xs text-muted-foreground">
-                Não gostou de nenhuma opção? Solicite ajuste abaixo.
+                Não gostou de nenhuma opção? Descreva o que precisa ser ajustado.
               </p>
             )}
 
+            {/* Feedback de ajuste */}
             {(decision === "revision" || hasMultiple) && (
               <div className="space-y-1.5">
-                <Label htmlFor="feedback">Descreva o que precisa ser ajustado</Label>
+                <Label htmlFor="feedback">O que precisa ser ajustado?</Label>
                 <Textarea
                   id="feedback"
                   placeholder="Ex: Aumentar o tamanho da logo e mudar a cor do texto..."
@@ -373,7 +424,7 @@ export function ApprovalForm({
       <AlertDialog open={showApproveConfirm} onOpenChange={setShowApproveConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar aprovação</AlertDialogTitle>
             <AlertDialogDescription>
               {hasMultiple
                 ? "A opção escolhida será enviada para produção. As outras opções não serão utilizadas. Esta ação não pode ser desfeita."
@@ -394,7 +445,7 @@ export function ApprovalForm({
               disabled={isLoading || (hasMultiple && !selectedApprovalId)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
-              {isLoading ? "Processando..." : "Sim, aprovar"}
+              {isLoading ? "Processando..." : "Sim, aprovar arte"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
