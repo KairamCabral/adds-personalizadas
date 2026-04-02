@@ -19,6 +19,11 @@ export function ArtViewer({ imageUrl, title, variationLabel }: ArtViewerProps) {
   const [pdfOpened, setPdfOpened] = useState(false);
   const isPdf = isPdfUrl(imageUrl);
 
+  function openPdfFullscreen() {
+    window.open(imageUrl, "_blank", "noopener,noreferrer");
+    setPdfOpened(true);
+  }
+
   useEffect(() => {
     if (!isFullscreen) return;
     const handleEscape = (e: KeyboardEvent) => {
@@ -50,25 +55,38 @@ export function ArtViewer({ imageUrl, title, variationLabel }: ArtViewerProps) {
         {/* Preview inline para desktop via iframe */}
         <div className="hidden lg:block">
           <div className="overflow-hidden rounded-xl border border-border bg-muted/20">
-            <div className="relative w-full" style={{ height: 340 }}>
+            <div
+              role="button"
+              tabIndex={0}
+              className="relative w-full cursor-pointer outline-none transition-opacity hover:opacity-[0.97] focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              style={{ height: 340 }}
+              title="Clique na miniatura para abrir em tela cheia"
+              aria-label="Abrir PDF em tela cheia"
+              onClick={openPdfFullscreen}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openPdfFullscreen();
+                }
+              }}
+            >
+              {/* iframe sem pointer-events: cliques passam para o container e abrem o PDF */}
               <iframe
                 src={`${imageUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                className="h-full w-full"
+                className="pointer-events-none h-full w-full select-none"
                 title={variationLabel ?? title}
                 onLoad={() => setPdfOpened(true)}
               />
             </div>
             <div className="flex items-center justify-center border-t border-border bg-muted/30 px-4 py-3">
-              <a
-                href={imageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setPdfOpened(true)}
+              <button
+                type="button"
+                onClick={openPdfFullscreen}
                 className="flex items-center gap-2 rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/40 hover:bg-muted hover:shadow-md active:scale-[0.98]"
               >
                 <ExternalLink className="h-4 w-4 text-primary" />
                 Abrir em tela cheia
-              </a>
+              </button>
             </div>
           </div>
         </div>
@@ -121,6 +139,8 @@ export function ArtViewer({ imageUrl, title, variationLabel }: ArtViewerProps) {
         <div
           role="button"
           tabIndex={0}
+          title="Clique na miniatura para ver em tela cheia"
+          aria-label="Ver imagem em tela cheia"
           onClick={() => setIsFullscreen(true)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -128,15 +148,13 @@ export function ArtViewer({ imageUrl, title, variationLabel }: ArtViewerProps) {
               setIsFullscreen(true);
             }
           }}
-          className="group relative flex min-h-0 flex-1 cursor-zoom-in transition-all"
+          className="group relative flex min-h-[180px] w-full cursor-zoom-in flex-1 items-center justify-center transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:min-h-[220px] lg:aspect-video lg:min-h-[260px]"
         >
-          <div className="relative flex min-h-[180px] flex-1 items-center justify-center sm:min-h-[220px] lg:aspect-video lg:min-h-0">
-            <img
-              src={imageUrl}
-              alt={variationLabel ?? title}
-              className="max-h-[35vh] w-full object-contain transition-transform duration-300 group-hover:scale-[1.01] sm:max-h-[40vh] lg:max-h-none lg:h-full"
-            />
-          </div>
+          <img
+            src={imageUrl}
+            alt={variationLabel ?? title}
+            className="max-h-[35vh] w-full object-contain transition-transform duration-300 group-hover:scale-[1.01] sm:max-h-[40vh] lg:max-h-full lg:w-auto"
+          />
         </div>
         <div className="flex items-center justify-center border-t border-border bg-muted/30 px-4 py-3">
           <button
