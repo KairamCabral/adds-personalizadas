@@ -4,43 +4,38 @@ import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, CheckCircle2, Check, Pencil } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  Check,
+  Pencil,
+  ArrowLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArtViewer } from "./art-viewer";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
 
-const approvalSchema = z.object({
+// ─── Schemas ─────────────────────────────────────────────────────────────────
+
+const approveSchema = z.object({
   approverName: z.string().min(1, "Informe seu nome"),
-  decision: z.enum(["approve", "revision"], {
-    required_error: "Selecione uma opção",
-  }),
-  feedback: z.string().optional(),
-}).refine(
-  (data) => {
-    if (data.decision === "revision") {
-      return !!data.feedback?.trim() && data.feedback.trim().length >= 5;
-    }
-    return true;
-  },
-  {
-    message: "Descreva o ajuste necessário (mínimo 5 caracteres)",
-    path: ["feedback"],
-  }
-);
+});
 
-type ApprovalFormData = z.infer<typeof approvalSchema>;
+const revisionSchema = z.object({
+  approverName: z.string().min(1, "Informe seu nome"),
+  feedback: z
+    .string()
+    .min(5, "Descreva o ajuste necessário (mínimo 5 caracteres)"),
+});
+
+type ApproveData = z.infer<typeof approveSchema>;
+type RevisionData = z.infer<typeof revisionSchema>;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ArtworkVariation {
   id: string;
@@ -54,402 +49,568 @@ interface ApprovalFormProps {
   variations: ArtworkVariation[];
 }
 
-function isPdfUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.endsWith(".pdf") || lower.includes(".pdf?");
-}
+type Step = "view" | "approve" | "revision";
 
-export function ApprovalForm({
-  token,
-  orderTitle,
-  variations,
-}: ApprovalFormProps) {
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export function ApprovalForm({ token, orderTitle, variations }: ApprovalFormProps) {
   const hasMultiple = variations.length > 1;
-  const hasPdf = variations.some((v) => isPdfUrl(v.url));
-
-  const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(
-    hasMultiple ? null : variations[0]?.id ?? null
+  const [step, setStep] = useState<Step>("view");
+  const [selectedVariationId, setSelectedVariationId] = useState<string | null>(
+    hasMultiple ? null : (variations[0]?.id ?? null)
   );
   const [isSuccess, setIsSuccess] = useState(false);
   const [successType, setSuccessType] = useState<"approve" | "revision">("approve");
-  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  const nameInputRef = useRef<HTMLInputElement>(null);
+  function goToApprove(variationId?: string) {
+    if (variationId) setSelectedVariationId(variationId);
+    setApiError(null);
+    setStep("approve");
+  }
 
-  const form = useForm<ApprovalFormData>({
-    resolver: zodResolver(approvalSchema),
-    defaultValues: {
-      approverName: "",
-      decision: hasMultiple ? "revision" : undefined,
-      feedback: "",
-    },
-  });
+  function goToRevision() {
+    setApiError(null);
+    setStep("revision");
+  }
 
-  useEffect(() => {
-    if (hasMultiple) form.setValue("decision", "revision");
-  }, [hasMultiple, form]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => nameInputRef.current?.focus(), 200);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const decision = form.watch("decision");
-  const feedback = form.watch("feedback");
-
-  async function submitDecision(data: ApprovalFormData, approvedArtworkId?: string) {
+  async function submit(payload: {
+    approved: boolean;
+    approver_name: string;
+    feedback?: string;
+    approved_artwork_id?: string;
+  }) {
     setIsLoading(true);
+    setApiError(null);
     try {
-      const payload: Record<string, unknown> = {
-        token,
-        approved: data.decision === "approve",
-        approver_name: data.approverName.trim(),
-        feedback: data.decision === "revision" ? data.feedback?.trim() : undefined,
-      };
-      if (data.decision === "approve" && (hasMultiple ? approvedArtworkId : variations[0]?.id)) {
-        payload.approved_artwork_id = hasMultiple ? approvedArtworkId : variations[0]?.id;
-      }
       const res = await fetch("/api/art/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ token, ...payload }),
       });
-
       const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json.error ?? "Erro ao processar");
-      }
-
-      setSuccessType(data.decision);
+      if (!res.ok) throw new Error(json.error ?? "Erro ao processar");
+      setSuccessType(payload.approved ? "approve" : "revision");
       setIsSuccess(true);
     } catch (err) {
-      form.setError("root", {
-        message: err instanceof Error ? err.message : "Erro ao processar. Tente novamente.",
-      });
+      setApiError(err instanceof Error ? err.message : "Erro ao processar. Tente novamente.");
     } finally {
       setIsLoading(false);
-      setShowApproveConfirm(false);
     }
   }
 
-  function handleApproveClick(artworkId?: string) {
-    const data = form.getValues();
-    if (data.decision === "approve" || (hasMultiple && artworkId)) {
-      if (!data.approverName?.trim()) {
-        form.setError("approverName", { message: "Informe seu nome" });
-        nameInputRef.current?.focus();
-        return;
-      }
-      if (hasMultiple && artworkId) setSelectedApprovalId(artworkId);
-      setShowApproveConfirm(true);
-    } else {
-      form.handleSubmit((d) => submitDecision(d))();
-    }
-  }
-
+  // ── Success screen ─────────────────────────────────────────────────────────
   if (isSuccess) {
     return (
-      <div className="animate-in fade-in zoom-in-95 duration-300 rounded-2xl border border-border bg-card p-6 text-center shadow-xl ring-1 ring-border/50 sm:p-8">
-        <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/15 shadow-lg shadow-emerald-500/20">
-          <CheckCircle2 className="h-10 w-10 text-emerald-600 dark:text-emerald-400" />
-        </div>
-        <h2 className="text-xl font-semibold text-foreground sm:text-2xl">
-          {successType === "approve"
-            ? "Arte aprovada com sucesso!"
-            : "Sua solicitação foi enviada!"}
-        </h2>
-        <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-          {successType === "approve"
-            ? "A equipe ADDS já foi notificada."
-            : "A equipe ADDS fará os ajustes e enviará uma nova versão."}
-        </p>
-      </div>
+      <SuccessScreen type={successType} />
     );
   }
 
+  // ── Step: view ─────────────────────────────────────────────────────────────
+  if (step === "view") {
+    return (
+      <ViewStep
+        orderTitle={orderTitle}
+        variations={variations}
+        hasMultiple={hasMultiple}
+        onApprove={goToApprove}
+        onRevision={goToRevision}
+      />
+    );
+  }
+
+  // ── Step: approve ──────────────────────────────────────────────────────────
+  if (step === "approve") {
+    return (
+      <ApproveStep
+        orderTitle={orderTitle}
+        variations={variations}
+        selectedVariationId={selectedVariationId}
+        hasMultiple={hasMultiple}
+        isLoading={isLoading}
+        apiError={apiError}
+        onBack={() => setStep("view")}
+        onSubmit={(data) =>
+          submit({
+            approved: true,
+            approver_name: data.approverName,
+            approved_artwork_id: selectedVariationId ?? undefined,
+          })
+        }
+      />
+    );
+  }
+
+  // ── Step: revision ─────────────────────────────────────────────────────────
   return (
-    <div className="animate-in fade-in duration-300 space-y-4 lg:flex lg:min-h-0 lg:flex-row lg:items-stretch lg:gap-6 lg:space-y-0">
-      {/* Coluna da arte */}
-      <div className="lg:flex lg:min-w-0 lg:flex-1 lg:flex-col">
-        <div className="mb-3 text-center lg:mb-4 lg:text-left">
-          <h1 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
-            Aprovação de Arte
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Pedido: {orderTitle}
-          </p>
-        </div>
+    <RevisionStep
+      orderTitle={orderTitle}
+      isLoading={isLoading}
+      apiError={apiError}
+      onBack={() => setStep("view")}
+      onSubmit={(data) =>
+        submit({
+          approved: false,
+          approver_name: data.approverName,
+          feedback: data.feedback,
+        })
+      }
+    />
+  );
+}
 
-        {/* Passo 1 — visualizar a arte */}
-        <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-4 lg:min-h-0 lg:flex-1">
-          <div className="mb-3 flex items-center gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-              1
-            </span>
-            <p className="text-sm font-medium text-foreground">
-              {hasMultiple
-                ? "Abra e compare as opções abaixo"
-                : hasPdf
-                ? "Abra o PDF para visualizar a arte"
-                : "Visualize a arte"}
-            </p>
-          </div>
+// ─── Success ──────────────────────────────────────────────────────────────────
 
-          {hasMultiple ? (
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                {variations.map((v) => (
-                  <div
-                    key={v.id}
-                    className="overflow-hidden rounded-lg border-2 border-border transition-colors has-[button:focus]:border-primary hover:border-primary/50"
-                  >
-                    <div className="p-2">
-                      <ArtViewer
-                        imageUrl={v.url}
-                        title={`Opção ${v.variationIndex}`}
-                        variationLabel={`Opção ${v.variationIndex}`}
-                      />
-                    </div>
-                    <div className="border-t border-border bg-muted/30 p-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700"
-                        disabled={isLoading}
-                        onClick={() => handleApproveClick(v.id)}
-                      >
-                        <Check className="h-4 w-4" />
-                        Aprovar esta opção
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <ArtViewer
-              imageUrl={variations[0]?.url ?? ""}
-              title="Visualização da arte"
-              variationLabel={hasPdf ? "Arquivo PDF" : undefined}
-            />
-          )}
-        </div>
+function SuccessScreen({ type }: { type: "approve" | "revision" }) {
+  return (
+    <div className="animate-in fade-in zoom-in-95 duration-300 flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-8 text-center shadow-xl ring-1 ring-border/50 sm:p-12">
+      <div
+        className={cn(
+          "mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full shadow-lg",
+          type === "approve"
+            ? "bg-emerald-500/15 shadow-emerald-500/20"
+            : "bg-amber-500/15 shadow-amber-500/20"
+        )}
+      >
+        {type === "approve" ? (
+          <CheckCircle2 className="h-12 w-12 text-emerald-600 dark:text-emerald-400" />
+        ) : (
+          <Pencil className="h-12 w-12 text-amber-600 dark:text-amber-400" />
+        )}
+      </div>
+      <h2 className="text-2xl font-bold text-foreground sm:text-3xl">
+        {type === "approve" ? "Arte aprovada!" : "Ajuste solicitado!"}
+      </h2>
+      <p className="mt-3 max-w-sm text-base text-muted-foreground">
+        {type === "approve"
+          ? "Ótimo! A equipe ADDS já foi notificada e sua arte seguirá para produção."
+          : "Recebemos seu pedido. A equipe ADDS fará os ajustes e enviará uma nova versão em breve."}
+      </p>
+    </div>
+  );
+}
+
+// ─── Step 1: View ─────────────────────────────────────────────────────────────
+
+function ViewStep({
+  orderTitle,
+  variations,
+  hasMultiple,
+  onApprove,
+  onRevision,
+}: {
+  orderTitle: string;
+  variations: ArtworkVariation[];
+  hasMultiple: boolean;
+  onApprove: (variationId?: string) => void;
+  onRevision: () => void;
+}) {
+  return (
+    <div className="animate-in fade-in slide-in-from-left-4 duration-300 space-y-5">
+      {/* Header */}
+      <div className="space-y-0.5">
+        <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+          Aprovação de Arte
+        </h1>
+        <p className="text-sm text-muted-foreground">Pedido: {orderTitle}</p>
       </div>
 
-      {/* Coluna do formulário */}
-      <div className="flex shrink-0 flex-col rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5 lg:min-w-[320px] lg:max-w-md">
-        {/* Passo 2 — tomar decisão */}
-        <div className="mb-3 flex items-center gap-2">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-            2
-          </span>
-          <p className="text-sm font-medium text-foreground">
-            {hasMultiple ? "Não gostou? Solicite ajuste" : "Tome sua decisão"}
-          </p>
-        </div>
+      {/* Art viewer */}
+      <div className="rounded-2xl border border-border bg-muted/20 p-4 sm:p-5">
+        {hasMultiple ? (
+          <MultipleVariationsView
+            variations={variations}
+            onApprove={onApprove}
+            onRevision={onRevision}
+          />
+        ) : (
+          <SingleArtView
+            variation={variations[0]}
+            onApprove={() => onApprove()}
+            onRevision={onRevision}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
 
-        <form
-          onSubmit={form.handleSubmit((d) => {
-            if (d.decision === "approve" && !hasMultiple) {
-              setShowApproveConfirm(true);
-            } else {
-              submitDecision(
-                { ...d, decision: "revision" as const },
-                undefined
-              );
-            }
-          })}
-          className="flex flex-1 flex-col gap-4"
+// Single art: big viewer + 2 CTAs at bottom
+function SingleArtView({
+  variation,
+  onApprove,
+  onRevision,
+}: {
+  variation: ArtworkVariation;
+  onApprove: () => void;
+  onRevision: () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <ArtViewer imageUrl={variation.url} title="Visualização da arte" />
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Button
+          size="lg"
+          className="h-14 gap-2 bg-emerald-600 text-base font-semibold hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-500/20 active:scale-[0.98] sm:h-16"
+          onClick={onApprove}
         >
-          {hasMultiple && (
-            <input
-              type="hidden"
-              {...form.register("decision")}
-              defaultValue="revision"
-            />
-          )}
+          <Check className="h-5 w-5" />
+          Aprovar Arte
+          <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
+        </Button>
 
-          <div className="space-y-3">
-            {/* Nome */}
-            <div className="space-y-1.5">
-              <Label htmlFor="approverName">Seu nome</Label>
-              <Input
-                id="approverName"
-                placeholder="Seu nome completo"
-                disabled={isLoading}
-                className="text-base"
-                {...form.register("approverName")}
-                ref={(el) => {
-                  form.register("approverName").ref(el);
-                  (nameInputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
-                }}
+        <Button
+          size="lg"
+          variant="outline"
+          className="h-14 gap-2 border-2 border-[#f07d00]/40 text-base font-semibold text-[#f07d00] hover:border-[#f07d00] hover:bg-[#f07d00]/10 hover:shadow-lg hover:shadow-[#f07d00]/10 active:scale-[0.98] sm:h-16"
+          onClick={onRevision}
+        >
+          <Pencil className="h-5 w-5" />
+          Solicitar Ajuste
+          <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Multiple arts: stacked cards, each with its own approve CTA + shared revision link
+function MultipleVariationsView({
+  variations,
+  onApprove,
+  onRevision,
+}: {
+  variations: ArtworkVariation[];
+  onApprove: (variationId: string) => void;
+  onRevision: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm font-medium text-foreground">
+        Compare as opções e escolha a que mais gostou:
+      </p>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {variations.map((v) => (
+          <div
+            key={v.id}
+            className="flex flex-col overflow-hidden rounded-xl border-2 border-border bg-card transition-colors hover:border-primary/30"
+          >
+            <div className="flex-1 p-3">
+              <ArtViewer
+                imageUrl={v.url}
+                title={`Opção ${v.variationIndex}`}
+                variationLabel={`Opção ${v.variationIndex}`}
               />
-              {form.formState.errors.approverName && (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.approverName.message}
-                </p>
-              )}
             </div>
-
-            {/* Decisão — apenas para arte única */}
-            {!hasMultiple && (
-              <div className="space-y-1.5">
-                <Label>Decisão</Label>
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border-2 border-border p-3 transition-all duration-200 hover:border-emerald-500/50 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-500/10 has-[:checked]:shadow-md sm:gap-3 sm:p-4">
-                    <input
-                      type="radio"
-                      value="approve"
-                      disabled={isLoading}
-                      {...form.register("decision")}
-                      className="sr-only"
-                    />
-                    <Check className="h-4 w-4 shrink-0 text-emerald-600 sm:h-5 sm:w-5" />
-                    <span className="text-sm font-medium sm:text-base">Aprovar Arte</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border-2 border-border p-3 transition-all duration-200 hover:border-[#f07d00]/50 has-[:checked]:border-[#f07d00] has-[:checked]:bg-[#f07d00]/10 has-[:checked]:shadow-md sm:gap-3 sm:p-4">
-                    <input
-                      type="radio"
-                      value="revision"
-                      disabled={isLoading}
-                      {...form.register("decision")}
-                      className="sr-only"
-                    />
-                    <Pencil className="h-4 w-4 shrink-0 text-[#f07d00] sm:h-5 sm:w-5" />
-                    <span className="text-sm font-medium sm:text-base">Solicitar Ajuste</span>
-                  </label>
-                </div>
-                {form.formState.errors.decision && (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.decision.message}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {hasMultiple && (
-              <p className="text-xs text-muted-foreground">
-                Não gostou de nenhuma opção? Descreva o que precisa ser ajustado.
-              </p>
-            )}
-
-            {/* Feedback de ajuste */}
-            {(decision === "revision" || hasMultiple) && (
-              <div className="space-y-1.5">
-                <Label htmlFor="feedback">O que precisa ser ajustado?</Label>
-                <Textarea
-                  id="feedback"
-                  placeholder="Ex: Aumentar o tamanho da logo e mudar a cor do texto..."
-                  rows={3}
-                  disabled={isLoading}
-                  {...form.register("feedback")}
-                />
-                {(decision === "revision" || hasMultiple) &&
-                  feedback !== undefined && (
-                    <p
-                      className={
-                        feedback?.trim().length >= 5
-                          ? "text-xs text-muted-foreground"
-                          : "text-xs text-amber-600 dark:text-amber-500"
-                      }
-                    >
-                      {feedback?.trim().length >= 5
-                        ? `${feedback.trim().length} caracteres`
-                        : `Digite pelo menos 5 caracteres (${feedback?.trim().length ?? 0}/5)`}
-                    </p>
-                  )}
-                {form.formState.errors.feedback && (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.feedback.message}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {form.formState.errors.root && (
-            <p className="text-sm text-destructive">
-              {form.formState.errors.root.message}
-            </p>
-          )}
-
-          <div className="mt-auto flex flex-col gap-2 pt-2 sm:flex-row sm:gap-3">
-            {decision === "revision" || hasMultiple ? (
+            <div className="border-t border-border bg-muted/20 p-3">
               <Button
-                type="submit"
-                disabled={
-                  isLoading ||
-                  ((decision === "revision" || hasMultiple) &&
-                    (!feedback?.trim() || feedback.trim().length < 5))
-                }
-                className="w-full bg-[#f07d00] transition-all hover:bg-[#f07d00]/90 hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed sm:flex-1"
+                size="lg"
+                className="h-12 w-full gap-2 bg-emerald-600 font-semibold hover:bg-emerald-700 hover:shadow-md hover:shadow-emerald-500/20 active:scale-[0.98]"
+                onClick={() => onApprove(v.id)}
               >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  "Enviar solicitação de ajuste"
-                )}
+                <Check className="h-4 w-4" />
+                Aprovar Opção {v.variationIndex}
+                <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
               </Button>
-            ) : (
-              !hasMultiple && (
-                <Button
-                  type="button"
-                  disabled={isLoading}
-                  className="w-full bg-emerald-600 transition-all hover:bg-emerald-700 hover:shadow-lg sm:flex-1"
-                  onClick={() => setShowApproveConfirm(true)}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="mr-2 h-4 w-4" />
-                      Aprovar Arte
-                    </>
-                  )}
-                </Button>
-              )
-            )}
+            </div>
           </div>
-        </form>
+        ))}
       </div>
 
-      <AlertDialog open={showApproveConfirm} onOpenChange={setShowApproveConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar aprovação</AlertDialogTitle>
-            <AlertDialogDescription>
-              {hasMultiple
-                ? "A opção escolhida será enviada para produção. As outras opções não serão utilizadas. Esta ação não pode ser desfeita."
-                : "Após aprovar, a arte será enviada para produção. Esta ação não pode ser desfeita."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async (e) => {
-                e.preventDefault();
-                const data = form.getValues();
-                await submitDecision(
-                  { ...data, decision: "approve" },
-                  hasMultiple ? selectedApprovalId ?? undefined : undefined
-                );
-              }}
-              disabled={isLoading || (hasMultiple && !selectedApprovalId)}
-              className="bg-emerald-600 hover:bg-emerald-700"
+      <div className="pt-1 text-center">
+        <button
+          type="button"
+          onClick={onRevision}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#f07d00] underline-offset-2 hover:underline"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Não gostou de nenhuma? Solicitar ajuste
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 2a: Approve ─────────────────────────────────────────────────────────
+
+function ApproveStep({
+  orderTitle,
+  variations,
+  selectedVariationId,
+  hasMultiple,
+  isLoading,
+  apiError,
+  onBack,
+  onSubmit,
+}: {
+  orderTitle: string;
+  variations: ArtworkVariation[];
+  selectedVariationId: string | null;
+  hasMultiple: boolean;
+  isLoading: boolean;
+  apiError: string | null;
+  onBack: () => void;
+  onSubmit: (data: ApproveData) => void;
+}) {
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  const selectedVariation = hasMultiple
+    ? variations.find((v) => v.id === selectedVariationId)
+    : variations[0];
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ApproveData>({ resolver: zodResolver(approveSchema) });
+
+  useEffect(() => {
+    const t = setTimeout(() => nameRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  const { ref: rhfRef, ...nameRest } = register("approverName");
+
+  return (
+    <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-5">
+      {/* Back + header */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isLoading}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
+          aria-label="Voltar"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">
+            Confirmar Aprovação
+          </h1>
+          <p className="text-sm text-muted-foreground">Pedido: {orderTitle}</p>
+        </div>
+      </div>
+
+      {/* Approval badge */}
+      <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-4 py-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+          <Check className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+            {hasMultiple && selectedVariation
+              ? `Opção ${selectedVariation.variationIndex} selecionada`
+              : "Arte pronta para aprovação"}
+          </p>
+          <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
+            Após confirmar, a arte seguirá para produção
+          </p>
+        </div>
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="approverName">
+            Seu nome completo <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="approverName"
+            placeholder="Ex: Maria da Silva"
+            className="h-12 text-base"
+            disabled={isLoading}
+            {...nameRest}
+            ref={(el) => {
+              rhfRef(el);
+              nameRef.current = el;
+            }}
+          />
+          {errors.approverName && (
+            <p className="text-xs text-destructive">{errors.approverName.message}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Seu nome será registrado como responsável pela aprovação.
+          </p>
+        </div>
+
+        {apiError && (
+          <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {apiError}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          size="lg"
+          disabled={isLoading}
+          className="h-14 w-full gap-2 bg-emerald-600 text-base font-semibold hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-500/20 active:scale-[0.98] disabled:opacity-60"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Processando...
+            </>
+          ) : (
+            <>
+              <Check className="h-5 w-5" />
+              Confirmar aprovação
+            </>
+          )}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+// ─── Step 2b: Revision ────────────────────────────────────────────────────────
+
+function RevisionStep({
+  orderTitle,
+  isLoading,
+  apiError,
+  onBack,
+  onSubmit,
+}: {
+  orderTitle: string;
+  isLoading: boolean;
+  apiError: string | null;
+  onBack: () => void;
+  onSubmit: (data: RevisionData) => void;
+}) {
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm<RevisionData>({ resolver: zodResolver(revisionSchema) });
+
+  const feedback = watch("feedback") ?? "";
+
+  useEffect(() => {
+    const t = setTimeout(() => nameRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  const { ref: rhfRef, ...nameRest } = register("approverName");
+
+  return (
+    <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-5">
+      {/* Back + header */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isLoading}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
+          aria-label="Voltar"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">
+            Solicitar Ajuste
+          </h1>
+          <p className="text-sm text-muted-foreground">Pedido: {orderTitle}</p>
+        </div>
+      </div>
+
+      {/* Info badge */}
+      <div className="flex items-center gap-3 rounded-xl border border-[#f07d00]/30 bg-[#f07d00]/8 px-4 py-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f07d00]/15">
+          <Pencil className="h-5 w-5 text-[#f07d00]" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-[#c4600a] dark:text-[#f4a55a]">
+            Solicitar ajuste na arte
+          </p>
+          <p className="text-xs text-[#c4600a]/80 dark:text-[#f4a55a]/80">
+            A equipe ADDS fará as alterações e enviará uma nova versão
+          </p>
+        </div>
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="approverName">
+            Seu nome completo <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="approverName"
+            placeholder="Ex: Maria da Silva"
+            className="h-12 text-base"
+            disabled={isLoading}
+            {...nameRest}
+            ref={(el) => {
+              rhfRef(el);
+              nameRef.current = el;
+            }}
+          />
+          {errors.approverName && (
+            <p className="text-xs text-destructive">{errors.approverName.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="feedback">
+            O que precisa ser ajustado? <span className="text-destructive">*</span>
+          </Label>
+          <Textarea
+            id="feedback"
+            placeholder="Ex: Aumentar o logo, mudar a cor do fundo para azul..."
+            rows={4}
+            className="resize-none text-base"
+            disabled={isLoading}
+            {...register("feedback")}
+          />
+          <div className="flex items-center justify-between">
+            {errors.feedback ? (
+              <p className="text-xs text-destructive">{errors.feedback.message}</p>
+            ) : (
+              <span />
+            )}
+            <p
+              className={cn(
+                "text-xs tabular-nums",
+                feedback.trim().length < 5
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-muted-foreground"
+              )}
             >
-              {isLoading ? "Processando..." : "Sim, aprovar arte"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              {feedback.trim().length}/5 mín
+            </p>
+          </div>
+        </div>
+
+        {apiError && (
+          <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {apiError}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          size="lg"
+          disabled={isLoading}
+          className="h-14 w-full gap-2 bg-[#f07d00] text-base font-semibold hover:bg-[#d96e00] hover:shadow-lg hover:shadow-[#f07d00]/20 active:scale-[0.98] disabled:opacity-60"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Enviando...
+            </>
+          ) : (
+            <>
+              <Pencil className="h-5 w-5" />
+              Enviar solicitação de ajuste
+            </>
+          )}
+        </Button>
+      </form>
     </div>
   );
 }

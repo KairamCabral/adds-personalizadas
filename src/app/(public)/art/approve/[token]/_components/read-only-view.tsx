@@ -75,13 +75,13 @@ export function ReadOnlyView({
           <ArtViewer imageUrl={variations[0].url} title="Visualização da arte" />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            {variations.map((v, i) => (
-              <div key={v.id} className="space-y-2">
-                <p className="text-sm font-medium text-center text-muted-foreground">
-                  Opção {i + 1}
-                </p>
-                <ArtViewer imageUrl={v.url} title={`Opção ${i + 1}`} />
-              </div>
+            {variations.map((v) => (
+              <ArtViewer
+                key={v.id}
+                imageUrl={v.url}
+                title={`Opção ${v.variationIndex}`}
+                variationLabel={`Opção ${v.variationIndex}`}
+              />
             ))}
           </div>
         )}
