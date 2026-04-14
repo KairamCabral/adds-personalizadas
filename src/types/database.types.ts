@@ -1419,6 +1419,54 @@ export type Database = {
           },
         ]
       }
+      tiny_webhook_events: {
+        Row: {
+          event_type: string | null
+          forwarded_error: string | null
+          forwarded_http_code: number | null
+          forwarded_status: string | null
+          forwarded_to_ni_at: string | null
+          headers: Json | null
+          id: string
+          payload: Json
+          processed: boolean
+          processed_at: string | null
+          received_at: string
+          source_ip: string | null
+          tiny_order_id: number | null
+        }
+        Insert: {
+          event_type?: string | null
+          forwarded_error?: string | null
+          forwarded_http_code?: number | null
+          forwarded_status?: string | null
+          forwarded_to_ni_at?: string | null
+          headers?: Json | null
+          id?: string
+          payload: Json
+          processed?: boolean
+          processed_at?: string | null
+          received_at?: string
+          source_ip?: string | null
+          tiny_order_id?: number | null
+        }
+        Update: {
+          event_type?: string | null
+          forwarded_error?: string | null
+          forwarded_http_code?: number | null
+          forwarded_status?: string | null
+          forwarded_to_ni_at?: string | null
+          headers?: Json | null
+          id?: string
+          payload?: Json
+          processed?: boolean
+          processed_at?: string | null
+          received_at?: string
+          source_ip?: string | null
+          tiny_order_id?: number | null
+        }
+        Relationships: []
+      }
       tiny_sync_logs: {
         Row: {
           created_at: string

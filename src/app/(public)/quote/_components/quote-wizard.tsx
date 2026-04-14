@@ -11,6 +11,7 @@ import {
   getActiveProducts,
   type CreatePublicQuoteData,
 } from "@/services/quotes.service";
+import { cn } from "@/lib/utils";
 import { WizardProgress } from "./wizard-progress";
 import { StepWelcome } from "./step-welcome";
 import { StepSearch } from "./step-search";
@@ -252,7 +253,14 @@ export function QuoteWizard() {
   const currentProgressIndex = progressSteps.indexOf(currentStep);
 
   return (
-    <div className="space-y-8 sm:space-y-10 w-full max-w-full min-w-0">
+    <div
+      className={cn(
+        "w-full max-w-full min-w-0",
+        currentStep === "welcome"
+          ? "space-y-0"
+          : "space-y-8 sm:space-y-10",
+      )}
+    >
       {currentProgressIndex >= 0 && (
         <WizardProgress
           steps={progressSteps.map((s) => STEP_LABELS[s])}

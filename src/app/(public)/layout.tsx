@@ -19,24 +19,27 @@ export default function PublicLayout({
       </div>
 
       <header className="border-b border-border/40 bg-card/90 backdrop-blur-xl sticky top-0 z-50 relative shadow-sm min-w-0">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-4 min-w-0">
-          <a href="/quote" className="flex items-center gap-4 transition-opacity hover:opacity-90">
-            <Logo size="md" className="h-10 w-10" priority />
-            <span className="font-bold text-xl tracking-tight">ADDS Brasil</span>
+        <div className="max-w-6xl mx-auto px-4 sm:px-4 py-3 sm:py-4 flex items-center gap-3 sm:gap-4 min-w-0">
+          <a href="/quote" className="flex items-center gap-3 sm:gap-4 transition-opacity hover:opacity-90 min-w-0">
+            <Logo size="md" className="h-9 w-9 sm:h-10 sm:w-10 shrink-0" priority />
+            <span className="font-bold text-lg sm:text-xl tracking-tight truncate">ADDS Brasil</span>
           </a>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-10 w-full max-w-full min-w-0 flex-1 relative">
+      <main className="max-w-6xl mx-auto px-4 sm:px-4 pt-3 pb-5 sm:pt-8 sm:pb-10 w-full max-w-full min-w-0 flex-1 relative">
         {children}
       </main>
 
       <footer className="border-t border-border/40 mt-auto relative bg-card/30 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-4 py-6 text-center min-w-0">
-          <p className="text-sm font-medium text-muted-foreground">
+        <div className="max-w-6xl mx-auto px-4 py-3 sm:py-6 text-center min-w-0">
+          <p className="text-xs sm:text-sm font-medium text-muted-foreground sm:hidden">
+            © {new Date().getFullYear()} ADDS Brasil · Escovas personalizadas
+          </p>
+          <p className="hidden sm:block text-sm font-medium text-muted-foreground">
             © {new Date().getFullYear()} ADDS Brasil
           </p>
-          <p className="text-xs text-muted-foreground/80 mt-0.5">
+          <p className="hidden sm:block text-xs text-muted-foreground/80 mt-0.5">
             Escovas Personalizadas
           </p>
         </div>

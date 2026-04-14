@@ -20,6 +20,7 @@ import {
   Truck,
   Check,
   X,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getActiveProducts } from "@/services/quotes.service";
@@ -854,6 +855,19 @@ export function StepProducts({
                   </p>
                   <p className="text-xs text-muted-foreground">sem juros</p>
                 </div>
+              </div>
+              <div
+                className="flex gap-2.5 rounded-lg border border-primary/15 bg-primary/[0.06] p-3 text-left"
+                role="note"
+              >
+                <Info
+                  className="h-4 w-4 shrink-0 text-primary mt-0.5"
+                  aria-hidden
+                />
+                <p className="text-xs sm:text-sm text-muted-foreground leading-snug">
+                  O pagamento será feito somente após a aprovação do pedido.
+                  Entraremos em contato para enviar o link de pagamento.
+                </p>
               </div>
               <div className="flex gap-2 flex-wrap pt-1">
                 {quote.freteGratis ? (

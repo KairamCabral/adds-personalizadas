@@ -4,16 +4,18 @@ import {
   ArrowLeft,
   ArrowRight,
   Copy,
+  FileIcon,
+  Loader2,
   Palette,
   Sparkles,
   Upload,
   X,
-  FileIcon,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type {
   ArtworkMode,
@@ -33,6 +35,7 @@ const ARTWORK_OPTIONS: {
   icon: typeof Copy;
   badge?: string;
   disabled?: boolean;
+  requireAuth?: boolean;
 }[] = [
   {
     value: "use_last",
@@ -53,6 +56,8 @@ const ARTWORK_OPTIONS: {
     description: "Personalize agora e veja o resultado",
     icon: Sparkles,
     badge: "Novo",
+    /** Em desenvolvimento: só com sessão CRM (mesmo cookie em /quote) */
+    requireAuth: true,
   },
 ];
 
@@ -78,6 +83,21 @@ export function StepPersonalization({
 }: StepPersonalizationProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  /** null = ainda verificando sessão; true = logado no CRM */
+  const [hasCrmSession, setHasCrmSession] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      setHasCrmSession(!!session?.user);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasCrmSession(!!session?.user);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const update = (field: keyof WizardPersonalization, value: string | File | null) => {
     onChange({ ...data, [field]: value });
@@ -136,7 +156,35 @@ export function StepPersonalization({
     onNext();
   };
 
+  const canUseDiy = hasCrmSession === true;
+
+  useEffect(() => {
+    if (hasCrmSession === false && data.artwork_mode === "do_it_yourself") {
+      onChange({
+        ...data,
+        artwork_mode: null,
+        diy_customizations: [],
+      });
+    }
+  }, [hasCrmSession, data.artwork_mode, onChange, data]);
+
   if (data.artwork_mode === "do_it_yourself") {
+    if (hasCrmSession === null) {
+      return (
+        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
+          <p className="text-sm">Verificando acesso…</p>
+        </div>
+      );
+    }
+    if (!canUseDiy) {
+      return (
+        <div className="flex min-h-[32vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted-foreground">
+          <p>Esta opção está disponível apenas com login no sistema.</p>
+          <p className="text-xs">Voltando à escolha de personalização…</p>
+        </div>
+      );
+    }
     return (
       <DiyEditor
         products={products}
@@ -166,7 +214,11 @@ export function StepPersonalization({
           aria-label="Modo de personalização"
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          {ARTWORK_OPTIONS.filter((o) => o.value !== "use_last" || isExistingClient).map((option) => {
+          {ARTWORK_OPTIONS.filter(
+            (o) =>
+              (o.value !== "use_last" || isExistingClient) &&
+              (!o.requireAuth || canUseDiy),
+          ).map((option) => {
             const Icon = option.icon;
             const isSelected = data.artwork_mode === option.value;
 
