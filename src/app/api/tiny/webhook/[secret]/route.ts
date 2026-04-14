@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/types/database.types";
 import { forwardToNI } from "@/lib/tiny/webhook-forwarder";
@@ -44,6 +45,28 @@ function extractOrderFields(payload: unknown): {
     tinyOrderId: tinyOrderId != null ? Number(tinyOrderId) : null,
     eventType,
   };
+}
+
+/**
+ * GET handler — usado pelo Tiny para validar a URL antes de salvar webhook.
+ * Não grava nada, apenas responde 200 se o secret for válido.
+ */
+export async function GET(
+  _req: NextRequest,
+  context: { params: Promise<{ secret: string }> }
+) {
+  const { secret } = await context.params;
+  const expected = process.env.TINY_WEBHOOK_SECRET?.trim();
+
+  if (!expected) {
+    return new Response("misconfigured", { status: 503 });
+  }
+
+  if (secret !== expected) {
+    return new Response("forbidden", { status: 403 });
+  }
+
+  return new Response("ok", { status: 200 });
 }
 
 export async function POST(
@@ -106,12 +129,12 @@ export async function POST(
     }
 
     if (eventRecord?.id) {
-      forwardToNI({
+      const forwardPromise = forwardToNI({
         rawBody,
         originalHeaders: headers,
       })
         .then(async (result) => {
-          const { error: updErr } = await supabaseAdmin
+          const { error: updateErr } = await supabaseAdmin
             .from("tiny_webhook_events")
             .update({
               forwarded_to_ni_at: new Date().toISOString(),
@@ -120,13 +143,20 @@ export async function POST(
               forwarded_error: result.error,
             })
             .eq("id", eventRecord.id);
-          if (updErr) {
-            console.error("[tiny-webhook-forward] update failed:", updErr);
+
+          if (updateErr) {
+            console.error("[tiny-webhook-forward] update failed:", updateErr);
           }
         })
         .catch((err: unknown) => {
           console.error("[tiny-webhook-forward] unexpected error:", err);
         });
+
+      // Estende o ciclo de vida da função pra garantir que o fan-out complete
+      // após a resposta ao Tiny (evita o processo ser morto em ambiente serverless)
+      after(async () => {
+        await forwardPromise;
+      });
     }
 
     return new Response("ok", { status: 200 });
