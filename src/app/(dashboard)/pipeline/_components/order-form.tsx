@@ -30,7 +30,7 @@ const DEFAULT_FORM_DATA = {
 };
 
 export function OrderForm({ open, onOpenChange }: OrderFormProps) {
-  const { setSelectedOrderId } = useUIStore();
+  const { setSelectedOrderId, setCreateOrderStatus } = useUIStore();
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
 
@@ -38,8 +38,9 @@ export function OrderForm({ open, onOpenChange }: OrderFormProps) {
     if (!open) {
       setCurrentStep(1);
       setFormData(DEFAULT_FORM_DATA);
+      setCreateOrderStatus(null);
     }
-  }, [open]);
+  }, [open, setCreateOrderStatus]);
 
   const handleClientSelect = (client: SelectedClient | null) => {
     setFormData((prev) => ({ ...prev, selectedClient: client }));
@@ -69,7 +70,15 @@ export function OrderForm({ open, onOpenChange }: OrderFormProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setCreateOrderStatus(null);
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
       <DialogContent className="max-w-lg sm:max-w-xl md:max-w-2xl w-[95vw] max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle>Novo pedido</DialogTitle>

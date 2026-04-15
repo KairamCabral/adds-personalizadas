@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createOrderWithItems, deleteOrder } from "@/services/orders.service";
+import { useUIStore } from "@/stores/ui.store";
 import { createClient } from "@/lib/supabase/client";
 import {
   Select,
@@ -91,6 +92,7 @@ export function OrderFormStepReview({
   onCreateSuccess,
 }: OrderFormStepReviewProps) {
   const queryClient = useQueryClient();
+  const createOrderStatus = useUIStore((s) => s.createOrderStatus);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -101,7 +103,7 @@ export function OrderFormStepReview({
         title: selectedClient.name,
         description: personalizationNotes.trim() || null,
         client_id: selectedClient.id,
-        status: "FAZER",
+        status: createOrderStatus ?? "FAZER",
         order_type: "PERSONALIZADO",
         priority,
         created_by: null,

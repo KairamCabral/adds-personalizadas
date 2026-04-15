@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { OrderStatus } from "@/lib/constants";
 
 interface UIStore {
   // Sidebar (desktop collapsed state)
@@ -25,8 +26,8 @@ interface UIStore {
   // Create order dialog
   createOrderOpen: boolean;
   setCreateOrderOpen: (open: boolean) => void;
-  createOrderStatus: string | null;
-  setCreateOrderStatus: (status: string | null) => void;
+  createOrderStatus: OrderStatus | null;
+  setCreateOrderStatus: (status: OrderStatus | null) => void;
 }
 
 export const useUIStore = create<UIStore>()(
