@@ -76,6 +76,85 @@ export function KanbanBoard() {
   const ordersListVersion = useRef(0);
   const blingSyncingRef = useRef(new Set<string>());
 
+  /** Envio automático ao Bling quando o pedido entra em APROVADO (reutilizado por move e reorder). */
+  const runBlingSyncForAprovadoOrder = useCallback(
+    async (orderId: string) => {
+      if (blingSyncingRef.current.has(orderId)) return;
+      blingSyncingRef.current.add(orderId);
+      try {
+        const res = await fetch("/api/bling/sync-on-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, newStatus: "APROVADO" }),
+        });
+        const json = await res.json().catch(() => ({}));
+
+        const results = (json.results ?? []) as Array<{
+          supplierId: string;
+          supplierName: string;
+          success: boolean;
+          error?: string;
+          contactSent?: boolean;
+          orderSent?: boolean;
+          blingOrderNumber?: number;
+        }>;
+
+        const anySuccess = results.some((r) => r.success);
+        const anyError = results.some((r) => !r.success);
+
+        if (anySuccess && !anyError) {
+          toast.success("Pedido enviado ao fornecedor automaticamente.");
+        } else if (anySuccess && anyError) {
+          const erroredSupplier = results.find((r) => !r.success);
+          toast.warning("Envio parcial ao fornecedor", {
+            description: erroredSupplier?.error
+              ? `${erroredSupplier.supplierName}: ${erroredSupplier.error.slice(0, 120)}`
+              : "Veja detalhes no card",
+          });
+        } else if (anyError) {
+          const failed = results.find((r) => !r.success);
+          const errorMsg =
+            failed?.error ?? `Falha ao enviar ao fornecedor (HTTP ${res.status})`;
+          toast.error("Erro ao enviar ao fornecedor", {
+            description: errorMsg.slice(0, 200),
+            action: failed?.supplierId
+              ? {
+                  label: "Tentar novamente",
+                  onClick: async () => {
+                    const retry = await fetch("/api/bling/sync", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        orderId,
+                        supplierId: failed.supplierId,
+                      }),
+                    });
+                    const retryJson = await retry.json().catch(() => ({}));
+                    queryClient.invalidateQueries({ queryKey: ["orders"] });
+                    if (retryJson.success) {
+                      toast.success("Reenvio bem-sucedido");
+                    } else {
+                      toast.error("Reenvio também falhou", {
+                        description: (retryJson.error as string) ?? `HTTP ${retry.status}`,
+                      });
+                    }
+                  },
+                }
+              : undefined,
+          });
+        }
+      } catch (err) {
+        console.error("[bling-sync-on-status]", err);
+        toast.error("Falha ao contatar o fornecedor", {
+          description: "Verifique sua conexão e tente novamente.",
+        });
+      } finally {
+        blingSyncingRef.current.delete(orderId);
+      }
+    },
+    [queryClient]
+  );
+
   const [busca, setBusca] = useQueryState("busca", parseAsString);
   const [responsavel, setResponsavel] = useQueryState("responsavel", parseAsString);
   const [prioridade, setPrioridade] = useQueryState("prioridade", parseAsString);
@@ -220,77 +299,7 @@ export function KanbanBoard() {
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
 
       if (data.newStatus === "APROVADO") {
-        if (blingSyncingRef.current.has(data.orderId)) return;
-        blingSyncingRef.current.add(data.orderId);
-        try {
-          const res = await fetch("/api/bling/sync-on-status", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: data.orderId, newStatus: data.newStatus }),
-          });
-          const json = await res.json().catch(() => ({}));
-
-          const results = (json.results ?? []) as Array<{
-            supplierId: string;
-            supplierName: string;
-            success: boolean;
-            error?: string;
-            contactSent?: boolean;
-            orderSent?: boolean;
-            blingOrderNumber?: number;
-          }>;
-
-          const anySuccess = results.some((r) => r.success);
-          const anyError = results.some((r) => !r.success);
-
-          if (anySuccess && !anyError) {
-            toast.success("Pedido enviado ao fornecedor automaticamente.");
-          } else if (anySuccess && anyError) {
-            const erroredSupplier = results.find((r) => !r.success);
-            toast.warning("Envio parcial ao fornecedor", {
-              description: erroredSupplier?.error
-                ? `${erroredSupplier.supplierName}: ${erroredSupplier.error.slice(0, 120)}`
-                : "Veja detalhes no card",
-            });
-          } else if (anyError) {
-            const failed = results.find((r) => !r.success);
-            const errorMsg = failed?.error ?? `Falha ao enviar ao fornecedor (HTTP ${res.status})`;
-            toast.error("Erro ao enviar ao fornecedor", {
-              description: errorMsg.slice(0, 200),
-              action: failed?.supplierId
-                ? {
-                    label: "Tentar novamente",
-                    onClick: async () => {
-                      const retry = await fetch("/api/bling/sync", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          orderId: data.orderId,
-                          supplierId: failed.supplierId,
-                        }),
-                      });
-                      const retryJson = await retry.json().catch(() => ({}));
-                      queryClient.invalidateQueries({ queryKey: ["orders"] });
-                      if (retryJson.success) {
-                        toast.success("Reenvio bem-sucedido");
-                      } else {
-                        toast.error("Reenvio também falhou", {
-                          description: (retryJson.error as string) ?? `HTTP ${retry.status}`,
-                        });
-                      }
-                    },
-                  }
-                : undefined,
-            });
-          }
-        } catch (err) {
-          console.error("[bling-sync-on-status]", err);
-          toast.error("Falha ao contatar o fornecedor", {
-            description: "Verifique sua conexão e tente novamente.",
-          });
-        } finally {
-          blingSyncingRef.current.delete(data.orderId);
-        }
+        await runBlingSyncForAprovadoOrder(data.orderId);
       }
     },
 
@@ -306,6 +315,8 @@ export function KanbanBoard() {
       sourceOrderIds: string[];
       destStatus: OrderStatus;
       destOrderIds: string[];
+      /** Pedido que entrou em APROVADO (arraste sem filtros) — dispara sync Bling no onSuccess. */
+      blingSyncOrderId?: string;
     }) => {
       if (vars.sourceStatus === vars.destStatus) {
         await reorderColumn(vars.destStatus, vars.destOrderIds);
@@ -343,8 +354,15 @@ export function KanbanBoard() {
       }
       toast.error("Erro ao reordenar pedidos");
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, vars) => {
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      if (
+        vars.blingSyncOrderId &&
+        vars.destStatus === "APROVADO" &&
+        vars.sourceStatus !== "APROVADO"
+      ) {
+        await runBlingSyncForAprovadoOrder(vars.blingSyncOrderId);
+      }
     },
     onSettled: () => {
       isDragLocked.current = false;
@@ -609,6 +627,10 @@ export function KanbanBoard() {
         sourceOrderIds,
         destStatus: targetStatus as OrderStatus,
         destOrderIds,
+        blingSyncOrderId:
+          targetStatus === "APROVADO" && originalStatus !== "APROVADO"
+            ? activeIdStr
+            : undefined,
       });
       clearDrag();
       return;

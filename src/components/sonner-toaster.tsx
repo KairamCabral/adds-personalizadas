@@ -11,12 +11,17 @@ export function SonnerToaster() {
     <Toaster
       theme={theme}
       position="bottom-right"
+      /* Evita stack colapsado com altura fixa — texto de título/descrição não se sobrepõe */
+      expand
+      gap={16}
       toastOptions={{
         classNames: {
           toast:
-            "!bg-card !border !border-border !text-foreground !shadow-lg",
-          title: "!text-foreground !font-medium",
-          description: "!text-foreground/90",
+            "!items-start !bg-card !border !border-border !text-foreground !shadow-lg",
+          title: "!text-foreground !font-medium !leading-snug",
+          description:
+            "!mt-0.5 !block !text-foreground/90 !text-sm !leading-relaxed",
+          content: "!min-w-0 !flex-1",
           error:
             "!bg-destructive/15 !border-destructive !text-foreground dark:!bg-destructive/25",
           success:
@@ -28,6 +33,7 @@ export function SonnerToaster() {
         },
       }}
       closeButton
+      containerAriaLabel="Notificações"
     />
   );
 }

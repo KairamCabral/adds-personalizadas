@@ -71,8 +71,14 @@ export function useNotifications(page = 1, limit = 20) {
     const unsubscribe = subscribeToNotifications(profile.id, (payload) => {
       queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
       queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY });
-      const notification = payload.new as { title?: string };
-      toast.info(notification?.title ?? "Nova notificação");
+      const notification = payload.new as { title?: string; body?: string };
+      const title = notification?.title ?? "Nova notificação";
+      const body = notification?.body;
+      if (body && body !== title) {
+        toast.info(title, { description: body });
+      } else {
+        toast.info(title);
+      }
     });
 
     return unsubscribe;

@@ -357,7 +357,6 @@ export function OrderDetailSheet() {
       return moveOrder(orderId, newStatus, count ?? 0)
     },
     onSuccess: async (_data, variables) => {
-      toast.success("Etapa alterada.");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
       // Envio automático ao Bling quando status muda para APROVADO (coluna "Aprovado")
@@ -373,14 +372,19 @@ export function OrderDetailSheet() {
           });
           const json = await res.json().catch(() => ({}));
           if (json.results?.some((r: { success: boolean }) => r.success)) {
-            toast.success("Pedido enviado ao fornecedor automaticamente.");
+            toast.success("Pedido aprovado e enviado ao fornecedor", {
+              description:
+                "Sincronizado automaticamente com o Bling (contato e pedido).",
+            });
             queryClient.invalidateQueries({ queryKey: ["orders"] });
             queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
+            return;
           }
         } catch {
           // Silencioso: o usuário pode reenviar manualmente pelo botão
         }
       }
+      toast.success("Etapa alterada.");
     },
     onError: () => {
       toast.error("Erro ao alterar etapa.");
