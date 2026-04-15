@@ -10,7 +10,7 @@ export const PERMISSIONS = {
   "orders.view_all": ["MASTER", "GESTOR"],
   "orders.view_own": ["MASTER", "GESTOR", "PRESTADOR"],
   "orders.edit": ["MASTER", "GESTOR"],
-  "orders.delete": ["MASTER"],
+  "orders.delete": ["MASTER", "GESTOR"],
   "orders.change_status": ["MASTER", "GESTOR", "PRESTADOR"],
   "orders.archive": ["MASTER", "GESTOR"],
   "orders.assign": ["MASTER", "GESTOR"],
