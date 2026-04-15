@@ -3,6 +3,7 @@ import type { Database } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { getOrderById } from "./orders.service";
 import { hasValidAgreement } from "./agreements.service";
+import { enqueueBlingRequest } from "@/lib/bling/rate-limiter";
 
 const supabase = createClient();
 
@@ -33,6 +34,35 @@ const SHARED_FIELDS_KEYS: (keyof SharedFields)[] = [
 const DEFAULT_SHARED_FIELDS: SharedFields = Object.fromEntries(
   SHARED_FIELDS_KEYS.map((k) => [k, true])
 ) as SharedFields;
+
+/**
+ * Wrapper que envia request ao Bling via fila + retry automático.
+ * Retorna o Response. Se for 429 mesmo após retries, retorna o último Response 429.
+ *
+ * Use SEMPRE essa função em vez de fetch direto pra URLs do Bling.
+ */
+async function blingFetch(
+  url: string,
+  init: RequestInit,
+  label: string
+): Promise<Response> {
+  return enqueueBlingRequest(async () => {
+    const res = await fetch(url, init);
+    // Se for 429, JOGA o erro pra fila detectar e retentar.
+    // O rate-limiter vai reconhecer e fazer retry com backoff.
+    if (res.status === 429) {
+      // Importante: ler o body antes de jogar pra não vazar conexão
+      const bodyText = await res.text().catch(() => "");
+      const err = new Error(
+        `Bling 429: ${bodyText.slice(0, 200) || "TOO_MANY_REQUESTS"}`
+      );
+      // Anexar status pro isRateLimitError detectar de qualquer forma
+      (err as Error & { status?: number }).status = 429;
+      throw err;
+    }
+    return res;
+  }, label);
+}
 
 /** Extrai mensagem de erro da resposta da API Bling (vários formatos possíveis). */
 function extractBlingErrorMessage(status: number, blingResponse: unknown): string {
@@ -269,17 +299,21 @@ async function getValidBlingToken(
     ).toString("base64");
 
     try {
-      const res = await fetch("https://www.bling.com.br/Api/v3/oauth/token", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Authorization: `Basic ${basicAuth}`,
+      const res = await blingFetch(
+        "https://www.bling.com.br/Api/v3/oauth/token",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Authorization: `Basic ${basicAuth}`,
+          },
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: supplier.bling_refresh_token,
+          }),
         },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          refresh_token: supplier.bling_refresh_token,
-        }),
-      });
+        "oauth-refresh-token"
+      );
 
       if (res.ok) {
         const data = await res.json();
@@ -315,12 +349,16 @@ export async function testConnection(apiToken: string): Promise<{
   const token = (apiToken ?? "").trim();
   const baseUrl = process.env.BLING_API_URL ?? "https://api.bling.com.br/Api/v3";
   try {
-    const res = await fetch(`${baseUrl}/contatos?limite=1`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+    const res = await blingFetch(
+      `${baseUrl}/contatos?limite=1`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       },
-    });
+      "test-connection"
+    );
 
     if (!res.ok) {
       const text = await res.text();
@@ -404,14 +442,18 @@ export async function sendClientToBling(
   }
 
   try {
-    const res = await fetch(`${baseUrl}/contatos`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        "Content-Type": "application/json",
+    const res = await blingFetch(
+      `${baseUrl}/contatos`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    });
+      `send-client:${orderId}`
+    );
 
     const blingResponse = await res.json().catch(() => ({}));
     const blingContactId =
@@ -629,9 +671,11 @@ async function findBlingContact(
   for (const searchTerm of searchVariations) {
     try {
       const searchUrl = `${baseUrl}/contatos?pesquisa=${encodeURIComponent(searchTerm)}&limite=5`;
-      const res = await fetch(searchUrl, {
-        headers: { Authorization: `Bearer ${apiToken}` },
-      });
+      const res = await blingFetch(
+        searchUrl,
+        { headers: { Authorization: `Bearer ${apiToken}` } },
+        `find-contact:${searchTerm}`
+      );
       if (!res.ok) continue;
       const data = (await res.json()) as { data?: { id?: number; nome?: string }[] };
       const contacts = data?.data ?? [];
@@ -691,9 +735,11 @@ async function findBlingProductByCode(
 
   try {
     const url = `${baseUrl}/produtos?codigo=${encodeURIComponent(codigo)}&limite=1`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiToken}` },
-    });
+    const res = await blingFetch(
+      url,
+      { headers: { Authorization: `Bearer ${apiToken}` } },
+      `find-product:${codigo}`
+    );
 
     if (!res.ok) {
       const fallbackId = BLING_PRODUCT_ID_MAP[upperCodigo];
@@ -1029,14 +1075,18 @@ export async function createBlingOrder(
     );
   }
 
-  const res = await fetch(`${baseUrl}/pedidos/vendas`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiToken}`,
+  const res = await blingFetch(
+    `${baseUrl}/pedidos/vendas`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiToken}`,
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
+    `create-order:${orderId}`
+  );
 
   const responseData = (await res.json().catch(() => ({}))) as {
     data?: { id?: number; numero?: number };
@@ -1044,19 +1094,21 @@ export async function createBlingOrder(
   };
 
   if (!res.ok) {
+    // Pedido NÃO foi criado — gravar log com fields_sent=[] (não mente que enviou)
+    // Isso faz a UI exibir tag "Parcial" (amarela) em vez de "Erro Bling" (vermelha)
+    // quando o contato foi enviado mas o pedido falhou.
+    const errMsg = extractBlingErrorMessage(res.status, responseData);
     await db.from("supplier_data_logs").insert({
       supplier_id: supplierId,
       order_id: orderId,
       client_id: clientId,
       data_sent: payload as never,
-      fields_sent: ["bling_order"],
+      fields_sent: [],
       status: "error",
-      error_message: JSON.stringify(responseData),
+      error_message: errMsg,
       sent_by: userId,
     });
-    throw new Error(
-      `Bling API error ${res.status}: ${JSON.stringify(responseData?.error ?? responseData)}`
-    );
+    throw new Error(`Bling API error ${res.status}: ${errMsg}`);
   }
 
   const blingOrderId = responseData?.data?.id;
@@ -1205,7 +1257,11 @@ export async function fetchBlingData(
 
   try {
     // Vendedores: GET /vendedores
-    const vendedoresRes = await fetch(`${baseUrl}/vendedores?limite=100`, { headers });
+    const vendedoresRes = await blingFetch(
+      `${baseUrl}/vendedores?limite=100`,
+      { headers },
+      "fetch-vendedores"
+    );
     if (vendedoresRes.ok) {
       const vData = (await vendedoresRes.json()) as { data?: unknown[] | { data?: unknown[] } };
       const raw = Array.isArray(vData?.data)
@@ -1232,14 +1288,12 @@ export async function fetchBlingData(
     let pagina = 1;
     const limite = 100;
     let hasMore = true;
-    const delayMs = 450; // evita 429 (limite 3 req/s)
 
     while (hasMore) {
-      if (pagina > 1) await new Promise((r) => setTimeout(r, delayMs));
-
-      const produtosRes = await fetch(
+      const produtosRes = await blingFetch(
         `${baseUrl}/produtos?limite=${limite}&pagina=${pagina}&criterio=5`,
-        { headers }
+        { headers },
+        `fetch-produtos-page-${pagina}`
       );
       if (!produtosRes.ok) {
         result.error = result.error
@@ -1285,10 +1339,10 @@ export async function fetchBlingData(
     let paginaV = 1;
     let hasMoreV = true;
     while (hasMoreV) {
-      if (paginaV > 1) await new Promise((r) => setTimeout(r, delayMs));
-      const varRes = await fetch(
+      const varRes = await blingFetch(
         `${baseUrl}/produtos?limite=${limite}&pagina=${paginaV}&criterio=5&tipo=V`,
-        { headers }
+        { headers },
+        `fetch-variacoes-page-${paginaV}`
       );
       if (!varRes.ok) break;
       const vData = (await varRes.json()) as { data?: unknown[] | { data?: unknown[] } };
