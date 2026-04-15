@@ -22,7 +22,7 @@ export async function getOrders() {
       rep:profiles!orders_rep_id_fkey(id, full_name),
       labels:order_labels(id, label),
       watchers:order_watchers(user_id, profile:profiles(id, full_name, avatar_url)),
-      bling_logs:supplier_data_logs(sent_at, suppliers(name)),
+      bling_logs:supplier_data_logs(id, sent_at, status, error_message, fields_sent, supplier_id, suppliers(name)),
       items:order_items(product_name, quantity),
       attachments:attachments(id)
     `)
@@ -286,6 +286,40 @@ export async function cancelOrder(id: string) {
   }
 
   return archived;
+}
+
+/**
+ * Reenvia um pedido para o Bling (chama o endpoint manual /api/bling/sync).
+ * Retorna o JSON da resposta — frontend decide como exibir.
+ */
+export async function resendToBling(params: {
+  orderId: string;
+  supplierId: string;
+}): Promise<{
+  success: boolean;
+  contactSent?: boolean;
+  orderSent?: boolean;
+  blingOrderNumber?: number;
+  error?: string;
+  status: number;
+}> {
+  const res = await fetch("/api/bling/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      orderId: params.orderId,
+      supplierId: params.supplierId,
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  return {
+    success: !!json.success,
+    contactSent: json.contactSent,
+    orderSent: json.orderSent,
+    blingOrderNumber: json.blingOrderNumber,
+    error: json.error,
+    status: res.status,
+  };
 }
 
 export async function unarchiveOrder(id: string) {

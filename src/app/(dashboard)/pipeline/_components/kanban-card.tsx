@@ -12,6 +12,7 @@ import {
   AlignLeft,
   Clock,
   AlertTriangle,
+  AlertCircle,
   Truck,
   Paperclip,
   Archive,
@@ -20,6 +21,8 @@ import {
   Sparkles,
   Percent,
   Smartphone,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import {
   Tooltip,
@@ -28,11 +31,38 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Order, OrderLabel, Profile } from "@/types/database.types";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { resendToBling } from "@/services/orders.service";
+import { toast } from "sonner";
 
 type BlingLog = {
+  id: string;
   sent_at: string;
-  suppliers?: { name?: string } | null;
+  status: "success" | "error" | string;
+  error_message: string | null;
+  fields_sent: string[];
+  supplier_id: string;
+  suppliers: { name?: string } | null;
 };
+
+type BlingDisplayState =
+  | { kind: "none" }
+  | { kind: "success"; log: BlingLog }
+  | { kind: "partial"; log: BlingLog }
+  | { kind: "error"; log: BlingLog };
+
+function deriveBlingState(logs: BlingLog[] | undefined | null): BlingDisplayState {
+  if (!logs || logs.length === 0) return { kind: "none" };
+  const sorted = [...logs].sort(
+    (a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime()
+  );
+  const last = sorted[0];
+  if (last.status === "success") return { kind: "success", log: last };
+  const fields = last.fields_sent ?? [];
+  const sentOrder = fields.includes("bling_order");
+  if (!sentOrder) return { kind: "partial", log: last };
+  return { kind: "error", log: last };
+}
 
 type OrderItem = { product_name: string; quantity: number };
 type OrderAttachment = { id: string };
@@ -84,9 +114,41 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
   const isHighPriority = order.priority === "ALTA";
   const isOverdue =
     order.due_date && new Date(order.due_date) < new Date();
-  const lastBlingLog = (order.bling_logs ?? []).sort(
-    (a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime()
-  )[0];
+  const blingState = deriveBlingState(order.bling_logs as BlingLog[] | undefined);
+
+  const queryClient = useQueryClient();
+  const resendMutation = useMutation({
+    mutationFn: () => {
+      if (blingState.kind !== "error" && blingState.kind !== "partial") {
+        throw new Error("Sem log de erro para reenviar");
+      }
+      return resendToBling({
+        orderId: order.id,
+        supplierId: blingState.log.supplier_id,
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      if (data.success) {
+        toast.success("Reenvio bem-sucedido", {
+          description: data.blingOrderNumber
+            ? `Pedido Bling #${data.blingOrderNumber} criado`
+            : "Pedido enviado ao Bling",
+        });
+      } else if (data.contactSent && !data.orderSent) {
+        toast.warning("Contato enviado, pedido ainda falhou", {
+          description: data.error ?? `HTTP ${data.status}`,
+        });
+      } else {
+        toast.error("Reenvio falhou", {
+          description: data.error ?? `HTTP ${data.status}`,
+        });
+      }
+    },
+    onError: (err: Error) => {
+      toast.error("Erro ao reenviar", { description: err.message });
+    },
+  });
 
   const archiveAction = onArchive ?? onUnarchive;
   const isUnarchive = !!onUnarchive;
@@ -240,21 +302,87 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
             )}
 
             {/* Bling sync - compacto, detalhes no tooltip */}
-            {lastBlingLog && (
+            {blingState.kind === "success" && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex shrink-0 cursor-help items-center gap-1 text-primary">
+                    <div className="flex shrink-0 cursor-help items-center gap-1 text-emerald-600 dark:text-emerald-400">
                       <Truck className="h-4 w-4" />
-                      <span className="text-[10px]">Enviado</span>
+                      <span className="text-[10px] font-medium">Enviado</span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[260px] pointer-events-none">
                     <p className="text-xs">
                       Enviado a{" "}
-                      {(lastBlingLog.suppliers as { name?: string })?.name ?? "Fornecedor"}{" "}
-                      em {formatDate(lastBlingLog.sent_at)}
+                      {blingState.log.suppliers?.name ?? "Fornecedor"}{" "}
+                      em {formatDate(blingState.log.sent_at)}
                     </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {blingState.kind === "partial" && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex shrink-0 cursor-help items-center gap-1 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span className="text-[10px] font-medium">Parcial</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[300px] pointer-events-none">
+                    <p className="text-xs font-medium mb-1">Contato enviado, pedido falhou</p>
+                    <p className="text-[11px] text-muted-foreground line-clamp-3">
+                      {(blingState.log.error_message ?? "Sem detalhes do erro").slice(0, 200)}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {blingState.kind === "error" && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex shrink-0 cursor-help items-center gap-1 text-red-600 dark:text-red-400">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-[10px] font-medium">Erro Bling</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[300px] pointer-events-none">
+                    <p className="text-xs font-medium mb-1">Erro ao enviar ao fornecedor</p>
+                    <p className="text-[11px] text-muted-foreground line-clamp-3">
+                      {(blingState.log.error_message ?? "Sem detalhes do erro").slice(0, 200)}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {(blingState.kind === "error" || blingState.kind === "partial") && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        resendMutation.mutate();
+                      }}
+                      disabled={resendMutation.isPending}
+                      aria-label="Reenviar ao Bling"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
+                    >
+                      {resendMutation.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="pointer-events-none">
+                    <p className="text-xs">Reenviar ao Bling</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

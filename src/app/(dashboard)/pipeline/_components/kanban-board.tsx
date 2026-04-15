@@ -229,11 +229,65 @@ export function KanbanBoard() {
             body: JSON.stringify({ orderId: data.orderId, newStatus: data.newStatus }),
           });
           const json = await res.json().catch(() => ({}));
-          if (json.results?.some((r: { success: boolean }) => r.success)) {
+
+          const results = (json.results ?? []) as Array<{
+            supplierId: string;
+            supplierName: string;
+            success: boolean;
+            error?: string;
+            contactSent?: boolean;
+            orderSent?: boolean;
+            blingOrderNumber?: number;
+          }>;
+
+          const anySuccess = results.some((r) => r.success);
+          const anyError = results.some((r) => !r.success);
+
+          if (anySuccess && !anyError) {
             toast.success("Pedido enviado ao fornecedor automaticamente.");
+          } else if (anySuccess && anyError) {
+            const erroredSupplier = results.find((r) => !r.success);
+            toast.warning("Envio parcial ao fornecedor", {
+              description: erroredSupplier?.error
+                ? `${erroredSupplier.supplierName}: ${erroredSupplier.error.slice(0, 120)}`
+                : "Veja detalhes no card",
+            });
+          } else if (anyError) {
+            const failed = results.find((r) => !r.success);
+            const errorMsg = failed?.error ?? `Falha ao enviar ao fornecedor (HTTP ${res.status})`;
+            toast.error("Erro ao enviar ao fornecedor", {
+              description: errorMsg.slice(0, 200),
+              action: failed?.supplierId
+                ? {
+                    label: "Tentar novamente",
+                    onClick: async () => {
+                      const retry = await fetch("/api/bling/sync", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          orderId: data.orderId,
+                          supplierId: failed.supplierId,
+                        }),
+                      });
+                      const retryJson = await retry.json().catch(() => ({}));
+                      queryClient.invalidateQueries({ queryKey: ["orders"] });
+                      if (retryJson.success) {
+                        toast.success("Reenvio bem-sucedido");
+                      } else {
+                        toast.error("Reenvio também falhou", {
+                          description: (retryJson.error as string) ?? `HTTP ${retry.status}`,
+                        });
+                      }
+                    },
+                  }
+                : undefined,
+            });
           }
-        } catch {
-          // Silencioso
+        } catch (err) {
+          console.error("[bling-sync-on-status]", err);
+          toast.error("Falha ao contatar o fornecedor", {
+            description: "Verifique sua conexão e tente novamente.",
+          });
         } finally {
           blingSyncingRef.current.delete(data.orderId);
         }
