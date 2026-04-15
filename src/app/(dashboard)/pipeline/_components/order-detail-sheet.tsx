@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sheet,
@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PriorityIndicator } from "@/components/shared/priority-indicator";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
+import { createClient } from "@/lib/supabase/client";
 import { getOrderById, deleteOrder, moveOrder, archiveOrder, unarchiveOrder, updateOrder, cancelOrder } from "@/services/orders.service";
 import { ArchiveCancelDialog } from "@/components/pipeline/archive-cancel-dialog";
 import { useUIStore } from "@/stores/ui.store";
@@ -42,6 +43,8 @@ import {
   Sparkles,
   Percent,
   CheckCircle,
+  CheckCircle2,
+  Clock,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -107,6 +110,91 @@ const APROVADO_AND_AFTER = [
   "ARQUIVADO",
 ];
 
+const FINAL_STATUSES = ["FINALIZADO", "ENTREGUE", "FATURADO"] as const;
+
+type OrderTimeBadge = {
+  kind: "in_progress" | "completed" | "cancelled" | "archived";
+  label: string;
+  durationLabel: string;
+  colorClasses: string;
+};
+
+function formatDuration(ms: number): string {
+  if (ms < 0) return "0min";
+  const totalMinutes = Math.floor(ms / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}min` : `${hours}h`;
+  }
+  return `${minutes}min`;
+}
+
+function deriveOrderTimeBadge(
+  order: {
+    created_at: string;
+    archived_at?: string | null;
+    status: string;
+    labels?: Array<{ label: string }> | null;
+  },
+  completedAt: string | null
+): OrderTimeBadge {
+  const createdAt = new Date(order.created_at).getTime();
+  const isCompleted = FINAL_STATUSES.includes(
+    order.status as (typeof FINAL_STATUSES)[number]
+  );
+  const isCancelled = (order.labels ?? []).some(
+    (l) => l.label === "PEDIDO_CANCELADO"
+  );
+  const isArchived = !!order.archived_at;
+
+  if (isCancelled && order.archived_at) {
+    const cancelledAt = new Date(order.archived_at).getTime();
+    return {
+      kind: "cancelled",
+      label: "Cancelado em",
+      durationLabel: formatDuration(cancelledAt - createdAt),
+      colorClasses:
+        "border-red-500/30 bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400",
+    };
+  }
+
+  if (isArchived && !isCancelled) {
+    const archivedAt = new Date(order.archived_at!).getTime();
+    return {
+      kind: "archived",
+      label: "Arquivado em",
+      durationLabel: formatDuration(archivedAt - createdAt),
+      colorClasses:
+        "border-slate-400/30 bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300",
+    };
+  }
+
+  if (isCompleted && completedAt) {
+    const completedTs = new Date(completedAt).getTime();
+    return {
+      kind: "completed",
+      label: "Concluído em",
+      durationLabel: formatDuration(completedTs - createdAt),
+      colorClasses:
+        "border-emerald-500/30 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400",
+    };
+  }
+
+  return {
+    kind: "in_progress",
+    label: "Em andamento há",
+    durationLabel: formatDuration(Date.now() - createdAt),
+    colorClasses:
+      "border-blue-500/30 bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400",
+  };
+}
+
 export function OrderDetailSheet() {
   const { selectedOrderId, setSelectedOrderId } = useUIStore();
   const { can, canAny } = usePermissions();
@@ -145,6 +233,52 @@ export function OrderDetailSheet() {
     enabled: !!selectedOrderId,
     retry: false,
   });
+
+  const completedAtFromHistory = useMemo(() => {
+    if (!order?.history || !Array.isArray(order.history)) return null;
+    const rows = order.history.filter(
+      (h: { action?: string; new_value?: string; created_at?: string }) =>
+        h?.action === "status_changed" &&
+        FINAL_STATUSES.includes(
+          String(h?.new_value) as (typeof FINAL_STATUSES)[number]
+        )
+    );
+    if (rows.length === 0) return null;
+    rows.sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    return rows[0]?.created_at ?? null;
+  }, [order?.history, order?.id]);
+
+  const { data: completedAtFetched, isLoading: completedAtLoading } = useQuery({
+    queryKey: ["order-completed-at", selectedOrderId],
+    queryFn: async () => {
+      if (!selectedOrderId) return null;
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("order_history")
+        .select("created_at")
+        .eq("order_id", selectedOrderId)
+        .eq("action", "status_changed")
+        .in("new_value", [...FINAL_STATUSES])
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      return data?.created_at ?? null;
+    },
+    enabled:
+      !!selectedOrderId &&
+      !!order &&
+      FINAL_STATUSES.includes(
+        order.status as (typeof FINAL_STATUSES)[number]
+      ) &&
+      !completedAtFromHistory,
+    staleTime: 60 * 1000,
+  });
+
+  const effectiveCompletedAt =
+    completedAtFromHistory ?? completedAtFetched ?? null;
 
   useEffect(() => {
     if (!isLoading && selectedOrderId && (isError || !order)) {
@@ -440,6 +574,55 @@ export function OrderDetailSheet() {
                         priority={order.priority}
                         showLabel
                       />
+                      {(() => {
+                        const isFinal = FINAL_STATUSES.includes(
+                          order.status as (typeof FINAL_STATUSES)[number]
+                        );
+                        if (
+                          isFinal &&
+                          !effectiveCompletedAt &&
+                          completedAtLoading
+                        ) {
+                          return (
+                            <>
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-xs text-muted-foreground">
+                                …
+                              </span>
+                            </>
+                          );
+                        }
+                        const badge = deriveOrderTimeBadge(
+                          {
+                            created_at: order.created_at,
+                            archived_at: order.archived_at,
+                            status: order.status,
+                            labels: order.labels ?? [],
+                          },
+                          effectiveCompletedAt
+                        );
+                        const Icon =
+                          badge.kind === "completed"
+                            ? CheckCircle2
+                            : badge.kind === "cancelled"
+                              ? XCircle
+                              : badge.kind === "archived"
+                                ? Archive
+                                : Clock;
+                        return (
+                          <>
+                            <span className="text-muted-foreground">·</span>
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium ${badge.colorClasses}`}
+                            >
+                              <Icon className="h-3 w-3" />
+                              <span>
+                                {badge.label} {badge.durationLabel}
+                              </span>
+                            </span>
+                          </>
+                        );
+                      })()}
                     </div>
                     <div className="mt-2 flex items-center gap-1">
                       <SheetTitle className="min-w-0 flex-1 text-xl font-semibold leading-tight">

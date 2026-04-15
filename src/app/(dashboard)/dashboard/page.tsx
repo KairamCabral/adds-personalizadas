@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/page-header";
@@ -46,6 +47,7 @@ import {
   Trophy,
   BarChart3,
   TrendingDown,
+  XCircle,
 } from "lucide-react";
 import {
   getDashboardCrmData,
@@ -73,8 +75,8 @@ const STATUS_LABELS: Record<string, string> = {
 function DashboardSkeleton() {
   return (
     <div className="space-y-8">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, i) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton
             key={i}
             className="skeleton-shimmer h-36 rounded-xl"
@@ -271,7 +273,7 @@ export default function DashboardPage() {
           <div className="space-y-6 stagger-children">
             {/* KPIs: seção compacta */}
             <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <UITooltip>
                 <TooltipTrigger asChild>
                   <div>
@@ -316,22 +318,45 @@ export default function DashboardPage() {
                 <TooltipTrigger asChild>
                   <div>
                     <MetricCard
-                      title="Finalizados"
-                      value={String(data.pedidosFinalizados)}
+                      title="Concluídos"
+                      value={String(data.pedidosConcluidos)}
                       icon={CheckCircle2}
                       trend="neutral"
                       iconVariant="success"
                       extra={
                         <TrendBadge
-                          current={data.pedidosFinalizados}
-                          previous={data.pedidosFinalizadosPrev ?? 0}
+                          current={data.pedidosConcluidos}
+                          previous={data.pedidosConcluidosPrev ?? 0}
                         />
                       }
                     />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Chegaram a status final no período
+                  Pedidos que chegaram em FINALIZADO/ENTREGUE/FATURADO no período (exclui cancelados)
+                </TooltipContent>
+              </UITooltip>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <MetricCard
+                      title="Cancelados"
+                      value={String(data.pedidosCancelados)}
+                      icon={XCircle}
+                      trend={data.pedidosCancelados > 0 ? "down" : "neutral"}
+                      iconVariant={data.pedidosCancelados > 0 ? "warning" : "muted"}
+                      extra={
+                        <TrendBadge
+                          current={data.pedidosCancelados}
+                          previous={data.pedidosCanceladosPrev ?? 0}
+                          invertColor
+                        />
+                      }
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Pedidos arquivados com tag PEDIDO_CANCELADO no período
                 </TooltipContent>
               </UITooltip>
 
@@ -360,7 +385,7 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Finalizados ÷ Criados no período
+                  Concluídos ÷ Criados no período
                 </TooltipContent>
               </UITooltip>
 
@@ -670,92 +695,96 @@ export default function DashboardPage() {
                     Funil de Conversão
                   </CardTitle>
                   <p className="text-base font-medium text-foreground/70">
-                    Pedidos que passaram por cada etapa no período
+                    Resumo do fluxo de pedidos no período
                   </p>
                 </CardHeader>
                 <CardContent>
                   {(() => {
-                    const FUNIL_ETAPAS_FIXAS = [
-                      { etapa: "Entrada", ordem: 1 },
-                      { etapa: "Aprovação", ordem: 2 },
-                      { etapa: "Produção", ordem: 3 },
-                      { etapa: "Expedição", ordem: 4 },
-                      { etapa: "Finalizado", ordem: 5 },
-                    ];
-                    const funilCompleto = FUNIL_ETAPAS_FIXAS.map((etapaFixa) => {
-                      const found = (data.funil ?? []).find(
-                        (f) => f.etapa === etapaFixa.etapa
+                    const criados = data.pedidosCriados ?? 0;
+                    const concluidos = data.pedidosConcluidos ?? 0;
+                    const cancelados = data.pedidosCancelados ?? 0;
+                    const emAndamento = Math.max(0, criados - concluidos - cancelados);
+                    const taxaConclusao =
+                      criados > 0
+                        ? ((concluidos / criados) * 100).toFixed(1)
+                        : "0.0";
+
+                    if (criados === 0) {
+                      return (
+                        <div className="flex flex-col items-center justify-center py-14 text-center">
+                          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                            <TrendingDown className="h-7 w-7 text-muted-foreground" />
+                          </div>
+                          <p className="text-base font-bold text-foreground">
+                            Sem pedidos no período
+                          </p>
+                        </div>
                       );
-                      return {
-                        etapa: etapaFixa.etapa,
-                        quantidade: found?.quantidade ?? 0,
-                        ordem: etapaFixa.ordem,
-                      };
-                    });
-                    const maxQtd = Math.max(
-                      ...funilCompleto.map((f) => f.quantidade),
-                      1
-                    );
+                    }
+
+                    const items = [
+                      {
+                        label: "Entrada (criados)",
+                        value: criados,
+                        color: "from-dashboard-primary to-dashboard-primary-strong",
+                        icon: "🟢",
+                      },
+                      {
+                        label: "Concluídos",
+                        value: concluidos,
+                        color: "from-dashboard-success to-emerald-700",
+                        icon: "✅",
+                      },
+                      {
+                        label: "Cancelados",
+                        value: cancelados,
+                        color: "from-dashboard-danger to-red-700",
+                        icon: "🚫",
+                      },
+                      {
+                        label: "Em andamento",
+                        value: emAndamento,
+                        color: "from-dashboard-warning to-amber-600",
+                        icon: "⏳",
+                      },
+                    ];
+
+                    const max = Math.max(...items.map((i) => i.value), 1);
 
                     return (
                       <div className="space-y-3">
-                        {funilCompleto.map((item, index) => {
-                          const pct =
-                            maxQtd > 0
-                              ? Math.max(
-                                  (item.quantidade / maxQtd) * 100,
-                                  item.quantidade > 0 ? 3 : 0
-                                )
-                              : 0;
-                          const prevQtd =
-                            index > 0
-                              ? funilCompleto[index - 1]?.quantidade
-                              : null;
-                          const conversionRate = prevQtd
-                            ? ((item.quantidade / prevQtd) * 100).toFixed(0)
-                            : null;
-
+                        {items.map((item) => {
+                          const pct = (item.value / max) * 100;
                           return (
-                            <div key={item.etapa} className="space-y-2">
+                            <div key={item.label} className="space-y-2">
                               <div className="flex items-center justify-between text-base">
                                 <span className="font-bold text-foreground">
-                                  {item.etapa}
+                                  <span className="mr-2">{item.icon}</span>
+                                  {item.label}
                                 </span>
-                                <div className="flex items-center gap-3">
-                                  {conversionRate != null && (
-                                    <span className="text-sm font-semibold text-foreground/70">
-                                      {conversionRate}% conv.
-                                    </span>
-                                  )}
-                                  <span className="text-lg font-bold tabular-nums text-foreground">
-                                    {item.quantidade}
-                                  </span>
-                                </div>
+                                <span className="text-lg font-bold tabular-nums text-foreground">
+                                  {item.value}
+                                </span>
                               </div>
                               <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted">
                                 <div
-                                  className="dashboard-progress-animate h-full rounded-full bg-gradient-to-r from-dashboard-primary to-dashboard-primary-strong"
-                                  style={{ width: `${pct}%` }}
+                                  className={`dashboard-progress-animate h-full rounded-full bg-gradient-to-r ${item.color}`}
+                                  style={{
+                                    width: `${Math.max(pct, item.value > 0 ? 3 : 0)}%`,
+                                  }}
                                 />
                               </div>
                             </div>
                           );
                         })}
-                        {funilCompleto[0].quantidade > 0 && (
-                          <div className="mt-4 flex items-center justify-between border-t pt-3 text-sm">
-                            <span className="text-muted-foreground">
-                              Conversão total (Entrada → Finalizado)
-                            </span>
-                            <span className="text-lg font-bold">
-                              {(
-                                (funilCompleto[4].quantidade /
-                                  funilCompleto[0].quantidade) *
-                                100
-                              ).toFixed(0)}
-                              %
-                            </span>
-                          </div>
-                        )}
+                        <div className="mt-4 flex items-center justify-between border-t pt-3 text-sm">
+                          <span className="text-muted-foreground">
+                            Taxa de conclusão (Concluídos ÷ Criados)
+                          </span>
+                          <span className="text-lg font-bold text-dashboard-success">
+                            {taxaConclusao}%
+                          </span>
+                        </div>
                       </div>
                     );
                   })()}
@@ -775,55 +804,156 @@ export default function DashboardPage() {
                     Pedidos Parados
                   </CardTitle>
                   <p className="text-base font-medium text-foreground/70">
-                    Sem mudança de status há mais tempo
+                    Atrasados, no prazo e cancelados recentes
                   </p>
                 </CardHeader>
                 <CardContent>
-                  {!data.pedidosParados?.length ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-dashboard-success/15">
-                        <CheckCircle2 className="h-7 w-7 text-dashboard-success" />
-                      </div>
-                      <p className="text-base font-bold text-foreground">
-                        Nenhum pedido parado
-                      </p>
-                      <p className="mt-2 text-sm font-medium text-foreground/70">
-                        Todos os pedidos estão em movimento
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(data.pedidosParados ?? []).map((p) => (
-                        <div
-                          key={p.id}
-                          className="flex cursor-pointer items-center justify-between rounded-xl border border-transparent bg-muted/40 p-3 transition-all duration-200 hover:border-border hover:bg-muted/70 hover:shadow-sm"
-                          onClick={() =>
-                            router.push(`/pipeline?order=${p.id}`)
-                          }
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-base font-semibold text-foreground">
-                              {p.title}
-                            </p>
-                            <p className="text-sm font-medium text-foreground/70">
-                              {STATUS_LABELS[p.status] ?? p.status}
-                            </p>
+                  <Tabs defaultValue="atrasados" className="w-full">
+                    <TabsList className="grid w-full grid-cols-3 mb-3">
+                      <TabsTrigger value="atrasados" className="gap-1.5">
+                        🔴 Atrasados
+                        <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
+                          {data.pedidosParadosAtrasados?.length ?? 0}
+                        </Badge>
+                      </TabsTrigger>
+                      <TabsTrigger value="no-prazo" className="gap-1.5">
+                        🔵 No prazo
+                        <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
+                          {data.pedidosParadosNoPrazo?.length ?? 0}
+                        </Badge>
+                      </TabsTrigger>
+                      <TabsTrigger value="cancelados" className="gap-1.5">
+                        🚫 Cancelados
+                        <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
+                          {data.pedidosCanceladosRecentes?.length ?? 0}
+                        </Badge>
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="atrasados" className="mt-0">
+                      {!data.pedidosParadosAtrasados?.length ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-dashboard-success/15">
+                            <CheckCircle2 className="h-7 w-7 text-dashboard-success" />
                           </div>
-                          <Badge
-                            className={`shrink-0 tabular-nums font-bold ${
-                              p.diasParado > 7
-                                ? "bg-dashboard-danger text-white"
-                                : p.diasParado > 3
-                                  ? "bg-dashboard-warning text-white"
-                                  : "bg-muted-foreground/20 text-foreground"
-                            }`}
-                          >
-                            {p.diasParado}d parado
-                          </Badge>
+                          <p className="text-base font-bold text-foreground">
+                            Nenhum pedido atrasado
+                          </p>
+                          <p className="mt-2 text-sm font-medium text-foreground/70">
+                            Todos os pedidos com vencimento estão no prazo
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      ) : (
+                        <div className="space-y-2">
+                          {data.pedidosParadosAtrasados.map((p) => (
+                            <div
+                              key={p.id}
+                              className="flex cursor-pointer items-center justify-between rounded-xl border border-dashboard-danger/20 bg-dashboard-danger/5 p-3 transition-all duration-200 hover:border-dashboard-danger/40 hover:bg-dashboard-danger/10"
+                              onClick={() =>
+                                router.push(`/pipeline?order=${p.id}`)
+                              }
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-base font-semibold text-foreground">
+                                  {p.title}
+                                </p>
+                                <p className="text-sm font-medium text-foreground/70">
+                                  {STATUS_LABELS[p.status] ?? p.status}
+                                </p>
+                              </div>
+                              <Badge className="shrink-0 tabular-nums font-bold bg-dashboard-danger text-white">
+                                {p.diasParado}d parado
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="no-prazo" className="mt-0">
+                      {!data.pedidosParadosNoPrazo?.length ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-dashboard-success/15">
+                            <CheckCircle2 className="h-7 w-7 text-dashboard-success" />
+                          </div>
+                          <p className="text-base font-bold text-foreground">
+                            Nenhum pedido parado
+                          </p>
+                          <p className="mt-2 text-sm font-medium text-foreground/70">
+                            Todos os pedidos estão em movimento
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {data.pedidosParadosNoPrazo.map((p) => (
+                            <div
+                              key={p.id}
+                              className="flex cursor-pointer items-center justify-between rounded-xl border border-transparent bg-muted/40 p-3 transition-all duration-200 hover:border-border hover:bg-muted/70 hover:shadow-sm"
+                              onClick={() =>
+                                router.push(`/pipeline?order=${p.id}`)
+                              }
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-base font-semibold text-foreground">
+                                  {p.title}
+                                </p>
+                                <p className="text-sm font-medium text-foreground/70">
+                                  {STATUS_LABELS[p.status] ?? p.status}
+                                </p>
+                              </div>
+                              <Badge
+                                className={`shrink-0 tabular-nums font-bold ${
+                                  p.diasParado > 7
+                                    ? "bg-dashboard-warning text-white"
+                                    : "bg-muted-foreground/20 text-foreground"
+                                }`}
+                              >
+                                {p.diasParado}d parado
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="cancelados" className="mt-0">
+                      {!data.pedidosCanceladosRecentes?.length ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                            <XCircle className="h-7 w-7 text-muted-foreground" />
+                          </div>
+                          <p className="text-base font-bold text-foreground">
+                            Nenhum pedido cancelado no período
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {data.pedidosCanceladosRecentes.map((p) => (
+                            <div
+                              key={p.id}
+                              className="flex cursor-pointer items-center justify-between rounded-xl border border-transparent bg-muted/40 p-3 transition-all duration-200 hover:border-border hover:bg-muted/70 hover:shadow-sm"
+                              onClick={() =>
+                                router.push(`/pipeline?order=${p.id}`)
+                              }
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-base font-semibold text-foreground">
+                                  {p.title}
+                                </p>
+                                <p className="text-sm font-medium text-foreground/70">
+                                  Cancelado a {p.diasParado} dia
+                                  {p.diasParado !== 1 ? "s" : ""}
+                                </p>
+                              </div>
+                              <Badge variant="outline" className="shrink-0 border-dashboard-danger/40 text-dashboard-danger">
+                                Cancelado
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+                  </Tabs>
                 </CardContent>
               </Card>
 

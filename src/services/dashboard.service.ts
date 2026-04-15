@@ -108,6 +108,17 @@ export interface PedidoParado {
   diasParado: number;
 }
 
+/** Resposta bruta do RPC (campos opcionais para compat com versões antigas) */
+type DashboardRpcRow = Partial<DashboardCrmData> & {
+  pedidosConcluidos?: number;
+  pedidosConcluidosPrev?: number;
+  pedidosCancelados?: number;
+  pedidosCanceladosPrev?: number;
+  pedidosParadosAtrasados?: PedidoParado[];
+  pedidosParadosNoPrazo?: PedidoParado[];
+  pedidosCanceladosRecentes?: PedidoParado[];
+};
+
 export interface DashboardCrmData {
   totalClientes: number;
   novosClientes: number;
@@ -116,8 +127,17 @@ export interface DashboardCrmData {
   pedidosAtrasados: number;
   pedidosCriados: number;
   pedidosCriadosPrev?: number;
+
+  pedidosConcluidos: number;
+  pedidosConcluidosPrev?: number;
+
+  pedidosCancelados: number;
+  pedidosCanceladosPrev?: number;
+
+  /** Alias de pedidosConcluidos (retrocompat) */
   pedidosFinalizados: number;
   pedidosFinalizadosPrev?: number;
+
   pedidosArquivados: number;
   taxaConclusao: number;
   tempoMedioTotal: { mediaHoras: number; pedidos: number };
@@ -127,7 +147,11 @@ export interface DashboardCrmData {
   porResponsavel: PorResponsavelItem[];
   topClientes: TopCliente[];
   tendencia?: TendenciaItem[];
+
   pedidosParados?: PedidoParado[];
+  pedidosParadosAtrasados?: PedidoParado[];
+  pedidosParadosNoPrazo?: PedidoParado[];
+  pedidosCanceladosRecentes?: PedidoParado[];
 }
 
 export async function getDashboardCrmData(
@@ -142,7 +166,12 @@ export async function getDashboardCrmData(
 
   if (error) throw error;
 
-  const r = data as DashboardCrmData | null;
+  const r = data as DashboardRpcRow | null;
+
+  const pedidosConcluidos =
+    r?.pedidosConcluidos ?? r?.pedidosFinalizados ?? 0;
+  const pedidosConcluidosPrev =
+    r?.pedidosConcluidosPrev ?? r?.pedidosFinalizadosPrev ?? 0;
 
   return {
     totalClientes: r?.totalClientes ?? 0,
@@ -152,8 +181,12 @@ export async function getDashboardCrmData(
     pedidosAtrasados: r?.pedidosAtrasados ?? 0,
     pedidosCriados: r?.pedidosCriados ?? 0,
     pedidosCriadosPrev: r?.pedidosCriadosPrev ?? 0,
-    pedidosFinalizados: r?.pedidosFinalizados ?? 0,
-    pedidosFinalizadosPrev: r?.pedidosFinalizadosPrev ?? 0,
+    pedidosConcluidos,
+    pedidosConcluidosPrev,
+    pedidosCancelados: r?.pedidosCancelados ?? 0,
+    pedidosCanceladosPrev: r?.pedidosCanceladosPrev ?? 0,
+    pedidosFinalizados: r?.pedidosFinalizados ?? pedidosConcluidos,
+    pedidosFinalizadosPrev: r?.pedidosFinalizadosPrev ?? pedidosConcluidosPrev,
     pedidosArquivados: r?.pedidosArquivados ?? 0,
     taxaConclusao: Number(r?.taxaConclusao ?? 0),
     tempoMedioTotal: r?.tempoMedioTotal ?? { mediaHoras: 0, pedidos: 0 },
@@ -164,5 +197,8 @@ export async function getDashboardCrmData(
     topClientes: r?.topClientes ?? [],
     tendencia: r?.tendencia ?? [],
     pedidosParados: r?.pedidosParados ?? [],
+    pedidosParadosAtrasados: r?.pedidosParadosAtrasados ?? [],
+    pedidosParadosNoPrazo: r?.pedidosParadosNoPrazo ?? [],
+    pedidosCanceladosRecentes: r?.pedidosCanceladosRecentes ?? [],
   };
 }
