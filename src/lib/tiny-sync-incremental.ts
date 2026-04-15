@@ -94,7 +94,7 @@ function buildEndpoint(offset: number, useOrderDesc: boolean): string {
   return `/contatos?${params.toString()}`;
 }
 
-function mapContactToClient(raw: any) {
+export function mapContactToClient(raw: any) {
   const endereco = raw.endereco ?? {};
   const rawName = raw.nome ?? raw.nomeFantasia ?? raw.fantasia ?? "Sem nome";
   const city =

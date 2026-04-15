@@ -46,6 +46,33 @@ export default function ContactsPage() {
     },
   });
 
+  const syncFromTinyMutation = useMutation({
+    mutationFn: async (clientId: string) => {
+      const res = await fetch(`/api/clients/${clientId}/sync-from-tiny`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? "Erro ao sincronizar com Tiny");
+      }
+      return json as { fieldsUpdated?: string[] };
+    },
+    onSuccess: (data) => {
+      const n = data.fieldsUpdated?.length ?? 0;
+      if (n > 0) {
+        toast.success("Atualizado do Tiny", {
+          description: `${n} campo(s) de endereço/dados atualizados.`,
+        });
+      } else {
+        toast.success("Já estava atualizado");
+      }
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+    },
+    onError: (err: Error) => {
+      toast.error("Erro ao sincronizar do Tiny", { description: err.message });
+    },
+  });
+
   const clients = data?.data ?? [];
 
   const handleEdit = (client: Client) => {
@@ -99,6 +126,12 @@ export default function ContactsPage() {
         page={data?.page ?? 1}
         totalPages={data?.totalPages ?? 1}
         onPageChange={setPage}
+        onSyncFromTiny={(c) => syncFromTinyMutation.mutate(c.id)}
+        syncingClientId={
+          syncFromTinyMutation.isPending
+            ? (syncFromTinyMutation.variables as string)
+            : null
+        }
       />
 
       <ContactForm

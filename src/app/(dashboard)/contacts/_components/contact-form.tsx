@@ -27,6 +27,7 @@ import { createClient, updateClient } from "@/services/clients.service";
 import { clientSchema, type ClientFormData } from "@/lib/validations";
 import { formatPhoneInput, formatDocumentInput } from "@/lib/utils";
 import type { Client } from "@/types/database.types";
+import { RefreshCw } from "lucide-react";
 
 interface ContactFormProps {
   open: boolean;
@@ -107,7 +108,65 @@ export function ContactForm({
     },
   });
 
-  const isLoading = createMutation.isPending || updateMutation.isPending;
+  const syncFromTinyMutation = useMutation({
+    mutationFn: async (clientId: string) => {
+      const res = await fetch(`/api/clients/${clientId}/sync-from-tiny`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? "Erro ao sincronizar com Tiny");
+      }
+      return json as {
+        success: boolean;
+        client?: Client;
+        fieldsUpdated?: string[];
+      };
+    },
+    onSuccess: (data) => {
+      const fields = data.fieldsUpdated ?? [];
+      const fieldsCount = fields.length;
+      if (fieldsCount > 0) {
+        toast.success("Atualizado do Tiny", {
+          description: `${fieldsCount} campo(s) atualizado(s): ${fields.join(", ")}`,
+        });
+      } else {
+        toast.success("Já estava atualizado");
+      }
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      if (data.client) {
+        const c = data.client;
+        const doc = c.document ?? "";
+        const phone = c.phone ?? "";
+        form.reset({
+          person_type: c.person_type,
+          name: c.name,
+          email: c.email ?? "",
+          phone: phone ? formatPhoneInput(phone) : "",
+          company: c.company ?? "",
+          document: doc ? formatDocumentInput(doc) : "",
+          notes: c.notes ?? "",
+          zip_code: c.zip_code ?? "",
+          street: c.street ?? "",
+          number: c.number ?? "",
+          complement: c.complement ?? "",
+          neighborhood: c.neighborhood ?? "",
+          city: c.city ?? "",
+          state: c.state ?? "",
+        });
+      }
+    },
+    onError: (err: Error) => {
+      toast.error("Erro ao sincronizar do Tiny", {
+        description: err.message,
+      });
+    },
+  });
+
+  const isLoading =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    syncFromTinyMutation.isPending;
 
   useEffect(() => {
     if (open && initialData) {
@@ -309,6 +368,23 @@ export function ContactForm({
             </div>
           </div>
 
+          {isEdit &&
+            initialData?.tiny_id &&
+            (!form.watch("street") ||
+              !form.watch("city") ||
+              !form.watch("zip_code")) && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/20">
+                <p className="font-medium text-amber-800 dark:text-amber-300">
+                  Endereço incompleto
+                </p>
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  Esse contato veio do Tiny mas alguns campos de endereço estão
+                  vazios. Clique em &quot;Atualizar do Tiny&quot; pra buscar os
+                  dados atuais.
+                </p>
+              </div>
+            )}
+
           <div className="space-y-4">
             <h4 className="text-sm font-medium">Endereço</h4>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -381,18 +457,47 @@ export function ContactForm({
             </div>
           </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isLoading}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Salvando..." : isEdit ? "Salvar" : "Criar contato"}
-            </Button>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+            <div className="flex-1">
+              {isEdit && initialData?.tiny_id && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => syncFromTinyMutation.mutate(initialData.id)}
+                  disabled={syncFromTinyMutation.isPending || isLoading}
+                  className="gap-2"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${syncFromTinyMutation.isPending ? "animate-spin" : ""}`}
+                  />
+                  {syncFromTinyMutation.isPending
+                    ? "Atualizando..."
+                    : "Atualizar do Tiny"}
+                </Button>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isLoading && !syncFromTinyMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={isLoading}
+              >
+                {isLoading && !syncFromTinyMutation.isPending
+                  ? "Salvando..."
+                  : isEdit
+                    ? "Salvar"
+                    : "Criar contato"}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

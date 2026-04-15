@@ -24,6 +24,7 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 
 interface ContactsTableProps {
@@ -35,6 +36,9 @@ interface ContactsTableProps {
   page?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
+  /** Sincroniza endereço/dados do Tiny (só exibe se `tiny_id` existir). */
+  onSyncFromTiny?: (client: Client) => void;
+  syncingClientId?: string | null;
 }
 
 export function ContactsTable({
@@ -46,6 +50,8 @@ export function ContactsTable({
   page = 1,
   totalPages = 1,
   onPageChange,
+  onSyncFromTiny,
+  syncingClientId,
 }: ContactsTableProps) {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
@@ -149,6 +155,17 @@ export function ContactsTable({
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </DropdownMenuItem>
+              {client.tiny_id != null && onSyncFromTiny && (
+                <DropdownMenuItem
+                  onClick={() => onSyncFromTiny(client)}
+                  disabled={syncingClientId === client.id}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${syncingClientId === client.id ? "animate-spin" : ""}`}
+                  />
+                  Atualizar do Tiny
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={() => setDeleteTargetId(client.id)}

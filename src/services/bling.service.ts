@@ -517,6 +517,90 @@ export async function sendClientToBling(
   }
 }
 
+/**
+ * Atualiza um contato existente no Bling (PUT /contatos/{id}).
+ * Usa o mesmo payload de sendClientToBling.
+ */
+export async function updateBlingContact(
+  supplierId: string,
+  blingContactId: number,
+  orderId: string,
+  supabaseClient?: SupabaseClient<Database>
+): Promise<{ success: boolean; error?: string }> {
+  const db = supabaseClient ?? supabase;
+
+  const { data: supplier } = await db
+    .from("suppliers")
+    .select("*")
+    .eq("id", supplierId)
+    .single();
+
+  if (!supplier) {
+    return { success: false, error: "Fornecedor não encontrado" };
+  }
+
+  const orderData = await getOrderById(orderId, db);
+  if (!orderData?.client) {
+    return { success: false, error: "Pedido sem cliente vinculado" };
+  }
+
+  const client = orderData.client as ClientData;
+
+  const hasMeaningfulData = !!(
+    client.street || client.city || client.zip_code || client.document
+  );
+  if (!hasMeaningfulData) {
+    console.log(
+      `[bling] updateBlingContact pulado — cliente ${client.id} sem dados pra atualizar`
+    );
+    return { success: true };
+  }
+
+  const sharedFields = normalizeSharedFields(supplier.shared_fields);
+  const { payload } = buildBlingPayload(client, orderData as OrderData, sharedFields);
+
+  const apiToken = await getValidBlingToken(supplierId, supplier, db);
+  const baseUrl =
+    (supplier.bling_base_url as string) ??
+    process.env.BLING_API_URL ??
+    "https://api.bling.com.br/Api/v3";
+
+  if (!apiToken) {
+    return { success: false, error: "Token Bling não configurado" };
+  }
+
+  try {
+    const res = await blingFetch(
+      `${baseUrl}/contatos/${blingContactId}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+      `update-contact:${blingContactId}`
+    );
+
+    if (!res.ok) {
+      const responseData = await res.json().catch(() => ({}));
+      const errMsg = extractBlingErrorMessage(res.status, responseData);
+      console.warn(
+        `[bling] updateBlingContact falhou (${res.status}) pra contato ${blingContactId}: ${errMsg}`
+      );
+      return { success: false, error: errMsg };
+    }
+
+    console.log(`[bling] Contato ${blingContactId} atualizado com sucesso no Bling`);
+    return { success: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[bling] updateBlingContact erro: ${msg}`);
+    return { success: false, error: msg };
+  }
+}
+
 export async function getDataLogs(supplierId: string, page = 1, limit = 20) {
   const from = (page - 1) * limit;
   const to = from + limit - 1;
@@ -1059,6 +1143,10 @@ export async function createBlingOrder(
     throw new Error("Não foi possível encontrar ou criar o contato no Bling");
   }
 
+  await updateBlingContact(supplierId, blingContactId, orderId, db).catch((err) => {
+    console.warn("[bling] updateBlingContact catch externo:", err);
+  });
+
   const clientId = orderData.client_id;
 
   const payload = await buildBlingOrderPayload(
@@ -1165,6 +1253,22 @@ export async function sendOrderToBling(
     blingOrderNumber: undefined as number | undefined,
     error: undefined as string | undefined,
   };
+
+  const orderDataCheck = await getOrderById(orderId, db);
+  const clientCheck = orderDataCheck?.client as ClientData | null;
+  const hasAddress = !!(
+    clientCheck?.street &&
+    clientCheck?.city &&
+    clientCheck?.zip_code
+  );
+
+  if (!hasAddress) {
+    console.warn(
+      `[bling] Order ${orderId} sendo enviado SEM endereço completo do cliente. ` +
+        `Cliente: ${clientCheck?.name ?? "?"} (${clientCheck?.id ?? "?"}). ` +
+        `Bling vai aceitar mas com aviso amarelo de pendência cadastral.`
+    );
+  }
 
   const contactResult = await sendClientToBling(supplierId, orderId, userId, db);
   if (contactResult.success) {
