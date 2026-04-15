@@ -258,6 +258,36 @@ export async function archiveOrder(id: string) {
   return data;
 }
 
+/**
+ * Cancela um pedido: arquiva + adiciona label PEDIDO_CANCELADO.
+ * Reusa archiveOrder e faz INSERT idempotente na tabela order_labels.
+ *
+ * IMPORTANTE: o valor da label é "PEDIDO_CANCELADO" (com underscore),
+ * que é um valor válido do enum label_type no Supabase.
+ */
+export async function cancelOrder(id: string) {
+  const archived = await archiveOrder(id);
+
+  const { data: existing } = await supabase
+    .from("order_labels")
+    .select("id")
+    .eq("order_id", id)
+    .eq("label", "PEDIDO_CANCELADO")
+    .maybeSingle();
+
+  if (!existing) {
+    const { error } = await supabase.from("order_labels").insert({
+      order_id: id,
+      label: "PEDIDO_CANCELADO",
+    });
+    if (error) {
+      console.error("[cancelOrder] failed to add label:", error);
+    }
+  }
+
+  return archived;
+}
+
 export async function unarchiveOrder(id: string) {
   const { data, error } = await supabase
     .from("orders")

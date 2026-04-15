@@ -27,14 +27,17 @@ import {
   reorderColumn,
   archiveOrder,
   unarchiveOrder,
+  cancelOrder,
 } from "@/services/orders.service";
+import { ArchiveCancelDialog } from "@/components/pipeline/archive-cancel-dialog";
 import { KanbanColumn } from "./kanban-column";
 import { KanbanCard } from "./kanban-card";
 import { KanbanCardSkeleton } from "./kanban-card-skeleton";
 import { OrderDetailSheet } from "./order-detail-sheet";
 import { OrderForm } from "./order-form";
 import { OrderFilters } from "./order-filters";
-import { Plus, Search, Archive, LayoutGrid } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Plus, Search, Archive, LayoutGrid, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -74,11 +77,15 @@ export function KanbanBoard() {
   const blingSyncingRef = useRef(new Set<string>());
 
   const [busca, setBusca] = useQueryState("busca", parseAsString);
-  const [responsavel] = useQueryState("responsavel", parseAsString);
-  const [prioridade] = useQueryState("prioridade", parseAsString);
-  const [tipo] = useQueryState("tipo", parseAsString);
-  const [etiqueta] = useQueryState("etiqueta", parseAsString);
+  const [responsavel, setResponsavel] = useQueryState("responsavel", parseAsString);
+  const [prioridade, setPrioridade] = useQueryState("prioridade", parseAsString);
+  const [tipo, setTipo] = useQueryState("tipo", parseAsString);
+  const [etiqueta, setEtiqueta] = useQueryState("etiqueta", parseAsString);
   const [orderParam, setOrderParam] = useQueryState("order", parseAsString);
+  const [archiveCancelTarget, setArchiveCancelTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ordersQuery = useQuery<any[], Error>({
@@ -105,8 +112,26 @@ export function KanbanBoard() {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["archived-orders"] });
       toast.success("Pedido arquivado.");
+      setArchiveCancelTarget(null);
     },
-    onError: () => toast.error("Erro ao arquivar pedido."),
+    onError: () => {
+      toast.error("Erro ao arquivar pedido.");
+      setArchiveCancelTarget(null);
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (orderId: string) => cancelOrder(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["archived-orders"] });
+      toast.success("Pedido cancelado.");
+      setArchiveCancelTarget(null);
+    },
+    onError: () => {
+      toast.error("Erro ao cancelar pedido.");
+      setArchiveCancelTarget(null);
+    },
   });
 
   const unarchiveMutation = useMutation({
@@ -288,9 +313,7 @@ export function KanbanBoard() {
     })
   );
 
-  const visibleColumns = KANBAN_COLUMN_STATUSES.filter(
-    (s) => s.key !== "ARQUIVADO" || can("orders.archive")
-  );
+  const visibleColumns = KANBAN_COLUMN_STATUSES;
 
   const handlePanStart = useCallback(
     (e: React.MouseEvent) => {
@@ -562,6 +585,14 @@ export function KanbanBoard() {
   );
   const hasActiveFilters = !!busca || !!responsavel || !!prioridade || !!tipo || !!etiqueta;
 
+  const clearPipelineFilters = () => {
+    void setBusca(null);
+    void setResponsavel(null);
+    void setPrioridade(null);
+    void setTipo(null);
+    void setEtiqueta(null);
+  };
+
   return (
     <div className="flex h-[calc(100vh-60px)] flex-col">
       {/* Toolbar — azul claro só no tema claro; tema escuro inalterado */}
@@ -619,6 +650,20 @@ export function KanbanBoard() {
           </div>
 
           <OrderFilters />
+
+          {hasActiveFilters && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 px-3 text-xs font-semibold shadow-sm"
+              onClick={clearPipelineFilters}
+              aria-label="Limpar todos os filtros do pipeline"
+            >
+              <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Limpar filtros
+            </Button>
+          )}
 
           {can("orders.create") && !showArchived && (
             <button
@@ -681,14 +726,20 @@ export function KanbanBoard() {
                   status={status}
                   orders={getOrdersByStatus(status.key)}
                   isDropTarget={dragOverColumnId === status.key}
-                  canAddOrder={can("orders.create") && !showArchived && status.key !== "ARQUIVADO" && status.key !== "AUTOMATICO"}
+                  canAddOrder={can("orders.create") && !showArchived && status.key !== "ARQUIVADO"}
                   onAddOrder={() => handleAddOrder(status.key)}
                   onOrderClick={(id) => setSelectedOrderId(id)}
                   index={index}
                   readOnly={showArchived || !can("orders.change_status")}
                   onArchive={
                     can("orders.archive") && !showArchived
-                      ? (id) => archiveMutation.mutate(id)
+                      ? (id) => {
+                          const order = (orders as any[]).find((o: any) => o.id === id);
+                          setArchiveCancelTarget({
+                            id,
+                            title: order?.title ?? "este pedido",
+                          });
+                        }
                       : undefined
                   }
                   onUnarchive={
@@ -716,6 +767,21 @@ export function KanbanBoard() {
       <OrderForm
         open={createOrderOpen}
         onOpenChange={setCreateOrderOpen}
+      />
+
+      <ArchiveCancelDialog
+        open={!!archiveCancelTarget}
+        onOpenChange={(open) => {
+          if (!open) setArchiveCancelTarget(null);
+        }}
+        orderTitle={archiveCancelTarget?.title}
+        onArchive={() =>
+          archiveCancelTarget && archiveMutation.mutate(archiveCancelTarget.id)
+        }
+        onCancel={() =>
+          archiveCancelTarget && cancelMutation.mutate(archiveCancelTarget.id)
+        }
+        loading={archiveMutation.isPending || cancelMutation.isPending}
       />
     </div>
   );

@@ -170,9 +170,9 @@ export const STATUS_MAP = Object.fromEntries(
   ORDER_STATUSES.map((s) => [s.key, s])
 ) as Record<OrderStatus, StatusConfig>;
 
-/** Colunas exibidas no kanban (exclui ENTREGUE e FATURADO) */
+/** Colunas exibidas no kanban (exclui ENTREGUE, FATURADO e ARQUIVADO) */
 export const KANBAN_COLUMN_STATUSES = ORDER_STATUSES.filter(
-  (s) => s.key !== "ENTREGUE" && s.key !== "FATURADO"
+  (s) => s.key !== "ENTREGUE" && s.key !== "FATURADO" && s.key !== "ARQUIVADO"
 );
 
 // ============================================

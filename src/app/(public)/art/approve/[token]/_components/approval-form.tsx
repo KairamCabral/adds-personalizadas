@@ -38,6 +38,10 @@ const revisionSchema = z.object({
 type ApproveData = z.infer<typeof approveSchema>;
 type RevisionData = z.infer<typeof revisionSchema>;
 
+/** Outline + fundo laranja claro no hover: o variant outline usa hover:text-accent-foreground (branco), o que quebra o contraste. */
+const REVISION_OUTLINE_CLASSES =
+  "border-orange-600/55 text-orange-950 hover:border-orange-600 hover:bg-orange-500/15 hover:!text-orange-950 hover:shadow-sm dark:border-orange-500/50 dark:text-orange-200 dark:hover:bg-orange-500/25 dark:hover:!text-orange-50";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ArtworkVariation {
@@ -399,8 +403,15 @@ function BundleArtworkStep({
             Aprovar esta arte
             <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
           </Button>
-          <Button size="lg" variant="outline" className="h-14 gap-2 border-2 border-[#f07d00]/50 text-base font-semibold text-[#f07d00] hover:border-[#f07d00] hover:bg-[#f07d00]/10 active:scale-[0.98]"
-            onClick={() => handleChoose("revision")}>
+          <Button
+            size="lg"
+            variant="outline"
+            className={cn(
+              "h-14 gap-2 border-2 text-base font-semibold active:scale-[0.98]",
+              REVISION_OUTLINE_CLASSES
+            )}
+            onClick={() => handleChoose("revision")}
+          >
             <Pencil className="h-5 w-5" />
             Solicitar ajuste
             <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
@@ -816,9 +827,15 @@ function SingleArtView({
           onClick={onApprove}>
           <Check className="h-5 w-5" /> Aprovar Arte <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
         </Button>
-        <Button size="lg" variant="outline"
-          className="h-14 gap-2 border-2 border-[#f07d00]/50 text-base font-semibold text-[#f07d00] hover:border-[#f07d00] hover:bg-[#f07d00]/10 hover:shadow-lg active:scale-[0.98] sm:h-16"
-          onClick={onRevision}>
+        <Button
+          size="lg"
+          variant="outline"
+          className={cn(
+            "h-14 gap-2 border-2 text-base font-semibold hover:shadow-lg active:scale-[0.98] sm:h-16",
+            REVISION_OUTLINE_CLASSES
+          )}
+          onClick={onRevision}
+        >
           <Pencil className="h-5 w-5" /> Solicitar Ajuste <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
         </Button>
       </div>
@@ -850,9 +867,15 @@ function MultipleVariationsView({
                 Aprovar Opção {v.variationIndex}
                 <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
               </Button>
-              <Button size="sm" variant="outline"
-                className="h-9 w-full gap-2 border border-[#f07d00]/40 font-medium text-[#f07d00] hover:border-[#f07d00] hover:bg-[#f07d00]/10 active:scale-[0.98]"
-                onClick={() => onRevision(v.id)}>
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(
+                  "h-9 w-full gap-2 border font-medium active:scale-[0.98]",
+                  REVISION_OUTLINE_CLASSES
+                )}
+                onClick={() => onRevision(v.id)}
+              >
                 <Pencil className="h-3.5 w-3.5" />
                 Ajuste na Opção {v.variationIndex}
               </Button>

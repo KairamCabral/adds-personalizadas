@@ -50,6 +50,10 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   DESCARTADA: { label: "Não escolhida", color: "bg-muted text-muted-foreground" },
 };
 
+/** Outline + fundo laranja claro no hover: o Button outline aplica hover:text-accent-foreground (branco), incompatível com fundo claro. */
+const ORANGE_OUTLINE_BTN =
+  "border-orange-600/55 bg-background font-medium text-orange-950 shadow-sm hover:border-orange-600 hover:bg-orange-500/15 hover:!text-orange-950 dark:border-orange-500/50 dark:text-orange-200 dark:hover:bg-orange-500/25 dark:hover:!text-orange-50";
+
 interface OrderArtworkProps {
   orderId: string;
 }
@@ -544,7 +548,7 @@ function LatestArtworkCard({
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 border-adds-orange/50 text-adds-orange hover:bg-adds-orange/10"
+              className={cn("gap-2", ORANGE_OUTLINE_BTN)}
               onClick={onAddVariation}
               disabled={isUploading}
             >

@@ -17,7 +17,8 @@ import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PriorityIndicator } from "@/components/shared/priority-indicator";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
-import { getOrderById, deleteOrder, moveOrder, archiveOrder, unarchiveOrder, updateOrder } from "@/services/orders.service";
+import { getOrderById, deleteOrder, moveOrder, archiveOrder, unarchiveOrder, updateOrder, cancelOrder } from "@/services/orders.service";
+import { ArchiveCancelDialog } from "@/components/pipeline/archive-cancel-dialog";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
@@ -126,6 +127,7 @@ export function OrderDetailSheet() {
     }[];
     supplierId: string;
   } | null>(null);
+  const [archiveCancelDialogOpen, setArchiveCancelDialogOpen] = useState(false);
 
   const open = !!selectedOrderId;
 
@@ -173,9 +175,29 @@ export function OrderDetailSheet() {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["archived-orders"] });
       queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
+      setArchiveCancelDialogOpen(false);
       setSelectedOrderId(null);
     },
-    onError: () => toast.error("Erro ao arquivar pedido."),
+    onError: () => {
+      toast.error("Erro ao arquivar pedido.");
+      setArchiveCancelDialogOpen(false);
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelOrder(selectedOrderId!),
+    onSuccess: () => {
+      toast.success("Pedido cancelado e arquivado.");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["archived-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
+      setArchiveCancelDialogOpen(false);
+      setSelectedOrderId(null);
+    },
+    onError: () => {
+      toast.error("Erro ao cancelar pedido.");
+      setArchiveCancelDialogOpen(false);
+    },
   });
 
   const unarchiveMutation = useMutation({
@@ -550,11 +572,11 @@ export function OrderDetailSheet() {
                             </DropdownMenuItem>
                           ) : (
                             <DropdownMenuItem
-                              onClick={() => archiveMutation.mutate()}
-                              disabled={archiveMutation.isPending}
+                              onClick={() => setArchiveCancelDialogOpen(true)}
+                              disabled={archiveMutation.isPending || cancelMutation.isPending}
                             >
                               <Archive className="mr-2 h-4 w-4" />
-                              Arquivar
+                              Arquivar / Cancelar...
                             </DropdownMenuItem>
                           ))}
                         {can("orders.delete") && (
@@ -1065,6 +1087,15 @@ export function OrderDetailSheet() {
         orderId={editOrderId}
         open={!!editOrderId}
         onOpenChange={(open) => !open && setEditOrderId(null)}
+      />
+
+      <ArchiveCancelDialog
+        open={archiveCancelDialogOpen}
+        onOpenChange={setArchiveCancelDialogOpen}
+        orderTitle={order?.title}
+        onArchive={() => archiveMutation.mutate()}
+        onCancel={() => cancelMutation.mutate()}
+        loading={archiveMutation.isPending || cancelMutation.isPending}
       />
     </>
   );

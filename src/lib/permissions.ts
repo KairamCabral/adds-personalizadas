@@ -34,10 +34,10 @@ export const PERMISSIONS = {
 
   // Dashboard
   "dashboard.view_full": ["MASTER"],
-  "dashboard.view_ops": ["MASTER", "GESTOR"],
+  "dashboard.view_ops": ["MASTER", "GESTOR", "PRESTADOR"],
   "dashboard.view_vendas": ["MASTER"],
-  "dashboard.view_clientes": ["MASTER", "GESTOR"],
-  "dashboard.view_operacoes": ["MASTER", "GESTOR"],
+  "dashboard.view_clientes": ["MASTER", "GESTOR", "PRESTADOR"],
+  "dashboard.view_operacoes": ["MASTER", "GESTOR", "PRESTADOR"],
   "dashboard.view_marketing": ["MASTER"],
   "dashboard.view_financeiro": ["MASTER"],
 
