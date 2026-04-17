@@ -3,6 +3,10 @@ import { after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/types/database.types";
 import { forwardToNI } from "@/lib/tiny/webhook-forwarder";
+import {
+  parseTinyPayloadFromRawBody,
+  processTinyWebhookNotification,
+} from "@/lib/tiny/process-webhook-notification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,6 +91,7 @@ export async function POST(
 
   try {
     const rawBody = await req.text();
+    const contentType = req.headers.get("content-type") ?? "";
 
     let payload: Json;
     try {
@@ -128,36 +133,66 @@ export async function POST(
       console.error("[tiny-webhook] insert failed:", error);
     }
 
-    if (eventRecord?.id) {
-      const forwardPromise = forwardToNI({
-        rawBody,
-        originalHeaders: headers,
-      })
-        .then(async (result) => {
-          const { error: updateErr } = await supabaseAdmin
-            .from("tiny_webhook_events")
-            .update({
-              forwarded_to_ni_at: new Date().toISOString(),
-              forwarded_status: result.status,
-              forwarded_http_code: result.http_code,
-              forwarded_error: result.error,
+    const eventId = eventRecord?.id;
+
+    const forwardPromise =
+      eventId
+        ? forwardToNI({
+            rawBody,
+            originalHeaders: headers,
+          })
+            .then(async (result) => {
+              const { error: updateErr } = await supabaseAdmin
+                .from("tiny_webhook_events")
+                .update({
+                  forwarded_to_ni_at: new Date().toISOString(),
+                  forwarded_status: result.status,
+                  forwarded_http_code: result.http_code,
+                  forwarded_error: result.error,
+                })
+                .eq("id", eventId);
+
+              if (updateErr) {
+                console.error("[tiny-webhook-forward] update failed:", updateErr);
+              }
             })
-            .eq("id", eventRecord.id);
+            .catch((err: unknown) => {
+              console.error("[tiny-webhook-forward] unexpected error:", err);
+            })
+        : Promise.resolve();
 
-          if (updateErr) {
-            console.error("[tiny-webhook-forward] update failed:", updateErr);
-          }
-        })
-        .catch((err: unknown) => {
-          console.error("[tiny-webhook-forward] unexpected error:", err);
-        });
+    const runCrmProcess = async () => {
+      try {
+        const parsed = parseTinyPayloadFromRawBody(rawBody, contentType);
+        if (!parsed.payload) {
+          console.warn("[tiny-webhook] payload inválido para CRM");
+          return;
+        }
+        const result = await processTinyWebhookNotification(
+          supabaseAdmin,
+          parsed.payload
+        );
+        console.info("[tiny-webhook] CRM:", result.message);
+      } catch (e: unknown) {
+        console.error("[tiny-webhook] CRM process error:", e);
+      }
+      if (eventId) {
+        const { error: procErr } = await supabaseAdmin
+          .from("tiny_webhook_events")
+          .update({
+            processed: true,
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", eventId);
+        if (procErr) {
+          console.error("[tiny-webhook] processed flag update failed:", procErr);
+        }
+      }
+    };
 
-      // Estende o ciclo de vida da função pra garantir que o fan-out complete
-      // após a resposta ao Tiny (evita o processo ser morto em ambiente serverless)
-      after(async () => {
-        await forwardPromise;
-      });
-    }
+    after(async () => {
+      await Promise.allSettled([forwardPromise, runCrmProcess()]);
+    });
 
     return new Response("ok", { status: 200 });
   } catch (err: unknown) {

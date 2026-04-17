@@ -1,49 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { tinyApiGet, TinyTokenExpiredError } from "@/lib/tiny-api";
+import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
+import {
+  buildOrderItemsFromTinyRaw,
+  mapTinySituacaoToCrmStatus,
+  parseTinyDate,
+} from "@/lib/tiny/tiny-order-import";
 
 const LOG_PREFIX = "[Tiny Sync]";
-
-function cleanClientName(rawName: string): string {
-  if (!rawName || typeof rawName !== "string") return rawName || "";
-  return (
-    rawName
-      .replace(
-        /^\d{2,3}\.?\d{3}\.?\d{3}\/?\d{0,4}-?\d{0,2}\s*/,
-        ""
-      )
-      .replace(/^\d{5,14}\s+/, "")
-      .trim() || rawName
-  );
-}
-
-/** Nome parece empresa (LTDA, S.A., etc)? */
-function looksLikeCompany(name: string): boolean {
-  if (!name || typeof name !== "string") return false;
-  const upper = name.toUpperCase();
-  return (
-    /\b(LTDA|S\.?A\.?|S\/A|EIRELI|ME\b|EPP\b|E\.?P\.?)\b/.test(upper) ||
-    upper.includes("CLINICA") ||
-    upper.includes("ODONTOLOG")
-  );
-}
-
-function detectPersonType(contact: any): "FISICA" | "JURIDICA" {
-  if (["F", "E", "X"].includes(contact.tipoPessoa)) return "FISICA";
-  if (contact.tipoPessoa === "J") {
-    const doc = (contact.cpfCnpj || contact.cpf_cnpj || "")
-      .replace(/\D/g, "");
-    const name = contact.nome ?? contact.nomeFantasia ?? contact.fantasia ?? "";
-    // Se documento vazio e nome não parece empresa, provável cadastro incorreto no Tiny
-    if (doc.length === 0 && !looksLikeCompany(name)) return "FISICA";
-    return "JURIDICA";
-  }
-  const doc = (contact.cpfCnpj || contact.cpf_cnpj || "")
-    .replace(/\D/g, "");
-  if (doc.length === 11) return "FISICA";
-  if (doc.length === 14) return "JURIDICA";
-  return "FISICA";
-}
 
 function getServiceClient() {
   return createClient(
@@ -148,37 +113,12 @@ async function syncClients(supabase: ReturnType<typeof getServiceClient>) {
       }
 
       for (const contact of contacts) {
-        const raw = contact.contato ?? contact;
-        const rawName = raw.nome ?? raw.nomeFantasia ?? raw.fantasia ?? "Sem nome";
-        const endereco = raw.endereco ?? {};
-        const city =
-          endereco.municipio ??
-          endereco.cidade ??
-          raw.municipio ??
-          raw.cidade ??
-          null;
-        const clientData = {
-          name: cleanClientName(rawName),
-          email: raw.email ?? null,
-          phone:
-            raw.telefone ??
-            raw.fone ??
-            raw.celular ??
-            raw.telefoneComercial ??
-            null,
-          company: raw.nomeFantasia ?? raw.fantasia ?? null,
-          document: raw.cpfCnpj ?? raw.cpf_cnpj ?? null,
-          person_type: detectPersonType(raw),
-          city,
-          state: endereco.uf ?? raw.uf ?? null,
-          zip_code: endereco.cep ?? raw.cep ?? null,
-          street: endereco.endereco ?? raw.endereco ?? null,
-          number: endereco.numero ?? raw.numero ?? null,
-          complement: endereco.complemento ?? raw.complemento ?? null,
-          neighborhood: endereco.bairro ?? raw.bairro ?? null,
-          tiny_id: raw.id,
-          tiny_synced_at: new Date().toISOString(),
-        };
+        const raw = (contact.contato ?? contact) as Record<string, unknown>;
+        const clientData = clientUpsertPayloadFromTinyContact(raw);
+        if (!clientData) {
+          console.warn(`${LOG_PREFIX} Contato sem id Tiny, pulando`);
+          continue;
+        }
 
         const { error } = await supabase
           .from("clients")
@@ -188,7 +128,7 @@ async function syncClients(supabase: ReturnType<typeof getServiceClient>) {
 
         await supabase.from("tiny_sync_logs").insert({
           entity_type: "client",
-          tiny_id: raw.id,
+          tiny_id: clientData.tiny_id,
           direction: "tiny_to_crm",
           status: error ? "error" : "success",
           error_message: error?.message ?? null,
@@ -306,32 +246,6 @@ async function syncProducts(supabase: ReturnType<typeof getServiceClient>) {
   });
 }
 
-/** Mapeia situacao Tiny (número) para status do CRM */
-function mapTinySituacaoToStatus(situacao: number | string): string {
-  const s = typeof situacao === "string" ? parseInt(situacao, 10) : situacao;
-  switch (s) {
-    case 8: // Dados Incompletos
-    case 0: // Aberta
-      return "FAZER";
-    case 3: // Aprovada
-      return "CONFIRMACAO";
-    case 4: // Preparando Envio
-      return "PRODUCAO";
-    case 1: // Faturada
-      return "FATURADO";
-    case 7: // Pronto Envio
-    case 5: // Enviada
-    case 9: // Não Entregue
-      return "EXPEDICAO";
-    case 6: // Entregue
-      return "ENTREGUE";
-    case 2: // Cancelada
-      return "ARQUIVADO";
-    default:
-      return "FAZER";
-  }
-}
-
 async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
   let offset = 0;
   const limit = 100;
@@ -407,7 +321,7 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
           title: `Pedido #${numeroPedido} - ${clienteNome}`,
           description: valor != null ? `Valor: R$ ${valor}` : null,
           client_id: clientRow.id,
-          status: mapTinySituacaoToStatus(situacao),
+          status: mapTinySituacaoToCrmStatus(situacao),
           due_date: dataPrevista ? parseTinyDate(dataPrevista) : null,
           order_date: dataPedido ? parseTinyDate(String(dataPedido)) : null,
           tiny_order_id: tinyOrderId,
@@ -439,78 +353,11 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
 
         const orderId = upsertedOrder.id;
 
-        const tinyItens =
-          raw.itens ??
-          raw.itensPedido ??
-          raw.itens_pedido ??
-          raw.produtos ??
-          [];
-
-        const itemsToInsert: {
-          order_id: string;
-          product_id: string | null;
-          product_name: string;
-          quantity: number;
-          unit_price: number | null;
-          total_price: number | null;
-        }[] = [];
-
-        if (Array.isArray(tinyItens) && tinyItens.length > 0) {
-          for (const ti of tinyItens) {
-            const item = ti.item ?? ti.produto ?? ti;
-            const productName =
-              item.nome ??
-              item.descricao ??
-              item.produto?.nome ??
-              item.produto?.descricao ??
-              "Item";
-            const qty = Number(item.quantidade ?? item.qtd ?? 1) || 1;
-            const unitPrice =
-              item.valorUnitario ??
-              item.valor_unitario ??
-              item.preco ??
-              item.produto?.preco;
-            const totalPrice =
-              item.valorTotal ??
-              item.valor_total ??
-              item.valor ??
-              (unitPrice != null ? Number(unitPrice) * qty : null);
-
-            let productId: string | null = null;
-            const tinyProductId = item.produto?.id ?? item.produto_id ?? item.idProduto;
-            if (tinyProductId) {
-              const { data: prod } = await supabase
-                .from("products")
-                .select("id")
-                .eq("tiny_id", tinyProductId)
-                .maybeSingle();
-              productId = prod?.id ?? null;
-            }
-
-            itemsToInsert.push({
-              order_id: orderId,
-              product_id: productId,
-              product_name: String(productName),
-              quantity: qty,
-              unit_price: unitPrice != null ? Number(unitPrice) : null,
-              total_price: totalPrice != null ? Number(totalPrice) : null,
-            });
-          }
-        }
-
-        if (itemsToInsert.length === 0 && valor != null) {
-          const totalVal = Number(valor);
-          if (!isNaN(totalVal) && totalVal > 0) {
-            itemsToInsert.push({
-              order_id: orderId,
-              product_id: null,
-              product_name: "Pedido",
-              quantity: 1,
-              unit_price: totalVal,
-              total_price: totalVal,
-            });
-          }
-        }
+        const itemsToInsert = await buildOrderItemsFromTinyRaw(
+          supabase,
+          raw as Record<string, unknown>,
+          orderId
+        );
 
         if (itemsToInsert.length > 0) {
           await supabase.from("order_items").delete().eq("order_id", orderId);
@@ -537,11 +384,4 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
     synced,
     skipped,
   });
-}
-
-function parseTinyDate(value: string): string | null {
-  if (!value) return null;
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
 }

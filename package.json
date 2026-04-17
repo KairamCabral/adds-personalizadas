@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:types": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/database.types.ts",
     "db:migrate": "npx supabase db push",
     "db:seed": "npx supabase db seed",
@@ -76,6 +78,7 @@
     "prettier-plugin-tailwindcss": "^0.6.9",
     "supabase": "^1.200.0",
     "tailwindcss": "^3.4.16",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.4"
   }
 }
