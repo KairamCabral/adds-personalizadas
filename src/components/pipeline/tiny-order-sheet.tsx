@@ -512,7 +512,7 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
       <!-- ITENS PERSONALIZADOS -->
       ${(data.personalizedItems?.length ?? 0) > 0 ? `
         <div class="section">
-          <div class="section-title">✨ Itens Personalizados (${data.personalizedItems.length})</div>
+          <div class="section-title">✨ Itens Personalizados (${data.personalizedItems?.length ?? 0})</div>
           <table>
             <thead>
               <tr>
@@ -524,7 +524,7 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
               </tr>
             </thead>
             <tbody>
-              ${buildItemRows(data.personalizedItems, showValues)}
+              ${buildItemRows(data.personalizedItems ?? [], showValues)}
             </tbody>
           </table>
         </div>
@@ -532,7 +532,7 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
       <!-- OUTROS ITENS -->
       ${(data.otherItems?.length ?? 0) > 0 ? `
         <div class="section">
-          <div class="section-title">📦 Outros Itens do Pedido (${data.otherItems.length})</div>
+          <div class="section-title">📦 Outros Itens do Pedido (${data.otherItems?.length ?? 0})</div>
           <table>
             <thead>
               <tr>
@@ -544,7 +544,7 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
               </tr>
             </thead>
             <tbody>
-              ${buildItemRows(data.otherItems, showValues)}
+              ${buildItemRows(data.otherItems ?? [], showValues)}
             </tbody>
           </table>
         </div>
