@@ -136,7 +136,7 @@ export async function POST(
     if (!tinyOrderId) {
       try {
         const tinyResponse = await tinyApiGet(
-          `/pedidos?pesquisa=${encodeURIComponent(String(numeroPedido))}&limit=10`
+          `/pedidos?numero=${encodeURIComponent(String(numeroPedido))}&limit=10`
         );
 
         const itens =
