@@ -793,6 +793,7 @@ export type Database = {
           due_date: string | null
           id: string
           is_personalized: boolean | null
+          is_pipeline_managed: boolean
           order_date: string | null
           order_number: number
           order_type: Database["public"]["Enums"]["order_type"]
@@ -823,6 +824,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           is_personalized?: boolean | null
+          is_pipeline_managed?: boolean
           order_date?: string | null
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
@@ -853,6 +855,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           is_personalized?: boolean | null
+          is_pipeline_managed?: boolean
           order_date?: string | null
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]

@@ -26,7 +26,7 @@ export async function getOrders() {
       items:order_items(product_name, quantity),
       attachments:attachments(id)
     `)
-    .is("tiny_order_id", null)
+    .is("is_pipeline_managed", true)
     .is("archived_at", null)
     .order("status", { ascending: true })
     .order("position", { ascending: true })
@@ -92,7 +92,7 @@ export async function getOrdersByStatus(status: OrderStatus) {
       labels:order_labels(id, label)
     `)
     .eq("status", status)
-    .is("tiny_order_id", null)
+    .is("is_pipeline_managed", true)
     .is("archived_at", null)
     .order("position", { ascending: true });
 
@@ -174,6 +174,7 @@ export async function createOrderWithItems(
     created_by: createdBy,
     tiny_order_id: null,
     tiny_invoice_id: null,
+    is_pipeline_managed: true,
     position: 0,
   } as Omit<Order, "id" | "order_number" | "created_at" | "updated_at">);
 

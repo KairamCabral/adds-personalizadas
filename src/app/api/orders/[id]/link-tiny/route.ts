@@ -59,33 +59,17 @@ export async function POST(
       );
     }
 
-    let tinyResponse: unknown;
-    try {
-      tinyResponse = await tinyApiGet(
-        `/pedidos?numeroPedido=${encodeURIComponent(String(numeroPedido))}&limit=5`
-      );
-    } catch (err) {
-      if (err instanceof TinyTokenExpiredError) {
-        return NextResponse.json(
-          { error: err.message, code: "TINY_RECONNECT" },
-          { status: 401 }
-        );
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      return NextResponse.json(
-        { error: `Erro ao buscar no Tiny: ${msg}` },
-        { status: 502 }
-      );
-    }
+    const coerceTinyOrderId = (idVal: unknown): number | null => {
+      const n =
+        typeof idVal === "number"
+          ? idVal
+          : typeof idVal === "string"
+            ? Number(idVal)
+            : NaN;
+      return Number.isFinite(n) ? n : null;
+    };
 
-    const itens =
-      (tinyResponse as { itens?: unknown })?.itens ??
-      (tinyResponse as { data?: { itens?: unknown } })?.data?.itens ??
-      (tinyResponse as { data?: unknown[] })?.data ??
-      [];
-
-    const results = Array.isArray(itens) ? itens : [];
-
+    // === BUSCA MULTI-ESTRATÉGIA ===
     let tinyOrderId: number | null = null;
     let tinyOrderInfo: {
       numeroPedido: number;
@@ -93,39 +77,162 @@ export async function POST(
       data?: string | null;
     } | null = null;
 
-    for (const item of results) {
-      const raw =
-        item && typeof item === "object" && "pedido" in item
-          ? (item as { pedido: Record<string, unknown> }).pedido
-          : (item as Record<string, unknown>);
-      const num = raw.numeroPedido ?? raw.numero ?? raw.numero_pedido;
-      if (String(num) === String(numeroPedido)) {
-        const idVal = raw.id;
-        tinyOrderId =
-          typeof idVal === "number"
-            ? idVal
-            : typeof idVal === "string"
-              ? Number(idVal)
-              : NaN;
-        if (!Number.isFinite(tinyOrderId)) {
-          tinyOrderId = null;
-          continue;
-        }
-        const clienteRaw = raw.cliente;
-        const nomeCliente =
-          clienteRaw &&
-          typeof clienteRaw === "object" &&
-          "nome" in (clienteRaw as object)
-            ? String((clienteRaw as { nome?: string }).nome ?? "")
-            : typeof raw.nomeCliente === "string"
-              ? raw.nomeCliente
-              : null;
+    // Estratégia 1: Buscar nos webhooks já capturados (banco local — mais rápido)
+    const { data: webhookMatch } = await supabase
+      .from("tiny_webhook_events")
+      .select("tiny_order_id, payload")
+      .filter("payload->dados->>numero", "eq", String(numeroPedido))
+      .order("received_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (webhookMatch?.tiny_order_id) {
+      const idFromWebhook = coerceTinyOrderId(webhookMatch.tiny_order_id);
+      if (idFromWebhook) {
+        tinyOrderId = idFromWebhook;
+        const dados = (webhookMatch.payload as { dados?: Record<string, unknown> })
+          ?.dados;
+        const clienteNome = dados?.cliente;
         tinyOrderInfo = {
-          numeroPedido: Number(num),
-          cliente: nomeCliente,
-          data: typeof raw.data === "string" ? raw.data : null,
+          numeroPedido: Number(numeroPedido),
+          cliente:
+            clienteNome &&
+            typeof clienteNome === "object" &&
+            clienteNome !== null &&
+            "nome" in clienteNome
+              ? String((clienteNome as { nome?: string }).nome ?? "")
+              : null,
+          data: typeof dados?.data === "string" ? dados.data : null,
         };
-        break;
+      }
+    }
+
+    // Estratégia 2: Buscar nos pedidos já importados no CRM (title contém o número)
+    if (!tinyOrderId) {
+      const { data: crmMatch } = await supabase
+        .from("orders")
+        .select("tiny_order_id, title")
+        .not("tiny_order_id", "is", null)
+        .or(
+          `title.ilike.%#${numeroPedido} -%,title.ilike.%#${numeroPedido}`
+        )
+        .limit(1)
+        .maybeSingle();
+
+      if (crmMatch?.tiny_order_id) {
+        const idFromCrm = coerceTinyOrderId(crmMatch.tiny_order_id);
+        if (idFromCrm) {
+          tinyOrderId = idFromCrm;
+          tinyOrderInfo = {
+            numeroPedido: Number(numeroPedido),
+            cliente: crmMatch.title?.replace(/^Pedido #\d+ - /, "") ?? null,
+            data: null,
+          };
+        }
+      }
+    }
+
+    // Estratégia 3: Buscar na API do Tiny com parâmetro "pesquisa" (fallback)
+    if (!tinyOrderId) {
+      try {
+        const tinyResponse = await tinyApiGet(
+          `/pedidos?pesquisa=${encodeURIComponent(String(numeroPedido))}&limit=10`
+        );
+
+        const itens =
+          (tinyResponse as { itens?: unknown })?.itens ??
+          (tinyResponse as { data?: { itens?: unknown } })?.data?.itens ??
+          (tinyResponse as { data?: unknown[] })?.data ??
+          [];
+
+        const results = Array.isArray(itens) ? itens : [];
+
+        for (const item of results) {
+          const raw = (
+            item && typeof item === "object" && "pedido" in item
+              ? (item as { pedido: Record<string, unknown> }).pedido
+              : item
+          ) as Record<string, unknown>;
+          const num = raw.numeroPedido ?? raw.numero ?? raw.numero_pedido;
+          if (String(num) === String(numeroPedido)) {
+            const idParsed = coerceTinyOrderId(raw.id);
+            if (!idParsed) continue;
+            tinyOrderId = idParsed;
+            const clienteRaw = raw.cliente;
+            const nomeCliente =
+              clienteRaw &&
+              typeof clienteRaw === "object" &&
+              clienteRaw !== null &&
+              "nome" in clienteRaw
+                ? String((clienteRaw as { nome?: string }).nome ?? "")
+                : typeof raw.nomeCliente === "string"
+                  ? raw.nomeCliente
+                  : null;
+            tinyOrderInfo = {
+              numeroPedido: Number(num),
+              cliente: nomeCliente,
+              data: typeof raw.data === "string" ? raw.data : null,
+            };
+            break;
+          }
+        }
+      } catch (err) {
+        if (err instanceof TinyTokenExpiredError) {
+          return NextResponse.json(
+            { error: err.message, code: "TINY_RECONNECT" },
+            { status: 401 }
+          );
+        }
+        console.warn("[link-tiny] Fallback API search failed:", err);
+      }
+    }
+
+    // Estratégia 4: Buscar direto pelo ID (se o usuário digitou o ID do Tiny em vez do número)
+    if (!tinyOrderId && String(numeroPedido).length >= 9) {
+      try {
+        const directResponse = await tinyApiGet(`/pedidos/${numeroPedido}`);
+        const directData =
+          (directResponse as { data?: Record<string, unknown> })?.data ??
+          (directResponse as Record<string, unknown>);
+        if (directData && typeof directData === "object" && "id" in directData) {
+          const idParsed = coerceTinyOrderId(
+            (directData as { id?: unknown }).id
+          );
+          if (idParsed) {
+            tinyOrderId = idParsed;
+            const clienteRaw = (directData as { cliente?: unknown }).cliente;
+            const nomeCliente =
+              clienteRaw &&
+              typeof clienteRaw === "object" &&
+              clienteRaw !== null &&
+              "nome" in clienteRaw
+                ? String((clienteRaw as { nome?: string }).nome ?? "")
+                : null;
+            const numPed = (directData as { numeroPedido?: unknown })
+              .numeroPedido;
+            tinyOrderInfo = {
+              numeroPedido:
+                typeof numPed === "number"
+                  ? numPed
+                  : typeof numPed === "string"
+                    ? Number(numPed)
+                    : Number(numeroPedido),
+              cliente: nomeCliente,
+              data:
+                typeof (directData as { data?: unknown }).data === "string"
+                  ? ((directData as { data: string }).data)
+                  : null,
+            };
+          }
+        }
+      } catch (err) {
+        if (err instanceof TinyTokenExpiredError) {
+          return NextResponse.json(
+            { error: err.message, code: "TINY_RECONNECT" },
+            { status: 401 }
+          );
+        }
+        // Não é um ID válido — ok, segue
       }
     }
 
