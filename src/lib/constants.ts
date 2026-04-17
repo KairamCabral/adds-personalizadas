@@ -250,8 +250,8 @@ export const LABELS: LabelConfig[] = [
   {
     key: "LINK_ENVIADO",
     label: "Link enviado",
-    color: "#3b82f6",
-    bgColor: "bg-blue-500",
+    color: "#1e40af",
+    bgColor: "bg-blue-800",
     textColor: "text-white",
   },
 ];
