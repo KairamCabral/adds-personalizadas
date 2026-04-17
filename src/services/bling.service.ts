@@ -909,6 +909,75 @@ function resolveBlingSkuForItem(
   return null;
 }
 
+/** Extrai o objeto pedido da resposta GET /pedidos/:id (Tiny V3). */
+function unwrapTinyPedidoFromApiResponse(apiResponse: unknown): Record<string, unknown> | null {
+  if (!apiResponse || typeof apiResponse !== "object") return null;
+  const r = apiResponse as Record<string, unknown>;
+  const data = r.data;
+  if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    if (d.pedido && typeof d.pedido === "object") {
+      return d.pedido as Record<string, unknown>;
+    }
+    if ("id" in d) return d as Record<string, unknown>;
+  }
+  if (r.pedido && typeof r.pedido === "object") {
+    return r.pedido as Record<string, unknown>;
+  }
+  if ("id" in r) return r as Record<string, unknown>;
+  return null;
+}
+
+function normalizeTinyApiLineItems(rawItens: unknown): Array<{
+  sku: string;
+  descricao: string;
+  quantidade: number;
+  valorUnitario: number;
+}> {
+  if (!Array.isArray(rawItens)) return [];
+  const out: Array<{
+    sku: string;
+    descricao: string;
+    quantidade: number;
+    valorUnitario: number;
+  }> = [];
+  for (const row of rawItens) {
+    const line =
+      row && typeof row === "object" && "item" in (row as object)
+        ? (row as { item?: unknown }).item
+        : row;
+    if (!line || typeof line !== "object") continue;
+    const l = line as Record<string, unknown>;
+    let prodRaw: unknown = l.produto;
+    if (prodRaw && typeof prodRaw === "object" && "produto" in (prodRaw as object)) {
+      prodRaw = (prodRaw as { produto?: unknown }).produto;
+    }
+    const p =
+      prodRaw && typeof prodRaw === "object"
+        ? (prodRaw as Record<string, unknown>)
+        : {};
+    const sku =
+      typeof p.sku === "string" ? p.sku : p.codigo != null ? String(p.codigo) : "";
+    const descricao =
+      typeof p.descricao === "string"
+        ? p.descricao
+        : typeof p.nome === "string"
+          ? p.nome
+          : "Item do pedido";
+    const q = Number(l.quantidade ?? 0);
+    const vu = Number(
+      l.valorUnitario ?? l.valor_unitario ?? l.valorUnitarioPedido ?? 0
+    );
+    out.push({
+      sku: sku.trim(),
+      descricao,
+      quantidade: Number.isFinite(q) ? q : 0,
+      valorUnitario: Number.isFinite(vu) ? vu : 0.01,
+    });
+  }
+  return out;
+}
+
 /** Monta o payload do Pedido de Venda Bling. */
 async function buildBlingOrderPayload(
   orderId: string,
@@ -979,6 +1048,75 @@ async function buildBlingOrderPayload(
     } else {
       unmappedItems.push(
         `${item.product_name}${colorLabel ? ` (${colorLabel})` : ""} x${item.quantity}`
+      );
+    }
+  }
+
+  // === ITENS EXTRAS DO TINY (não-personalizados) ===
+  // Se o pedido tem vínculo com Tiny, busca itens que não estão no CRM
+  const tinyOrderId = order.tiny_order_id;
+  if (tinyOrderId) {
+    try {
+      const { tinyApiGet } = await import("@/lib/tiny-api");
+      const tinyResponse = await tinyApiGet(`/pedidos/${tinyOrderId}`);
+      const tinyPedido = unwrapTinyPedidoFromApiResponse(tinyResponse);
+      const tinyItems = normalizeTinyApiLineItems(tinyPedido?.itens);
+
+      const addedSkus = new Set<string>();
+      for (const item of order.items ?? []) {
+        const product = item.product as {
+          bling_sku?: string | null;
+          bling_color_sku_map?: Record<string, string> | null;
+        } | null;
+        if (product?.bling_sku) {
+          addedSkus.add(product.bling_sku.toUpperCase().trim());
+        }
+        if (product?.bling_color_sku_map && typeof product.bling_color_sku_map === "object") {
+          for (const sku of Object.values(product.bling_color_sku_map)) {
+            if (typeof sku === "string") addedSkus.add(sku.toUpperCase().trim());
+          }
+        }
+      }
+
+      const extraTinyItems = tinyItems.filter((ti) => {
+        const sku = ti.sku.toUpperCase().trim();
+        return sku.length > 0 && !addedSkus.has(sku);
+      });
+
+      for (const tinyItem of extraTinyItems) {
+        const sku = tinyItem.sku;
+        const descricao = tinyItem.descricao || "Item do pedido";
+        const quantidade = tinyItem.quantidade > 0 ? tinyItem.quantidade : 1;
+        const valor = tinyItem.valorUnitario > 0 ? tinyItem.valorUnitario : 0.01;
+
+        const blingProductId = await findBlingProductByCode(sku, apiToken, baseUrl);
+        if (blingProductId) {
+          itens.push({
+            produto: { id: blingProductId },
+            quantidade,
+            valor,
+          });
+        } else {
+          itens.push({
+            descricao: `${descricao} (${sku})`,
+            quantidade,
+            valor,
+          } as BlingOrderPayload["itens"][number]);
+          unmappedItems.push(
+            `${descricao} x${quantidade} [SKU Tiny: ${sku} — não encontrado no Bling]`
+          );
+        }
+      }
+
+      if (extraTinyItems.length > 0) {
+        console.log(
+          `[bling] Adicionados ${extraTinyItems.length} item(ns) extra(s) do Tiny ao pedido Bling`
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[bling] Falha ao buscar itens extras do Tiny (tiny_order_id=${tinyOrderId}):`,
+        err instanceof Error ? err.message : err
       );
     }
   }
