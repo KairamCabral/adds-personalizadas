@@ -97,6 +97,7 @@ type TinyCompleteResponse = {
   deposito?: { id?: number; nome?: string } | null;
   vendedor?: { id?: number; nome?: string } | null;
   code?: string;
+  hideValues?: boolean;
 };
 
 const SITUACAO_COLORS: Record<number, string> = {
@@ -403,10 +404,14 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-primary">SKU</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-primary">Qtd</th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-primary">
-                          Valor Un.
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-primary">Total</th>
+                        {!data.hideValues && (
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-primary">
+                            Valor Un.
+                          </th>
+                        )}
+                        {!data.hideValues && (
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-primary">Total</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -417,12 +422,16 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
                             {item.produto?.sku ?? "—"}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">{item.quantidade}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {formatBRL(item.valorUnitario)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums font-medium">
-                            {formatBRL(item.quantidade * (item.valorUnitario ?? 0))}
-                          </td>
+                          {!data.hideValues && (
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {formatBRL(item.valorUnitario)}
+                            </td>
+                          )}
+                          {!data.hideValues && (
+                            <td className="px-3 py-2 text-right tabular-nums font-medium">
+                              {formatBRL(item.quantidade * (item.valorUnitario ?? 0))}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -446,10 +455,14 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">SKU</th>
                         <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Qtd</th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">
-                          Valor Un.
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total</th>
+                        {!data.hideValues && (
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">
+                            Valor Un.
+                          </th>
+                        )}
+                        {!data.hideValues && (
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -460,12 +473,16 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
                             {item.produto?.sku ?? "—"}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">{item.quantidade}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {formatBRL(item.valorUnitario)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums font-medium">
-                            {formatBRL(item.quantidade * (item.valorUnitario ?? 0))}
-                          </td>
+                          {!data.hideValues && (
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {formatBRL(item.valorUnitario)}
+                            </td>
+                          )}
+                          {!data.hideValues && (
+                            <td className="px-3 py-2 text-right tabular-nums font-medium">
+                              {formatBRL(item.quantidade * (item.valorUnitario ?? 0))}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -481,37 +498,39 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
               </div>
             )}
 
-            <section className="mb-6">
-              <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                <DollarSign className="h-4 w-4" />
-                Totais
-              </h3>
-              <div className="space-y-2 rounded-lg border bg-muted/30 p-4 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    Produtos ({data.totalItems ?? 0} linhas)
-                  </span>
-                  <span className="tabular-nums">{formatBRL(data.valorTotalProdutos)}</span>
-                </div>
-                {(data.valorDesconto ?? 0) > 0 && (
-                  <div className="flex justify-between text-red-600">
-                    <span>Desconto</span>
-                    <span className="tabular-nums">- {formatBRL(data.valorDesconto)}</span>
-                  </div>
-                )}
-                {(data.valorFrete ?? 0) > 0 && (
+            {!data.hideValues && (
+              <section className="mb-6">
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  <DollarSign className="h-4 w-4" />
+                  Totais
+                </h3>
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-4 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Frete</span>
-                    <span className="tabular-nums">{formatBRL(data.valorFrete)}</span>
+                    <span className="text-muted-foreground">
+                      Produtos ({data.totalItems ?? 0} linhas)
+                    </span>
+                    <span className="tabular-nums">{formatBRL(data.valorTotalProdutos)}</span>
                   </div>
-                )}
-                <Separator />
-                <div className="flex justify-between text-base font-bold">
-                  <span>Total do Pedido</span>
-                  <span className="tabular-nums">{formatBRL(data.valorTotalPedido)}</span>
+                  {(data.valorDesconto ?? 0) > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Desconto</span>
+                      <span className="tabular-nums">- {formatBRL(data.valorDesconto)}</span>
+                    </div>
+                  )}
+                  {(data.valorFrete ?? 0) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Frete</span>
+                      <span className="tabular-nums">{formatBRL(data.valorFrete)}</span>
+                    </div>
+                  )}
+                  <Separator />
+                  <div className="flex justify-between text-base font-bold">
+                    <span>Total do Pedido</span>
+                    <span className="tabular-nums">{formatBRL(data.valorTotalPedido)}</span>
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            )}
 
             {data.transportador && (
               <section className="mb-6">

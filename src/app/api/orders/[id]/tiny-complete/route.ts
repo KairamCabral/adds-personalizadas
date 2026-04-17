@@ -307,6 +307,9 @@ export async function GET(
       crmOrderId: order.id,
       crmOrderNumber: order.order_number,
       crmStatus: order.status,
+
+      // Flag pra frontend esconder valores monetários
+      hideValues: isPrestador,
     };
 
     return NextResponse.json(response);
