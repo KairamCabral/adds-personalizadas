@@ -20,6 +20,7 @@ import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { createClient } from "@/lib/supabase/client";
 import { getOrderById, deleteOrder, moveOrder, archiveOrder, unarchiveOrder, updateOrder, cancelOrder } from "@/services/orders.service";
 import { ArchiveCancelDialog } from "@/components/pipeline/archive-cancel-dialog";
+import { TinyOrderSheet } from "@/components/pipeline/tiny-order-sheet";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
@@ -38,6 +39,7 @@ import {
   PanelLeftOpen,
   Palette,
   Copy,
+  FileSpreadsheet,
   User,
   Smartphone,
   Sparkles,
@@ -205,6 +207,7 @@ export function OrderDetailSheet() {
     null
   );
   const [showDetails, setShowDetails] = useState(true);
+  const [tinyOrderSheetOpen, setTinyOrderSheetOpen] = useState(false);
   const [blingDuplicateData, setBlingDuplicateData] = useState<{
     recentOrders: {
       order_id: string;
@@ -669,6 +672,18 @@ export function OrderDetailSheet() {
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {order.tiny_order_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        type="button"
+                        onClick={() => setTinyOrderSheetOpen(true)}
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        Pedido Completo
+                      </Button>
+                    )}
                     {canAny("suppliers.send_data", "suppliers.manage") &&
                       order.client_id &&
                       APROVADO_AND_AFTER.includes(order.status) &&
@@ -1274,6 +1289,12 @@ export function OrderDetailSheet() {
         orderId={editOrderId}
         open={!!editOrderId}
         onOpenChange={(open) => !open && setEditOrderId(null)}
+      />
+
+      <TinyOrderSheet
+        open={tinyOrderSheetOpen}
+        onOpenChange={setTinyOrderSheetOpen}
+        orderId={selectedOrderId}
       />
 
       <ArchiveCancelDialog
