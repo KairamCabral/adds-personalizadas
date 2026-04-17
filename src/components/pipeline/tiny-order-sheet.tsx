@@ -196,414 +196,262 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
 
   const handlePrint = () => {
     if (!data) return;
-    const formatBRLPrint = (value: number | null | undefined): string => {
-      if (value == null || value === 0) return "—";
-      return new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      }).format(value);
+
+    const fmtBRL = (v: number | null | undefined): string => {
+      if (v == null || v === 0) return "—";
+      return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
     };
-    const formatDatePrint = (dateStr: string | null | undefined): string => {
-      if (!dateStr) return "—";
+
+    const fmtDate = (d: string | null | undefined): string => {
+      if (!d) return "—";
       try {
-        const [ymd] = dateStr.split("T");
-        const [year, month, day] = ymd.split("-");
-        return `${day}/${month}/${year}`;
+        const [ymd] = d.split("T");
+        const [y, m, day] = ymd.split("-");
+        return `${day}/${m}/${y}`;
       } catch {
-        return dateStr;
+        return d;
       }
     };
-    const buildItemRows = (items: any[], showValues: boolean) => {
-      if (!items || items.length === 0) return "";
-      return items
-        .map(
-          (item: any) => `
-        <tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;">${item.produto?.descricao ?? "—"}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:12px;font-family:monospace;color:#6b7280;">${item.produto?.sku ?? "—"}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;font-weight:600;">${item.quantidade ?? 0}</td>
-          ${showValues ? `<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-size:13px;">${formatBRLPrint(item.valorUnitario)}</td>` : ""}
-          ${showValues ? `<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-size:13px;font-weight:600;">${formatBRLPrint((item.quantidade ?? 0) * (item.valorUnitario ?? 0))}</td>` : ""}
-        </tr>`
-        )
-        .join("");
-    };
-    const showValues = !data.hideValues;
+
+    const showV = !data.hideValues;
+    const logoUrl = window.location.origin + "/Logo-cor-PNG.png";
     const today = new Date().toLocaleDateString("pt-BR");
-    const html = `
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-      <meta charset="UTF-8">
-      <title>Pedido #${data.numeroPedido} — ADDS Brasil</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        @page { margin: 20mm 15mm; size: A4; }
-        body {
-          font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-          color: #1f2937;
-          line-height: 1.5;
-          background: #fff;
-        }
-        /* HEADER */
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          padding-bottom: 16px;
-          border-bottom: 3px solid #0d9488;
-          margin-bottom: 20px;
-        }
-        .header-left h1 {
-          font-size: 22px;
-          font-weight: 800;
-          color: #0d9488;
-          letter-spacing: -0.5px;
-        }
-        .header-left .subtitle {
-          font-size: 12px;
-          color: #6b7280;
-          margin-top: 2px;
-        }
-        .header-right {
-          text-align: right;
-        }
-        .header-right .brand {
-          font-size: 18px;
-          font-weight: 800;
-          color: #0d9488;
-          letter-spacing: 2px;
-        }
-        .header-right .date {
-          font-size: 11px;
-          color: #9ca3af;
-          margin-top: 2px;
-        }
-        .badge {
-          display: inline-block;
-          padding: 3px 10px;
-          border-radius: 12px;
-          font-size: 11px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-top: 6px;
-        }
-        .badge-open { background: #dbeafe; color: #1d4ed8; }
-        .badge-approved { background: #dcfce7; color: #15803d; }
-        .badge-shipped { background: #ccfbf1; color: #0d9488; }
-        .badge-delivered { background: #d1fae5; color: #065f46; }
-        .badge-cancelled { background: #fee2e2; color: #991b1b; }
-        .badge-default { background: #f3f4f6; color: #4b5563; }
-        /* SECTIONS */
-        .section {
-          margin-bottom: 20px;
-        }
-        .section-title {
-          font-size: 11px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 1.5px;
-          color: #0d9488;
-          margin-bottom: 10px;
-          padding-bottom: 4px;
-          border-bottom: 1px solid #e5e7eb;
-        }
-        /* CLIENT CARD */
-        .client-card {
-          background: #f9fafb;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          padding: 14px 16px;
-        }
-        .client-name {
-          font-size: 16px;
-          font-weight: 700;
-          margin-bottom: 4px;
-        }
-        .client-detail {
-          font-size: 12px;
-          color: #6b7280;
-          margin-bottom: 2px;
-        }
-        .client-address {
-          font-size: 12px;
-          color: #374151;
-          margin-top: 6px;
-          padding-top: 6px;
-          border-top: 1px solid #e5e7eb;
-        }
-        /* TABLES */
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          overflow: hidden;
-        }
-        th {
-          padding: 8px 12px;
-          font-size: 10px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          color: #fff;
-          text-align: left;
-        }
-        .th-personalized { background: #0d9488; }
-        .th-other { background: #6b7280; }
-        /* TOTALS */
-        .totals-card {
-          background: #f9fafb;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          padding: 12px 16px;
-        }
-        .total-row {
-          display: flex;
-          justify-content: space-between;
-          padding: 4px 0;
-          font-size: 13px;
-        }
-        .total-row.grand {
-          border-top: 2px solid #1f2937;
-          margin-top: 6px;
-          padding-top: 8px;
-          font-size: 16px;
-          font-weight: 800;
-        }
-        /* SHIPPING */
-        .shipping-card {
-          background: #f0fdfa;
-          border: 1px solid #99f6e4;
-          border-radius: 8px;
-          padding: 12px 16px;
-          font-size: 13px;
-        }
-        .shipping-row {
-          display: flex;
-          justify-content: space-between;
-          padding: 3px 0;
-        }
-        .shipping-label { color: #6b7280; }
-        .shipping-value { font-weight: 600; }
-        /* OBSERVATIONS */
-        .obs-card {
-          background: #fffbeb;
-          border-left: 4px solid #f59e0b;
-          border-radius: 0 8px 8px 0;
-          padding: 10px 14px;
-          font-size: 12px;
-          white-space: pre-wrap;
-          color: #92400e;
-        }
-        .obs-internal {
-          background: #eff6ff;
-          border-left-color: #3b82f6;
-          color: #1e40af;
-          margin-top: 8px;
-        }
-        /* FOOTER */
-        .footer {
-          margin-top: 24px;
-          padding-top: 12px;
-          border-top: 1px solid #e5e7eb;
-          display: flex;
-          justify-content: space-between;
-          font-size: 10px;
-          color: #9ca3af;
-        }
-        .footer-badges span {
-          display: inline-block;
-          background: #f3f4f6;
-          padding: 2px 8px;
-          border-radius: 4px;
-          margin-right: 6px;
-          font-size: 10px;
-          color: #6b7280;
-        }
-        /* 2-COL LAYOUT */
-        .two-col {
-          display: flex;
-          gap: 16px;
-        }
-        .two-col > div {
-          flex: 1;
-        }
-      </style>
-    </head>
-    <body>
-      <!-- HEADER -->
-      <div class="header">
-        <div class="header-left">
-          <h1>FICHA TÉCNICA — Pedido #${data.numeroPedido ?? "—"}</h1>
-          <div class="subtitle">CRM #${data.crmOrderNumber ?? "—"} · ${formatDatePrint(data.data)}</div>
-          <span class="badge ${
-            data.situacao === 0 ? "badge-open" :
-            data.situacao === 3 ? "badge-approved" :
-            [5,7].includes(data.situacao ?? -1) ? "badge-shipped" :
-            data.situacao === 6 ? "badge-delivered" :
-            data.situacao === 2 ? "badge-cancelled" : "badge-default"
-          }">${data.situacaoLabel ?? "—"}</span>
-        </div>
-        <div class="header-right">
-          <div class="brand">ADDS BRASIL</div>
-          <div class="date">Impresso em ${today}</div>
-        </div>
+
+    const itemRow = (item: any, idx: number, show: boolean) => `
+    <tr style="background:${idx % 2 === 0 ? "#fff" : "#f8f9fa"};">
+      <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;">${item.produto?.descricao ?? "—"}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;font-family:'Courier New',monospace;color:#6b7280;">${item.produto?.sku ?? "—"}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;font-weight:700;">${item.quantidade ?? 0}</td>
+      ${show ? `<td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;">${fmtBRL(item.valorUnitario)}</td>` : ""}
+      ${show ? `<td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:600;">${fmtBRL((item.quantidade ?? 0) * (item.valorUnitario ?? 0))}</td>` : ""}
+    </tr>`;
+
+    const itemTable = (items: any[], accent: string, label: string) => {
+      if (!items || items.length === 0) return "";
+      return `
+      <div style="margin-bottom:18px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:${accent};margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid ${accent};">${label} (${items.length})</div>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:${accent};">
+              <th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#fff;text-align:left;">Produto</th>
+              <th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#fff;text-align:left;">SKU</th>
+              <th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#fff;text-align:center;">Qtd</th>
+              ${showV ? '<th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#fff;text-align:right;">Valor Un.</th>' : ""}
+              ${showV ? '<th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#fff;text-align:right;">Total</th>' : ""}
+            </tr>
+          </thead>
+          <tbody>${items.map((it: any, i: number) => itemRow(it, i, showV)).join("")}</tbody>
+        </table>
+      </div>`;
+    };
+
+    const addr = (e: any) =>
+      [
+        e?.endereco,
+        e?.numero && "nº " + e.numero,
+        e?.complemento,
+        e?.bairro,
+        e?.municipio && e.municipio + "/" + (e.uf ?? ""),
+        e?.cep && "CEP " + e.cep,
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Pedido #${data.numeroPedido} — ADDS Brasil</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  @page { margin:20mm; size:A4; }
+  body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; color:#1f2937; line-height:1.45; background:#fff; padding:0; font-size:12px; }
+  
+  .header { display:flex; justify-content:space-between; align-items:center; padding-bottom:14px; border-bottom:2px solid #d1d5db; margin-bottom:18px; }
+  .header-left { display:flex; align-items:center; gap:14px; }
+  .header-logo img { height:44px; width:auto; }
+  .header-title h1 { font-size:16px; font-weight:800; color:#1f2937; letter-spacing:-0.3px; }
+  .header-title .sub { font-size:11px; color:#6b7280; margin-top:1px; }
+  .header-right { text-align:right; }
+  .header-right .pedido-num { font-size:20px; font-weight:800; color:#0f766e; }
+  .header-right .pedido-date { font-size:10px; color:#9ca3af; margin-top:2px; }
+  
+  .status-badge { display:inline-block; padding:2px 10px; border-radius:10px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-top:4px; }
+  
+  .two-col { display:flex; gap:14px; margin-bottom:18px; }
+  .two-col > div { flex:1; }
+  
+  .card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px 14px; }
+  .card-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.2px; color:#6b7280; margin-bottom:6px; }
+  .card .name { font-size:14px; font-weight:700; color:#1f2937; margin-bottom:3px; }
+  .card .detail { font-size:11px; color:#6b7280; margin-bottom:2px; }
+  .card .address { font-size:11px; color:#374151; margin-top:5px; padding-top:5px; border-top:1px solid #e5e7eb; }
+  .card .contact { font-size:10px; color:#6b7280; margin-top:4px; }
+  
+  .ship-card { background:#f0fdf4; border:1px solid #d1fae5; border-radius:6px; padding:10px 14px; }
+  .ship-row { display:flex; justify-content:space-between; font-size:11px; padding:2px 0; }
+  .ship-label { color:#6b7280; }
+  .ship-val { font-weight:600; color:#1f2937; }
+  
+  .totals { background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px 14px; margin-bottom:18px; }
+  .tot-row { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; }
+  .tot-row.grand { border-top:2px solid #374151; margin-top:6px; padding-top:8px; font-size:15px; font-weight:800; }
+  
+  .obs { border-radius:6px; padding:8px 12px; font-size:11px; white-space:pre-wrap; margin-bottom:6px; }
+  .obs-pub { background:#fefce8; border-left:3px solid #eab308; color:#854d0e; }
+  .obs-int { background:#eff6ff; border-left:3px solid #3b82f6; color:#1e40af; }
+  
+  .footer { margin-top:20px; padding-top:10px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; }
+  .footer-left { display:flex; gap:6px; flex-wrap:wrap; }
+  .footer-badge { display:inline-block; background:#f3f4f6; padding:2px 8px; border-radius:3px; font-size:9px; color:#6b7280; }
+  .footer-right { font-size:9px; color:#9ca3af; }
+  
+  .section-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.2px; color:#374151; margin-bottom:6px; padding-bottom:4px; border-bottom:2px solid #e5e7eb; }
+  
+  .delivery-card { background:#fefce8; border:1px solid #fde68a; border-radius:6px; padding:10px 14px; margin-bottom:18px; font-size:11px; }
+  
+  @media print { body { padding:0; } }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo"><img src="${logoUrl}" alt="ADDS Brasil" onerror="this.style.display='none'"></div>
+    <div class="header-title">
+      <h1>ADDS Brasil</h1>
+      <div class="sub">Ficha Técnica do Pedido</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="pedido-num">#${data.numeroPedido ?? "—"}</div>
+    <div class="pedido-date">CRM #${data.crmOrderNumber ?? "—"} · ${fmtDate(data.data)}</div>
+    <span class="status-badge" style="background:${
+      data.situacao === 3
+        ? "#dcfce7;color:#166534"
+        : data.situacao === 0
+          ? "#dbeafe;color:#1e40af"
+          : [5, 7].includes(data.situacao ?? -1)
+            ? "#ccfbf1;color:#0f766e"
+            : data.situacao === 6
+              ? "#d1fae5;color:#065f46"
+              : data.situacao === 2
+                ? "#fee2e2;color:#991b1b"
+                : data.situacao === 1
+                  ? "#f3e8ff;color:#6b21a8"
+                  : "#f3f4f6;color:#4b5563"
+    }">${data.situacaoLabel ?? "—"}</span>
+  </div>
+</div>
+
+<!-- CLIENTE + ENVIO -->
+<div class="two-col">
+  <div>
+    <div class="card">
+      <div class="card-title">Cliente</div>
+      <div class="name">${data.cliente?.nome ?? "—"}${data.cliente?.fantasia && data.cliente.fantasia !== data.cliente.nome ? " (" + data.cliente.fantasia + ")" : ""}</div>
+      ${data.cliente?.cpfCnpj ? `<div class="detail">${data.cliente.tipoPessoa === "J" ? "CNPJ" : "CPF"}: ${data.cliente.cpfCnpj}</div>` : ""}
+      ${data.cliente?.endereco ? `<div class="address">${addr(data.cliente.endereco)}</div>` : ""}
+      ${!data.hideValues && (data.cliente?.telefone || data.cliente?.celular || data.cliente?.email)
+        ? `
+        <div class="contact">${[
+          data.cliente.telefone && "Tel: " + data.cliente.telefone,
+          data.cliente.celular && "Cel: " + data.cliente.celular,
+          data.cliente.email && data.cliente.email,
+        ]
+          .filter(Boolean)
+          .join(" · ")}</div>
+      `
+        : ""}
+    </div>
+  </div>
+  <div>
+    ${data.transportador
+      ? `
+      <div class="ship-card">
+        <div class="card-title">Envio</div>
+        ${data.transportador.nome ? `<div class="ship-row"><span class="ship-label">Transportador</span><span class="ship-val">${data.transportador.nome}</span></div>` : ""}
+        ${data.transportador.formaEnvio ? `<div class="ship-row"><span class="ship-label">Forma de envio</span><span class="ship-val">${data.transportador.formaEnvio}</span></div>` : ""}
+        ${data.transportador.codigoRastreamento ? `<div class="ship-row"><span class="ship-label">Rastreamento</span><span class="ship-val" style="font-family:monospace;font-size:10px;">${data.transportador.codigoRastreamento}</span></div>` : ""}
       </div>
-      <!-- CLIENT + SHIPPING (2 colunas) -->
-      <div class="two-col">
-        <div class="section">
-          <div class="section-title">Cliente</div>
-          <div class="client-card">
-            <div class="client-name">${data.cliente?.nome ?? "—"}</div>
-            ${data.cliente?.cpfCnpj ? `<div class="client-detail">${data.cliente.tipoPessoa === "J" ? "CNPJ" : "CPF"}: ${data.cliente.cpfCnpj}</div>` : ""}
-            ${data.cliente?.endereco ? `
-              <div class="client-address">
-                📍 ${[
-                  data.cliente.endereco.endereco,
-                  data.cliente.endereco.numero && ("nº " + data.cliente.endereco.numero),
-                  data.cliente.endereco.complemento,
-                  data.cliente.endereco.bairro,
-                  data.cliente.endereco.municipio && (data.cliente.endereco.municipio + "/" + (data.cliente.endereco.uf ?? "")),
-                  data.cliente.endereco.cep && ("CEP " + data.cliente.endereco.cep),
-                ].filter(Boolean).join(", ")}
-              </div>
-            ` : ""}
-            ${!data.hideValues && (data.cliente?.telefone || data.cliente?.celular || data.cliente?.email) ? `
-              <div class="client-detail" style="margin-top:6px;">
-                ${[
-                  data.cliente.telefone && ("Tel: " + data.cliente.telefone),
-                  data.cliente.celular && ("Cel: " + data.cliente.celular),
-                  data.cliente.email && ("Email: " + data.cliente.email),
-                ].filter(Boolean).join(" · ")}
-              </div>
-            ` : ""}
-          </div>
-        </div>
-        ${data.transportador ? `
-          <div class="section">
-            <div class="section-title">Envio</div>
-            <div class="shipping-card">
-              ${data.transportador.nome ? `<div class="shipping-row"><span class="shipping-label">Transportador</span><span class="shipping-value">${data.transportador.nome}</span></div>` : ""}
-              ${data.transportador.formaEnvio ? `<div class="shipping-row"><span class="shipping-label">Forma de envio</span><span class="shipping-value">${data.transportador.formaEnvio}</span></div>` : ""}
-              ${data.transportador.codigoRastreamento ? `<div class="shipping-row"><span class="shipping-label">Rastreamento</span><span class="shipping-value" style="font-family:monospace;">${data.transportador.codigoRastreamento}</span></div>` : ""}
-            </div>
-          </div>
-        ` : ""}
+    `
+      : `
+      <div class="card">
+        <div class="card-title">Envio</div>
+        <div class="detail">Informações de envio não disponíveis</div>
       </div>
-      <!-- ENDEREÇO DE ENTREGA (se existir e for diferente) -->
-      ${data.enderecoEntrega?.endereco ? `
-        <div class="section">
-          <div class="section-title">Endereço de Entrega</div>
-          <div class="shipping-card">
-            ${data.enderecoEntrega.nomeDestinatario ? `<strong>${data.enderecoEntrega.nomeDestinatario}</strong><br>` : ""}
-            ${[
-              data.enderecoEntrega.endereco,
-              data.enderecoEntrega.numero && ("nº " + data.enderecoEntrega.numero),
-              data.enderecoEntrega.complemento,
-              data.enderecoEntrega.bairro,
-              data.enderecoEntrega.municipio && (data.enderecoEntrega.municipio + "/" + (data.enderecoEntrega.uf ?? "")),
-              data.enderecoEntrega.cep && ("CEP " + data.enderecoEntrega.cep),
-            ].filter(Boolean).join(", ")}
-          </div>
-        </div>
-      ` : ""}
-      <!-- ITENS PERSONALIZADOS -->
-      ${(data.personalizedItems?.length ?? 0) > 0 ? `
-        <div class="section">
-          <div class="section-title">✨ Itens Personalizados (${data.personalizedItems?.length ?? 0})</div>
-          <table>
-            <thead>
-              <tr>
-                <th class="th-personalized">Produto</th>
-                <th class="th-personalized">SKU</th>
-                <th class="th-personalized" style="text-align:center;">Qtd</th>
-                ${showValues ? '<th class="th-personalized" style="text-align:right;">Valor Un.</th>' : ""}
-                ${showValues ? '<th class="th-personalized" style="text-align:right;">Total</th>' : ""}
-              </tr>
-            </thead>
-            <tbody>
-              ${buildItemRows(data.personalizedItems ?? [], showValues)}
-            </tbody>
-          </table>
-        </div>
-      ` : ""}
-      <!-- OUTROS ITENS -->
-      ${(data.otherItems?.length ?? 0) > 0 ? `
-        <div class="section">
-          <div class="section-title">📦 Outros Itens do Pedido (${data.otherItems?.length ?? 0})</div>
-          <table>
-            <thead>
-              <tr>
-                <th class="th-other">Produto</th>
-                <th class="th-other">SKU</th>
-                <th class="th-other" style="text-align:center;">Qtd</th>
-                ${showValues ? '<th class="th-other" style="text-align:right;">Valor Un.</th>' : ""}
-                ${showValues ? '<th class="th-other" style="text-align:right;">Total</th>' : ""}
-              </tr>
-            </thead>
-            <tbody>
-              ${buildItemRows(data.otherItems ?? [], showValues)}
-            </tbody>
-          </table>
-        </div>
-      ` : ""}
-      <!-- TOTAIS -->
-      ${showValues ? `
-        <div class="section">
-          <div class="section-title">Totais</div>
-          <div class="totals-card">
-            <div class="total-row">
-              <span>Produtos (${data.totalItems ?? 0} itens)</span>
-              <span>${formatBRLPrint(data.valorTotalProdutos)}</span>
-            </div>
-            ${(data.valorDesconto ?? 0) > 0 ? `
-              <div class="total-row" style="color:#dc2626;">
-                <span>Desconto</span>
-                <span>- ${formatBRLPrint(data.valorDesconto)}</span>
-              </div>
-            ` : ""}
-            ${(data.valorFrete ?? 0) > 0 ? `
-              <div class="total-row">
-                <span>Frete</span>
-                <span>${formatBRLPrint(data.valorFrete)}</span>
-              </div>
-            ` : ""}
-            <div class="total-row grand">
-              <span>Total do Pedido</span>
-              <span>${formatBRLPrint(data.valorTotalPedido)}</span>
-            </div>
-          </div>
-        </div>
-      ` : ""}
-      <!-- OBSERVAÇÕES -->
-      ${data.observacoes || data.observacoesInternas ? `
-        <div class="section">
-          <div class="section-title">Observações</div>
-          ${data.observacoes ? `<div class="obs-card">${data.observacoes}</div>` : ""}
-          ${data.observacoesInternas ? `<div class="obs-card obs-internal"><strong>Interna:</strong> ${data.observacoesInternas}</div>` : ""}
-        </div>
-      ` : ""}
-      <!-- FOOTER -->
-      <div class="footer">
-        <div class="footer-badges">
-          ${data.deposito?.nome ? `<span>Depósito: ${data.deposito.nome}</span>` : ""}
-          ${data.vendedor?.nome ? `<span>Vendedor: ${data.vendedor.nome}</span>` : ""}
-          ${data.dataPrevista ? `<span>Previsão: ${formatDatePrint(data.dataPrevista)}</span>` : ""}
-          ${data.dataEnvio ? `<span>Enviado: ${formatDatePrint(data.dataEnvio)}</span>` : ""}
-        </div>
-        <div>personalizadas.adds.com.br</div>
+    `}
+    ${data.dataPrevista || data.dataEnvio
+      ? `
+      <div style="margin-top:8px;font-size:10px;color:#6b7280;">
+        ${data.dataPrevista ? "Previsão: " + fmtDate(data.dataPrevista) : ""}
+        ${data.dataPrevista && data.dataEnvio ? " · " : ""}
+        ${data.dataEnvio ? "Enviado: " + fmtDate(data.dataEnvio) : ""}
       </div>
-    </body>
-    </html>
-  `;
-    const printWindow = window.open("", "_blank", "width=800,height=1100");
-    if (!printWindow) return;
-    printWindow.document.write(html);
-    printWindow.document.close();
-    // Pequeno delay pra garantir que o CSS carregou
-    setTimeout(() => printWindow.print(), 300);
+    `
+      : ""}
+  </div>
+</div>
+
+<!-- ENDEREÇO DE ENTREGA -->
+${data.enderecoEntrega?.endereco
+  ? `
+  <div class="delivery-card">
+    <div class="card-title">Endereço de Entrega (diferente do cadastro)</div>
+    ${data.enderecoEntrega.nomeDestinatario ? `<strong>${data.enderecoEntrega.nomeDestinatario}</strong> — ` : ""}
+    ${addr(data.enderecoEntrega)}
+  </div>
+`
+  : ""}
+
+<!-- ITENS PERSONALIZADOS -->
+${itemTable(data.personalizedItems ?? [], "#0f766e", "Itens Personalizados")}
+
+<!-- OUTROS ITENS -->
+${itemTable(data.otherItems ?? [], "#4b5563", "Outros Itens do Pedido")}
+
+<!-- TOTAIS -->
+${showV
+  ? `
+  <div class="totals">
+    <div class="card-title">Totais</div>
+    <div class="tot-row"><span>Produtos (${data.totalItems ?? 0} itens)</span><span>${fmtBRL(data.valorTotalProdutos)}</span></div>
+    ${(data.valorDesconto ?? 0) > 0 ? `<div class="tot-row" style="color:#dc2626;"><span>Desconto</span><span>- ${fmtBRL(data.valorDesconto)}</span></div>` : ""}
+    ${(data.valorFrete ?? 0) > 0 ? `<div class="tot-row"><span>Frete</span><span>${fmtBRL(data.valorFrete)}</span></div>` : ""}
+    <div class="tot-row grand"><span>Total do Pedido</span><span>${fmtBRL(data.valorTotalPedido)}</span></div>
+  </div>
+`
+  : ""}
+
+<!-- OBSERVAÇÕES -->
+${data.observacoes || data.observacoesInternas
+  ? `
+  <div style="margin-bottom:18px;">
+    <div class="section-title">Observações</div>
+    ${data.observacoes ? `<div class="obs obs-pub">${data.observacoes}</div>` : ""}
+    ${data.observacoesInternas ? `<div class="obs obs-int"><strong>Interna:</strong> ${data.observacoesInternas}</div>` : ""}
+  </div>
+`
+  : ""}
+
+<!-- FOOTER -->
+<div class="footer">
+  <div class="footer-left">
+    ${data.deposito?.nome ? `<span class="footer-badge">${data.deposito.nome}</span>` : ""}
+    ${data.vendedor?.nome ? `<span class="footer-badge">Vendedor: ${data.vendedor.nome}</span>` : ""}
+  </div>
+  <div class="footer-right">Impresso em ${today} · personalizadas.adds.com.br</div>
+</div>
+
+</body></html>`;
+
+    const w = window.open("", "_blank", "width=800,height=1100");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
   };
 
   const situacaoKey =
