@@ -38,4 +38,17 @@ describe("parseTinyPayloadFromRawBody", () => {
     expect(payload?.tipo).toBe("pedido");
     expect(payload?.dados.id).toBe(99);
   });
+
+  it("parseia JSON mesmo quando o Content-Type não é application/json (caso Tiny real)", () => {
+    const raw = JSON.stringify({
+      tipo: "pedido",
+      dados: { id: 555, situacao: "Em aberto" },
+    });
+    const { payload } = parseTinyPayloadFromRawBody(
+      raw,
+      "text/plain; charset=utf-8"
+    );
+    expect(payload?.tipo).toBe("pedido");
+    expect(payload?.dados.id).toBe(555);
+  });
 });

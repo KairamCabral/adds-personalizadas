@@ -162,10 +162,13 @@ export async function POST(
         : Promise.resolve();
 
     const runCrmProcess = async () => {
+      let crmRanOk = false;
       try {
         const parsed = parseTinyPayloadFromRawBody(rawBody, contentType);
         if (!parsed.payload) {
-          console.warn("[tiny-webhook] payload inválido para CRM");
+          console.warn(
+            "[tiny-webhook] payload inválido para CRM — verifique Content-Type e formato (JSON com `{` ou form tipo=&dados=)."
+          );
           return;
         }
         const result = await processTinyWebhookNotification(
@@ -173,10 +176,12 @@ export async function POST(
           parsed.payload
         );
         console.info("[tiny-webhook] CRM:", result.message);
+        crmRanOk = true;
       } catch (e: unknown) {
         console.error("[tiny-webhook] CRM process error:", e);
       }
-      if (eventId) {
+      // Só marca processed se o CRM interpretou o body e rodou o handler (facilita achar falha de parse)
+      if (eventId && crmRanOk) {
         const { error: procErr } = await supabaseAdmin
           .from("tiny_webhook_events")
           .update({

@@ -22,30 +22,83 @@ export interface ParseResult {
   contentType: string;
 }
 
-export function parseTinyPayloadFromRawBody(
-  rawBody: string,
-  contentType: string
-): ParseResult {
+function stripBom(s: string): string {
+  return s.replace(/^\uFEFF/, "").trim();
+}
+
+/**
+ * Interpreta JSON no formato Tiny (`tipo` + `dados` ou objeto único).
+ * Usado quando o corpo começa com `{` — cobre o caso comum em que o Tiny
+ * envia JSON mas o Content-Type não é `application/json` (ex.: text/plain).
+ */
+function tryParseJsonTinyPayload(trimmedBody: string): TinyPayload | null {
   try {
-    if (contentType.includes("application/json")) {
-      const body = JSON.parse(rawBody) as Record<string, unknown>;
-      const dados =
-        typeof body.dados === "string"
-          ? (JSON.parse(body.dados) as Record<string, unknown>)
-          : ((body.dados ?? body) as Record<string, unknown>);
-      return {
-        payload: { tipo: (body.tipo as string) ?? "", dados },
-        rawBody,
-        contentType,
-      };
+    if (!trimmedBody.startsWith("{") && !trimmedBody.startsWith("[")) {
+      return null;
+    }
+    const body = JSON.parse(trimmedBody) as Record<string, unknown>;
+    if (Array.isArray(body)) return null;
+
+    const dados =
+      typeof body.dados === "string"
+        ? (JSON.parse(body.dados) as Record<string, unknown>)
+        : ((body.dados ?? body) as Record<string, unknown>);
+
+    if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
+      return null;
     }
 
+    return {
+      tipo: String(body.tipo ?? ""),
+      dados,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Form Tiny V2: tipo=...&dados=... */
+function tryParseFormTinyPayload(rawBody: string): TinyPayload | null {
+  try {
     const params = new URLSearchParams(rawBody);
     const tipo = params.get("tipo") ?? "";
     const dadosRaw = params.get("dados") ?? "{}";
     const dados = JSON.parse(dadosRaw) as Record<string, unknown>;
+    return { tipo, dados };
+  } catch {
+    return null;
+  }
+}
 
-    return { payload: { tipo, dados }, rawBody, contentType };
+/**
+ * Aceita JSON (com ou sem header correto) e form-urlencoded.
+ * Ordem: JSON pelo texto (`{`…); depois form; depois JSON se o header disser json.
+ */
+export function parseTinyPayloadFromRawBody(
+  rawBody: string,
+  contentType: string
+): ParseResult {
+  const trimmed = stripBom(rawBody);
+
+  if (!trimmed) {
+    return { payload: null, rawBody, contentType };
+  }
+
+  try {
+    const fromJson = tryParseJsonTinyPayload(trimmed);
+    if (fromJson) {
+      return { payload: fromJson, rawBody, contentType };
+    }
+
+    const fromForm = tryParseFormTinyPayload(rawBody);
+    if (fromForm) {
+      return { payload: fromForm, rawBody, contentType };
+    }
+
+    console.warn(
+      "[Webhook Tiny] Payload não reconhecido (nem JSON `{` nem form tipo=&dados=)."
+    );
+    return { payload: null, rawBody, contentType };
   } catch (err) {
     console.error("[Webhook Tiny] Erro ao parsear payload:", err);
     return { payload: null, rawBody, contentType };
