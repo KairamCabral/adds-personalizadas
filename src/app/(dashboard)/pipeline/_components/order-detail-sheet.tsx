@@ -48,6 +48,9 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  Link2,
+  Search,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -100,6 +103,7 @@ import { OrderArtwork } from "./order-artwork";
 import { OrderActivityPanel } from "./order-activity-panel";
 import { OrderEditSheet } from "./order-edit-sheet";
 import { OrderContactCard } from "./order-contact-card";
+import { Input } from "@/components/ui/input";
 
 const APROVADO_AND_AFTER = [
   "CONFIRMACAO",
@@ -219,6 +223,8 @@ export function OrderDetailSheet() {
     supplierId: string;
   } | null>(null);
   const [archiveCancelDialogOpen, setArchiveCancelDialogOpen] = useState(false);
+  const [linkTinyInput, setLinkTinyInput] = useState("");
+  const [linkTinyOpen, setLinkTinyOpen] = useState(false);
 
   const open = !!selectedOrderId;
 
@@ -347,6 +353,29 @@ export function OrderDetailSheet() {
       setSelectedOrderId(null);
     },
     onError: () => toast.error("Erro ao desarquivar pedido."),
+  });
+
+  const linkTinyMutation = useMutation({
+    mutationFn: async (numeroPedido: string) => {
+      const res = await fetch(`/api/orders/${selectedOrderId}/link-tiny`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numeroPedido }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+      return json;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message ?? "Pedido vinculado ao Tiny");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", selectedOrderId] });
+      setLinkTinyInput("");
+      setLinkTinyOpen(false);
+    },
+    onError: (err: Error) => {
+      toast.error("Erro ao vincular", { description: err.message });
+    },
   });
 
   const moveMutation = useMutation({
@@ -684,6 +713,66 @@ export function OrderDetailSheet() {
                         Pedido Completo
                       </Button>
                     )}
+                    {!order.tiny_order_id && can("orders.edit") &&
+                      (linkTinyOpen ? (
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="text"
+                            placeholder="Nº pedido Tiny"
+                            value={linkTinyInput}
+                            onChange={(e) =>
+                              setLinkTinyInput(e.target.value.replace(/\D/g, ""))
+                            }
+                            className="h-8 w-28 text-xs"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && linkTinyInput.trim()) {
+                                linkTinyMutation.mutate(linkTinyInput.trim());
+                              }
+                              if (e.key === "Escape") {
+                                setLinkTinyOpen(false);
+                                setLinkTinyInput("");
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="h-8 gap-1 px-2"
+                            disabled={!linkTinyInput.trim() || linkTinyMutation.isPending}
+                            onClick={() => linkTinyMutation.mutate(linkTinyInput.trim())}
+                          >
+                            {linkTinyMutation.isPending ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Search className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            type="button"
+                            onClick={() => {
+                              setLinkTinyOpen(false);
+                              setLinkTinyInput("");
+                            }}
+                          >
+                            ✕
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-xs"
+                          type="button"
+                          onClick={() => setLinkTinyOpen(true)}
+                        >
+                          <Link2 className="h-3.5 w-3.5" />
+                          Vincular ao Tiny
+                        </Button>
+                      ))}
                     {canAny("suppliers.send_data", "suppliers.manage") &&
                       order.client_id &&
                       APROVADO_AND_AFTER.includes(order.status) &&
@@ -817,83 +906,6 @@ export function OrderDetailSheet() {
                   clientPhone={(order as any).client?.phone ?? null}
                   tinyId={(order as any).client?.tiny_id ?? null}
                 />
-
-                {/* Enviar ao fornecedor — visível quando pedido aprovado e com cliente */}
-                {canAny("suppliers.send_data", "suppliers.manage") &&
-                  order.client_id &&
-                  APROVADO_AND_AFTER.includes(order.status) &&
-                  (activeSuppliers.length === 1 ? (
-                    <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                      <p className="mb-2 text-sm font-medium text-foreground">
-                        Enviar ao fornecedor
-                      </p>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        disabled={!!sendingToSupplier}
-                        className="gap-2"
-                        onClick={() => {
-                          const supplier = activeSuppliers[0] as { id: string; name: string };
-                          handleSyncToSupplier(supplier.id);
-                        }}
-                      >
-                        <Send className="h-4 w-4" />
-                        {sendingToSupplier ? "Enviando..." : "Enviar ao Fornecedor"}
-                      </Button>
-                    </div>
-                  ) : activeSuppliers.length > 1 ? (
-                    <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                      <p className="mb-2 text-sm font-medium text-foreground">
-                        Enviar ao fornecedor
-                      </p>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            disabled={!!sendingToSupplier}
-                            className="gap-2"
-                          >
-                            <Send className="h-4 w-4" />
-                            {sendingToSupplier
-                              ? "Enviando..."
-                              : "Enviar ao Fornecedor"}
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="z-[110]">
-                          {activeSuppliers.map(
-                            (supplier: { id: string; name: string }) => (
-                              <DropdownMenuItem
-                                key={supplier.id}
-                                onClick={() => handleSyncToSupplier(supplier.id)}
-                              >
-                                {supplier.name}
-                              </DropdownMenuItem>
-                            )
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ) : suppliers.length > 0 ? (
-                    <div className="mt-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
-                      <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                        Enviar ao fornecedor
-                      </p>
-                      <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
-                        Ative um fornecedor e assine o termo em{" "}
-                        <span className="font-semibold">Configurações → Fornecedores</span>{" "}
-                        para habilitar o envio.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-4 rounded-lg border border-muted p-3">
-                      <p className="text-sm text-muted-foreground">
-                        Cadastre um fornecedor em{" "}
-                        <span className="font-medium">Configurações → Fornecedores</span>{" "}
-                        para enviar os dados do pedido.
-                      </p>
-                    </div>
-                  ))}
               </div>
 
               {/* Cards: Datas, Produtos */}

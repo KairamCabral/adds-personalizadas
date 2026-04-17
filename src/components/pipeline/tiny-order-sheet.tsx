@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sheet,
   SheetContent,
@@ -23,8 +23,11 @@ import {
   AlertTriangle,
   Printer,
   ExternalLink,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 interface TinyOrderSheetProps {
   open: boolean;
@@ -130,6 +133,8 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetProps) {
+  const queryClient = useQueryClient();
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["tiny-complete", orderId],
     queryFn: async () => {
@@ -149,6 +154,43 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
     enabled: open && !!orderId,
     staleTime: 60_000,
     retry: 1,
+  });
+
+  const syncBlingMutation = useMutation({
+    mutationFn: async () => {
+      if (!orderId) throw new Error("Sem orderId");
+      const res = await fetch(`/api/orders/${orderId}/sync-complete-bling`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+      return json;
+    },
+    onSuccess: (data: {
+      success?: boolean;
+      message?: string;
+      error?: string;
+      blingOrderNumber?: number;
+    }) => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      if (orderId) {
+        queryClient.invalidateQueries({ queryKey: ["order", orderId] });
+      }
+      if (data.success) {
+        toast.success(data.message ?? "Sincronizado com Bling", {
+          description: data.blingOrderNumber
+            ? `Pedido Bling #${data.blingOrderNumber}`
+            : undefined,
+        });
+      } else {
+        toast.warning("Envio parcial", { description: data.error });
+      }
+    },
+    onError: (err: Error) => {
+      toast.error("Erro ao sincronizar", { description: err.message });
+    },
   });
 
   const handlePrint = () => {
@@ -240,6 +282,21 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
                   >
                     {data.situacaoLabel}
                   </Badge>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="gap-1.5"
+                    type="button"
+                    onClick={() => syncBlingMutation.mutate()}
+                    disabled={syncBlingMutation.isPending}
+                  >
+                    {syncBlingMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    {syncBlingMutation.isPending ? "Enviando..." : "Sincronizar com Bling"}
+                  </Button>
                   <Button
                     variant="outline"
                     size="icon"
