@@ -195,37 +195,415 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
   });
 
   const handlePrint = () => {
-    const printContent = document.getElementById("tiny-order-print-area");
-    if (!printContent) return;
-    const printWindow = window.open("", "_blank", "width=800,height=1000");
+    if (!data) return;
+    const formatBRLPrint = (value: number | null | undefined): string => {
+      if (value == null || value === 0) return "—";
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format(value);
+    };
+    const formatDatePrint = (dateStr: string | null | undefined): string => {
+      if (!dateStr) return "—";
+      try {
+        const [ymd] = dateStr.split("T");
+        const [year, month, day] = ymd.split("-");
+        return `${day}/${month}/${year}`;
+      } catch {
+        return dateStr;
+      }
+    };
+    const buildItemRows = (items: any[], showValues: boolean) => {
+      if (!items || items.length === 0) return "";
+      return items
+        .map(
+          (item: any) => `
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;">${item.produto?.descricao ?? "—"}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:12px;font-family:monospace;color:#6b7280;">${item.produto?.sku ?? "—"}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:13px;font-weight:600;">${item.quantidade ?? 0}</td>
+          ${showValues ? `<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-size:13px;">${formatBRLPrint(item.valorUnitario)}</td>` : ""}
+          ${showValues ? `<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-size:13px;font-weight:600;">${formatBRLPrint((item.quantidade ?? 0) * (item.valorUnitario ?? 0))}</td>` : ""}
+        </tr>`
+        )
+        .join("");
+    };
+    const showValues = !data.hideValues;
+    const today = new Date().toLocaleDateString("pt-BR");
+    const html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>Pedido #${data.numeroPedido} — ADDS Brasil</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @page { margin: 20mm 15mm; size: A4; }
+        body {
+          font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+          color: #1f2937;
+          line-height: 1.5;
+          background: #fff;
+        }
+        /* HEADER */
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          padding-bottom: 16px;
+          border-bottom: 3px solid #0d9488;
+          margin-bottom: 20px;
+        }
+        .header-left h1 {
+          font-size: 22px;
+          font-weight: 800;
+          color: #0d9488;
+          letter-spacing: -0.5px;
+        }
+        .header-left .subtitle {
+          font-size: 12px;
+          color: #6b7280;
+          margin-top: 2px;
+        }
+        .header-right {
+          text-align: right;
+        }
+        .header-right .brand {
+          font-size: 18px;
+          font-weight: 800;
+          color: #0d9488;
+          letter-spacing: 2px;
+        }
+        .header-right .date {
+          font-size: 11px;
+          color: #9ca3af;
+          margin-top: 2px;
+        }
+        .badge {
+          display: inline-block;
+          padding: 3px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-top: 6px;
+        }
+        .badge-open { background: #dbeafe; color: #1d4ed8; }
+        .badge-approved { background: #dcfce7; color: #15803d; }
+        .badge-shipped { background: #ccfbf1; color: #0d9488; }
+        .badge-delivered { background: #d1fae5; color: #065f46; }
+        .badge-cancelled { background: #fee2e2; color: #991b1b; }
+        .badge-default { background: #f3f4f6; color: #4b5563; }
+        /* SECTIONS */
+        .section {
+          margin-bottom: 20px;
+        }
+        .section-title {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 1.5px;
+          color: #0d9488;
+          margin-bottom: 10px;
+          padding-bottom: 4px;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        /* CLIENT CARD */
+        .client-card {
+          background: #f9fafb;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 14px 16px;
+        }
+        .client-name {
+          font-size: 16px;
+          font-weight: 700;
+          margin-bottom: 4px;
+        }
+        .client-detail {
+          font-size: 12px;
+          color: #6b7280;
+          margin-bottom: 2px;
+        }
+        .client-address {
+          font-size: 12px;
+          color: #374151;
+          margin-top: 6px;
+          padding-top: 6px;
+          border-top: 1px solid #e5e7eb;
+        }
+        /* TABLES */
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          overflow: hidden;
+        }
+        th {
+          padding: 8px 12px;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          color: #fff;
+          text-align: left;
+        }
+        .th-personalized { background: #0d9488; }
+        .th-other { background: #6b7280; }
+        /* TOTALS */
+        .totals-card {
+          background: #f9fafb;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 12px 16px;
+        }
+        .total-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 4px 0;
+          font-size: 13px;
+        }
+        .total-row.grand {
+          border-top: 2px solid #1f2937;
+          margin-top: 6px;
+          padding-top: 8px;
+          font-size: 16px;
+          font-weight: 800;
+        }
+        /* SHIPPING */
+        .shipping-card {
+          background: #f0fdfa;
+          border: 1px solid #99f6e4;
+          border-radius: 8px;
+          padding: 12px 16px;
+          font-size: 13px;
+        }
+        .shipping-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 3px 0;
+        }
+        .shipping-label { color: #6b7280; }
+        .shipping-value { font-weight: 600; }
+        /* OBSERVATIONS */
+        .obs-card {
+          background: #fffbeb;
+          border-left: 4px solid #f59e0b;
+          border-radius: 0 8px 8px 0;
+          padding: 10px 14px;
+          font-size: 12px;
+          white-space: pre-wrap;
+          color: #92400e;
+        }
+        .obs-internal {
+          background: #eff6ff;
+          border-left-color: #3b82f6;
+          color: #1e40af;
+          margin-top: 8px;
+        }
+        /* FOOTER */
+        .footer {
+          margin-top: 24px;
+          padding-top: 12px;
+          border-top: 1px solid #e5e7eb;
+          display: flex;
+          justify-content: space-between;
+          font-size: 10px;
+          color: #9ca3af;
+        }
+        .footer-badges span {
+          display: inline-block;
+          background: #f3f4f6;
+          padding: 2px 8px;
+          border-radius: 4px;
+          margin-right: 6px;
+          font-size: 10px;
+          color: #6b7280;
+        }
+        /* 2-COL LAYOUT */
+        .two-col {
+          display: flex;
+          gap: 16px;
+        }
+        .two-col > div {
+          flex: 1;
+        }
+      </style>
+    </head>
+    <body>
+      <!-- HEADER -->
+      <div class="header">
+        <div class="header-left">
+          <h1>FICHA TÉCNICA — Pedido #${data.numeroPedido ?? "—"}</h1>
+          <div class="subtitle">CRM #${data.crmOrderNumber ?? "—"} · ${formatDatePrint(data.data)}</div>
+          <span class="badge ${
+            data.situacao === 0 ? "badge-open" :
+            data.situacao === 3 ? "badge-approved" :
+            [5,7].includes(data.situacao ?? -1) ? "badge-shipped" :
+            data.situacao === 6 ? "badge-delivered" :
+            data.situacao === 2 ? "badge-cancelled" : "badge-default"
+          }">${data.situacaoLabel ?? "—"}</span>
+        </div>
+        <div class="header-right">
+          <div class="brand">ADDS BRASIL</div>
+          <div class="date">Impresso em ${today}</div>
+        </div>
+      </div>
+      <!-- CLIENT + SHIPPING (2 colunas) -->
+      <div class="two-col">
+        <div class="section">
+          <div class="section-title">Cliente</div>
+          <div class="client-card">
+            <div class="client-name">${data.cliente?.nome ?? "—"}</div>
+            ${data.cliente?.cpfCnpj ? `<div class="client-detail">${data.cliente.tipoPessoa === "J" ? "CNPJ" : "CPF"}: ${data.cliente.cpfCnpj}</div>` : ""}
+            ${data.cliente?.endereco ? `
+              <div class="client-address">
+                📍 ${[
+                  data.cliente.endereco.endereco,
+                  data.cliente.endereco.numero && ("nº " + data.cliente.endereco.numero),
+                  data.cliente.endereco.complemento,
+                  data.cliente.endereco.bairro,
+                  data.cliente.endereco.municipio && (data.cliente.endereco.municipio + "/" + (data.cliente.endereco.uf ?? "")),
+                  data.cliente.endereco.cep && ("CEP " + data.cliente.endereco.cep),
+                ].filter(Boolean).join(", ")}
+              </div>
+            ` : ""}
+            ${!data.hideValues && (data.cliente?.telefone || data.cliente?.celular || data.cliente?.email) ? `
+              <div class="client-detail" style="margin-top:6px;">
+                ${[
+                  data.cliente.telefone && ("Tel: " + data.cliente.telefone),
+                  data.cliente.celular && ("Cel: " + data.cliente.celular),
+                  data.cliente.email && ("Email: " + data.cliente.email),
+                ].filter(Boolean).join(" · ")}
+              </div>
+            ` : ""}
+          </div>
+        </div>
+        ${data.transportador ? `
+          <div class="section">
+            <div class="section-title">Envio</div>
+            <div class="shipping-card">
+              ${data.transportador.nome ? `<div class="shipping-row"><span class="shipping-label">Transportador</span><span class="shipping-value">${data.transportador.nome}</span></div>` : ""}
+              ${data.transportador.formaEnvio ? `<div class="shipping-row"><span class="shipping-label">Forma de envio</span><span class="shipping-value">${data.transportador.formaEnvio}</span></div>` : ""}
+              ${data.transportador.codigoRastreamento ? `<div class="shipping-row"><span class="shipping-label">Rastreamento</span><span class="shipping-value" style="font-family:monospace;">${data.transportador.codigoRastreamento}</span></div>` : ""}
+            </div>
+          </div>
+        ` : ""}
+      </div>
+      <!-- ENDEREÇO DE ENTREGA (se existir e for diferente) -->
+      ${data.enderecoEntrega?.endereco ? `
+        <div class="section">
+          <div class="section-title">Endereço de Entrega</div>
+          <div class="shipping-card">
+            ${data.enderecoEntrega.nomeDestinatario ? `<strong>${data.enderecoEntrega.nomeDestinatario}</strong><br>` : ""}
+            ${[
+              data.enderecoEntrega.endereco,
+              data.enderecoEntrega.numero && ("nº " + data.enderecoEntrega.numero),
+              data.enderecoEntrega.complemento,
+              data.enderecoEntrega.bairro,
+              data.enderecoEntrega.municipio && (data.enderecoEntrega.municipio + "/" + (data.enderecoEntrega.uf ?? "")),
+              data.enderecoEntrega.cep && ("CEP " + data.enderecoEntrega.cep),
+            ].filter(Boolean).join(", ")}
+          </div>
+        </div>
+      ` : ""}
+      <!-- ITENS PERSONALIZADOS -->
+      ${(data.personalizedItems?.length ?? 0) > 0 ? `
+        <div class="section">
+          <div class="section-title">✨ Itens Personalizados (${data.personalizedItems.length})</div>
+          <table>
+            <thead>
+              <tr>
+                <th class="th-personalized">Produto</th>
+                <th class="th-personalized">SKU</th>
+                <th class="th-personalized" style="text-align:center;">Qtd</th>
+                ${showValues ? '<th class="th-personalized" style="text-align:right;">Valor Un.</th>' : ""}
+                ${showValues ? '<th class="th-personalized" style="text-align:right;">Total</th>' : ""}
+              </tr>
+            </thead>
+            <tbody>
+              ${buildItemRows(data.personalizedItems, showValues)}
+            </tbody>
+          </table>
+        </div>
+      ` : ""}
+      <!-- OUTROS ITENS -->
+      ${(data.otherItems?.length ?? 0) > 0 ? `
+        <div class="section">
+          <div class="section-title">📦 Outros Itens do Pedido (${data.otherItems.length})</div>
+          <table>
+            <thead>
+              <tr>
+                <th class="th-other">Produto</th>
+                <th class="th-other">SKU</th>
+                <th class="th-other" style="text-align:center;">Qtd</th>
+                ${showValues ? '<th class="th-other" style="text-align:right;">Valor Un.</th>' : ""}
+                ${showValues ? '<th class="th-other" style="text-align:right;">Total</th>' : ""}
+              </tr>
+            </thead>
+            <tbody>
+              ${buildItemRows(data.otherItems, showValues)}
+            </tbody>
+          </table>
+        </div>
+      ` : ""}
+      <!-- TOTAIS -->
+      ${showValues ? `
+        <div class="section">
+          <div class="section-title">Totais</div>
+          <div class="totals-card">
+            <div class="total-row">
+              <span>Produtos (${data.totalItems ?? 0} itens)</span>
+              <span>${formatBRLPrint(data.valorTotalProdutos)}</span>
+            </div>
+            ${(data.valorDesconto ?? 0) > 0 ? `
+              <div class="total-row" style="color:#dc2626;">
+                <span>Desconto</span>
+                <span>- ${formatBRLPrint(data.valorDesconto)}</span>
+              </div>
+            ` : ""}
+            ${(data.valorFrete ?? 0) > 0 ? `
+              <div class="total-row">
+                <span>Frete</span>
+                <span>${formatBRLPrint(data.valorFrete)}</span>
+              </div>
+            ` : ""}
+            <div class="total-row grand">
+              <span>Total do Pedido</span>
+              <span>${formatBRLPrint(data.valorTotalPedido)}</span>
+            </div>
+          </div>
+        </div>
+      ` : ""}
+      <!-- OBSERVAÇÕES -->
+      ${data.observacoes || data.observacoesInternas ? `
+        <div class="section">
+          <div class="section-title">Observações</div>
+          ${data.observacoes ? `<div class="obs-card">${data.observacoes}</div>` : ""}
+          ${data.observacoesInternas ? `<div class="obs-card obs-internal"><strong>Interna:</strong> ${data.observacoesInternas}</div>` : ""}
+        </div>
+      ` : ""}
+      <!-- FOOTER -->
+      <div class="footer">
+        <div class="footer-badges">
+          ${data.deposito?.nome ? `<span>Depósito: ${data.deposito.nome}</span>` : ""}
+          ${data.vendedor?.nome ? `<span>Vendedor: ${data.vendedor.nome}</span>` : ""}
+          ${data.dataPrevista ? `<span>Previsão: ${formatDatePrint(data.dataPrevista)}</span>` : ""}
+          ${data.dataEnvio ? `<span>Enviado: ${formatDatePrint(data.dataEnvio)}</span>` : ""}
+        </div>
+        <div>personalizadas.adds.com.br</div>
+      </div>
+    </body>
+    </html>
+  `;
+    const printWindow = window.open("", "_blank", "width=800,height=1100");
     if (!printWindow) return;
-    const num = data?.numeroPedido ?? "";
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Pedido #${num} - ADDS Brasil</title>
-        <style>
-          body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; color: #1a1a1a; max-width: 800px; margin: 0 auto; }
-          h1 { font-size: 22px; margin-bottom: 4px; }
-          h2 { font-size: 16px; color: #444; margin-top: 20px; margin-bottom: 8px; border-bottom: 2px solid #e5e5e5; padding-bottom: 4px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-          th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #e5e5e5; font-size: 13px; }
-          th { font-weight: 600; color: #666; font-size: 11px; text-transform: uppercase; }
-          .text-right { text-align: right; }
-          .client-info { background: #f9fafb; padding: 12px; border-radius: 8px; }
-          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-          .obs { background: #fffbeb; padding: 10px; border-radius: 6px; border-left: 3px solid #f59e0b; font-size: 13px; white-space: pre-wrap; }
-          @media print { body { padding: 12px; } }
-        </style>
-      </head>
-      <body>
-        ${printContent.innerHTML}
-      </body>
-      </html>
-    `);
+    printWindow.document.write(html);
     printWindow.document.close();
-    printWindow.print();
+    // Pequeno delay pra garantir que o CSS carregou
+    setTimeout(() => printWindow.print(), 300);
   };
 
   const situacaoKey =
