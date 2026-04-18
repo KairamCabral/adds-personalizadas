@@ -193,7 +193,6 @@ export async function buildOrderItemsFromTinyRaw(
   raw: Record<string, unknown>,
   orderId: string
 ): Promise<OrderItemInsert[]> {
-  const valor = raw.valor ?? raw.total ?? raw.valorTotal;
   const tinyItens =
     raw.itens ??
     raw.itensPedido ??
@@ -203,68 +202,125 @@ export async function buildOrderItemsFromTinyRaw(
 
   const itemsToInsert: OrderItemInsert[] = [];
 
-  if (Array.isArray(tinyItens) && tinyItens.length > 0) {
-    for (const ti of tinyItens) {
-      const t = ti as Record<string, unknown>;
-      const item = t.item ?? t.produto ?? ti;
-      if (!item || typeof item !== "object") continue;
-      const row = item as Record<string, unknown>;
-      const productName =
-        (row.nome as string | undefined) ??
-        (row.descricao as string | undefined) ??
-        (row.produto as { nome?: string; descricao?: string } | undefined)?.nome ??
-        (row.produto as { nome?: string; descricao?: string } | undefined)?.descricao ??
-        "Item";
-      const qty = Number(row.quantidade ?? row.qtd ?? 1) || 1;
-      const unitPrice =
-        row.valorUnitario ??
-        row.valor_unitario ??
-        row.preco ??
-        (row.produto as { preco?: number } | undefined)?.preco;
-      const totalPrice =
-        row.valorTotal ??
-        row.valor_total ??
-        row.valor ??
-        (unitPrice != null ? Number(unitPrice) * qty : null);
-
-      let productId: string | null = null;
-      const prodNested = row.produto as Record<string, unknown> | undefined;
-      const tinyProductId = prodNested?.id ?? row.produto_id ?? row.idProduto;
-      if (tinyProductId != null) {
-        const tid = typeof tinyProductId === "number" ? tinyProductId : Number(tinyProductId);
-        if (Number.isFinite(tid)) {
-          const { data: prod } = await supabase
-            .from("products")
-            .select("id")
-            .eq("tiny_id", tid)
-            .maybeSingle();
-          productId = prod?.id ?? null;
-        }
-      }
-
-      itemsToInsert.push({
-        order_id: orderId,
-        product_id: productId,
-        product_name: String(productName),
-        quantity: qty,
-        unit_price: unitPrice != null ? Number(unitPrice) : null,
-        total_price: totalPrice != null ? Number(totalPrice) : null,
-      });
-    }
+  if (!Array.isArray(tinyItens) || tinyItens.length === 0) {
+    return itemsToInsert;
   }
 
-  if (itemsToInsert.length === 0 && valor != null) {
-    const totalVal = Number(valor);
-    if (!isNaN(totalVal) && totalVal > 0) {
-      itemsToInsert.push({
-        order_id: orderId,
-        product_id: null,
-        product_name: "Pedido",
-        quantity: 1,
-        unit_price: totalVal,
-        total_price: totalVal,
-      });
+  // Pré-carregar produtos personalizados do CRM UMA VEZ
+  // (evita N queries se o pedido tiver muitos itens)
+  const { data: personalizedProducts } = await supabase
+    .from("products")
+    .select("id, tiny_id, bling_sku, bling_color_sku_map")
+    .eq("product_type", "personalizado");
+
+  type ProdMatcher = {
+    id: string;
+    tiny_id: number | null;
+    skus: Set<string>; // todos os SKUs (bling_sku + variações) em uppercase
+  };
+
+  const matchers: ProdMatcher[] = (personalizedProducts ?? []).map((p) => {
+    const skus = new Set<string>();
+    if (p.bling_sku && typeof p.bling_sku === "string") {
+      skus.add(p.bling_sku.toUpperCase().trim());
     }
+    if (p.bling_color_sku_map && typeof p.bling_color_sku_map === "object") {
+      for (const sku of Object.values(p.bling_color_sku_map as Record<string, unknown>)) {
+        if (typeof sku === "string") {
+          skus.add(sku.toUpperCase().trim());
+        }
+      }
+    }
+    return {
+      id: p.id,
+      tiny_id: p.tiny_id,
+      skus,
+    };
+  });
+
+  // Função pura de matching
+  const matchProduct = (
+    tinyProductId: number | null,
+    itemSku: string | null
+  ): string | null => {
+    const skuUpper = itemSku?.toUpperCase().trim() ?? "";
+    for (const m of matchers) {
+      // Match por tiny_id
+      if (tinyProductId != null && m.tiny_id === tinyProductId) {
+        return m.id;
+      }
+      // Match por SKU
+      if (skuUpper && m.skus.has(skuUpper)) {
+        return m.id;
+      }
+    }
+    return null;
+  };
+
+  for (const ti of tinyItens) {
+    const t = ti as Record<string, unknown>;
+    const item = t.item ?? t.produto ?? ti;
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+
+    const productName =
+      (row.nome as string | undefined) ??
+      (row.descricao as string | undefined) ??
+      (row.produto as { nome?: string; descricao?: string } | undefined)?.nome ??
+      (row.produto as { nome?: string; descricao?: string } | undefined)?.descricao ??
+      "Item";
+
+    const qty = Number(row.quantidade ?? row.qtd ?? 1) || 1;
+
+    const unitPrice =
+      row.valorUnitario ??
+      row.valor_unitario ??
+      row.preco ??
+      (row.produto as { preco?: number } | undefined)?.preco;
+
+    const totalPrice =
+      row.valorTotal ??
+      row.valor_total ??
+      row.valor ??
+      (unitPrice != null ? Number(unitPrice) * qty : null);
+
+    // Extrair tiny_id e SKU para matching
+    const prodNested = row.produto as Record<string, unknown> | undefined;
+    const tinyProductIdRaw = prodNested?.id ?? row.produto_id ?? row.idProduto;
+    let tinyProductId: number | null = null;
+    if (tinyProductIdRaw != null) {
+      const tid =
+        typeof tinyProductIdRaw === "number"
+          ? tinyProductIdRaw
+          : Number(tinyProductIdRaw);
+      tinyProductId = Number.isFinite(tid) ? tid : null;
+    }
+
+    const itemSku =
+      (typeof row.codigo === "string" ? row.codigo : null) ??
+      (typeof row.sku === "string" ? row.sku : null) ??
+      (typeof prodNested?.sku === "string" ? (prodNested.sku as string) : null) ??
+      (typeof prodNested?.codigo === "string" ? (prodNested.codigo as string) : null) ??
+      null;
+
+    const productId = matchProduct(tinyProductId, itemSku);
+
+    // FILTRO CRÍTICO: só cria order_item se produto foi matcheado (logo, é personalizado)
+    if (!productId) {
+      console.info(
+        `[tiny-order-import] Item "${productName}" (sku=${itemSku ?? "—"}, tiny_id=${tinyProductId ?? "—"}) IGNORADO no CRM: não bateu com produto personalizado cadastrado.`
+      );
+      continue;
+    }
+
+    itemsToInsert.push({
+      order_id: orderId,
+      product_id: productId,
+      product_name: String(productName),
+      quantity: qty,
+      unit_price: unitPrice != null ? Number(unitPrice) : null,
+      total_price: totalPrice != null ? Number(totalPrice) : null,
+    });
   }
 
   return itemsToInsert;
