@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sheet,
@@ -25,8 +26,19 @@ import {
   ExternalLink,
   Send,
   Loader2,
+  Unlink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 interface TinyOrderSheetProps {
@@ -135,6 +147,7 @@ function formatDate(dateStr: string | null | undefined): string {
 
 export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetProps) {
   const queryClient = useQueryClient();
+  const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["tiny-complete", orderId],
@@ -191,6 +204,33 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
     },
     onError: (err: Error) => {
       toast.error("Erro ao sincronizar", { description: err.message });
+    },
+  });
+
+  const unlinkTinyMutation = useMutation({
+    mutationFn: async () => {
+      if (!orderId) throw new Error("Sem orderId");
+      const res = await fetch(`/api/orders/${orderId}/unlink-tiny`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: "Erro ao desvincular" }));
+        throw new Error(errorData.error || "Erro ao desvincular do Tiny");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Pedido desvinculado do Tiny com sucesso.");
+      if (orderId) {
+        queryClient.invalidateQueries({ queryKey: ["order", orderId] });
+        queryClient.invalidateQueries({ queryKey: ["tiny-complete", orderId] });
+      }
+      setShowUnlinkConfirm(false);
+      onOpenChange(false); // fecha o sheet
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setShowUnlinkConfirm(false);
     },
   });
 
@@ -526,6 +566,22 @@ ${data.observacoes || data.observacoesInternas
                   </Button>
                   <Button
                     variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    type="button"
+                    onClick={() => setShowUnlinkConfirm(true)}
+                    disabled={unlinkTinyMutation.isPending}
+                    title="Desvincular pedido do Tiny"
+                  >
+                    {unlinkTinyMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Unlink className="h-3.5 w-3.5" />
+                    )}
+                    {unlinkTinyMutation.isPending ? "Desvinculando..." : "Desvincular"}
+                  </Button>
+                  <Button
+                    variant="outline"
                     size="icon"
                     onClick={handlePrint}
                     className="h-8 w-8"
@@ -847,6 +903,35 @@ ${data.observacoes || data.observacoesInternas
           </div>
         )}
       </SheetContent>
+      <AlertDialog open={showUnlinkConfirm} onOpenChange={setShowUnlinkConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desvincular pedido do Tiny?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isto vai remover o vínculo entre o pedido CRM #{data?.crmOrderNumber ?? "—"} e o pedido Tiny #{data?.numeroPedido}.
+              <br /><br />
+              O pedido continuará existindo no Tiny e no CRM, mas deixarão de estar conectados. Use esta ação quando o vínculo foi feito para o pedido errado.
+              <br /><br />
+              <strong>Esta ação é registrada no histórico do pedido.</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unlinkTinyMutation.isPending}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                unlinkTinyMutation.mutate();
+              }}
+              disabled={unlinkTinyMutation.isPending}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {unlinkTinyMutation.isPending ? "Desvinculando..." : "Sim, desvincular"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }
