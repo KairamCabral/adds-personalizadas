@@ -10,6 +10,7 @@ import {
   Image,
   AlertTriangle,
   FileText,
+  ArrowRight,
   ArrowRightLeft,
   Tag,
   Paperclip,
@@ -41,7 +42,7 @@ import {
 import { useNotifications } from "@/hooks/use-notifications";
 import { useUIStore } from "@/stores/ui.store";
 import { cn } from "@/lib/utils";
-import type { Notification } from "@/types/database.types";
+import type { NotificationWithClient } from "@/services/notifications.service";
 
 // ═══════════════════════════════════════
 // CONFIG DE TIPOS DE NOTIFICAÇÃO
@@ -134,13 +135,13 @@ const DEFAULT_CONFIG = {
 // ═══════════════════════════════════════
 // AGRUPAR POR TEMPO
 // ═══════════════════════════════════════
-function groupByTime(notifications: Notification[]) {
+function groupByTime(notifications: NotificationWithClient[]) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 86400000);
   const weekAgo = new Date(today.getTime() - 7 * 86400000);
 
-  const groups: { label: string; items: Notification[] }[] = [
+  const groups: { label: string; items: NotificationWithClient[] }[] = [
     { label: "Hoje", items: [] },
     { label: "Ontem", items: [] },
     { label: "Esta semana", items: [] },
@@ -178,17 +179,16 @@ export function NotificationPopover() {
   const [open, setOpen] = useState(false);
 
   // Clicar na notificação: marcar como lida + navegar + fechar popover
-  const handleClick = (notification: Notification) => {
+  const handleClick = (notification: NotificationWithClient) => {
     if (!notification.read_at) {
       markAsRead(notification.id);
     }
 
-    const data = notification.data as Record<string, unknown> | null;
-    if (data?.order_id) {
-      setSelectedOrderId(data.order_id as string);
+    if (notification.order_id) {
+      setSelectedOrderId(notification.order_id);
       setOpen(false);
       router.push("/pipeline");
-    } else if (data?.quote_id) {
+    } else if (notification.quote_id) {
       setOpen(false);
       router.push("/quotes");
     }
@@ -331,18 +331,35 @@ export function NotificationPopover() {
                             : "hover:bg-muted/50"
                         )}
                       >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteNotification(notification.id);
-                          }}
-                          className="absolute right-2 top-2 rounded p-1 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
-                          title="Remover notificação"
-                          aria-label="Remover notificação"
-                        >
-                          <X className="h-3 w-3 text-muted-foreground" />
-                        </button>
+                        <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          {(notification.order_id || notification.quote_id) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleClick(notification);
+                              }}
+                              className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
+                              title="Abrir card"
+                              aria-label="Abrir card"
+                            >
+                              Abrir
+                              <ArrowRight className="h-3 w-3" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotification(notification.id);
+                            }}
+                            className="rounded p-1 hover:bg-muted"
+                            title="Remover notificação"
+                            aria-label="Remover notificação"
+                          >
+                            <X className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                        </div>
                         {/* Ícone colorido */}
                         <div
                           className={cn(
@@ -354,7 +371,7 @@ export function NotificationPopover() {
                         </div>
 
                         {/* Conteúdo */}
-                        <div className="min-w-0 flex-1 pr-6">
+                        <div className="min-w-0 flex-1 pr-24">
                           <div className="flex items-start justify-between gap-2">
                             <p
                               className={cn(
@@ -371,6 +388,12 @@ export function NotificationPopover() {
                           {notification.message && (
                             <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                               {notification.message}
+                            </p>
+                          )}
+                          {notification.client_name && (
+                            <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-foreground/80">
+                              <span className="text-muted-foreground">Cliente:</span>
+                              {notification.client_name}
                             </p>
                           )}
                           <p className="mt-1 text-[10px] text-muted-foreground/70">
