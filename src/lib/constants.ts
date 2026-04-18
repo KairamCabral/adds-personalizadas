@@ -11,6 +11,7 @@ import {
   Receipt,
   Archive,
   Zap,
+  Link2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ export type OrderStatus =
   | "FAZER"
   | "AJUSTE"
   | "APROVACAO"
+  | "LINK_ENVIADO"
   | "CONFIRMACAO"
   | "APROVADO"
   | "PRODUCAO"
@@ -83,6 +85,16 @@ export const ORDER_STATUSES: StatusConfig[] = [
     bgColor: "bg-sky-50 dark:bg-sky-900/20",
     borderColor: "border-sky-200 dark:border-sky-800",
     dotColor: "bg-sky-400",
+  },
+  {
+    key: "LINK_ENVIADO",
+    label: "Link enviado",
+    shortLabel: "Link enviado",
+    icon: Link2,
+    color: "text-blue-600 dark:text-blue-400",
+    bgColor: "bg-blue-50 dark:bg-blue-900/20",
+    borderColor: "border-blue-200 dark:border-blue-800",
+    dotColor: "bg-blue-500",
   },
   {
     key: "CONFIRMACAO",
