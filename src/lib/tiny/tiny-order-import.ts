@@ -3,6 +3,73 @@ import { tinyApiGet, TinyTokenExpiredError } from "@/lib/tiny-api";
 import type { Database } from "@/types/database.types";
 import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
 
+/**
+ * Verifica se o pedido é de personalizadas.
+ * Critérios (OU, case-insensitive, subcadeia "personaliz"):
+ * - Tag/marcador
+ * - Categoria
+ * - Depósito
+ */
+function isPersonalizadasOrder(raw: Record<string, unknown>): {
+  isPersonalizadas: boolean;
+  reason: string;
+} {
+  const needle = "personaliz";
+  const contains = (s: unknown): boolean => {
+    if (typeof s !== "string") return false;
+    return s.toLowerCase().includes(needle);
+  };
+
+  // 1. Tags / marcadores (formatos comuns do Tiny V3)
+  const marcadores =
+    (raw.marcadores as unknown[]) ??
+    (raw.tags as unknown[]) ??
+    [];
+  if (Array.isArray(marcadores)) {
+    for (const m of marcadores) {
+      if (typeof m === "string" && contains(m)) {
+        return { isPersonalizadas: true, reason: `tag="${m}"` };
+      }
+      if (m && typeof m === "object") {
+        const nome = (m as { nome?: string; tag?: string; descricao?: string }).nome ??
+                     (m as { tag?: string }).tag ??
+                     (m as { descricao?: string }).descricao;
+        if (contains(nome)) {
+          return { isPersonalizadas: true, reason: `tag="${nome}"` };
+        }
+      }
+    }
+  }
+
+  // 2. Categoria
+  const categoria = raw.categoria as Record<string, unknown> | string | undefined;
+  if (typeof categoria === "string" && contains(categoria)) {
+    return { isPersonalizadas: true, reason: `categoria="${categoria}"` };
+  }
+  if (categoria && typeof categoria === "object") {
+    const nome = (categoria as { nome?: string; descricao?: string }).nome ??
+                 (categoria as { descricao?: string }).descricao;
+    if (contains(nome)) {
+      return { isPersonalizadas: true, reason: `categoria="${nome}"` };
+    }
+  }
+
+  // 3. Depósito
+  const deposito = raw.deposito as Record<string, unknown> | string | undefined;
+  if (typeof deposito === "string" && contains(deposito)) {
+    return { isPersonalizadas: true, reason: `deposito="${deposito}"` };
+  }
+  if (deposito && typeof deposito === "object") {
+    const nome = (deposito as { nome?: string; descricao?: string }).nome ??
+                 (deposito as { descricao?: string }).descricao;
+    if (contains(nome)) {
+      return { isPersonalizadas: true, reason: `deposito="${nome}"` };
+    }
+  }
+
+  return { isPersonalizadas: false, reason: "nenhum critério bateu" };
+}
+
 /** Labels de situação (string) como no webhook Tiny */
 const TINY_SITUACAO_STRING_TO_STATUS: Record<
   string,
@@ -226,6 +293,19 @@ export async function importTinyOrderFromApi(
     return { ok: false, message: "Resposta Tiny sem pedido válido." };
   }
 
+  // Filtrar: só criar pedido se for de personalizadas
+  const filterCheck = isPersonalizadasOrder(raw);
+  if (!filterCheck.isPersonalizadas) {
+    console.info(
+      `[tiny-order-import] Pedido Tiny #${raw.id} IGNORADO (${filterCheck.reason}). ` +
+        `raw keys: ${Object.keys(raw).join(",")}`
+    );
+    return {
+      ok: true,
+      message: `Pedido Tiny #${raw.id} não é personalizada (${filterCheck.reason}).`,
+    };
+  }
+
   const idVal = raw.id;
   const resolvedTinyOrderId =
     typeof idVal === "number" ? idVal : Number(idVal);
@@ -312,7 +392,17 @@ export async function importTinyOrderFromApi(
     raw.dataPedido ?? raw.data_pedido ?? raw.data ?? raw.dataCriacao;
   const situacao = raw.situacao ?? raw.status ?? 0;
 
-  const status = mapTinySituacaoToCrmStatus(situacao);
+  // Checar se pedido já existe no CRM — se sim, preservar status via mapeamento; se não, AUTOMATICO
+  const { data: existingOrder } = await supabase
+    .from("orders")
+    .select("id")
+    .eq("tiny_order_id", resolvedTinyOrderId)
+    .maybeSingle();
+
+  const isNewOrder = !existingOrder;
+  const status: Database["public"]["Enums"]["order_status"] = isNewOrder
+    ? "AUTOMATICO"
+    : mapTinySituacaoToCrmStatus(situacao);
   const position = await nextPositionForOrderStatus(supabase, status);
 
   const orderData: Database["public"]["Tables"]["orders"]["Insert"] = {
