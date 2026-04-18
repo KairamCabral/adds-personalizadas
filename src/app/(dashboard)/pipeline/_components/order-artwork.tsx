@@ -747,6 +747,23 @@ function LatestArtworkCard({
                       added_by: user?.id ?? null,
                     });
                   }
+                  // Move para LINK_ENVIADO somente se estiver em APROVACAO
+                  // (não altera status se pedido já avançou)
+                  const { data: currentOrder } = await supabase
+                    .from('orders')
+                    .select('status')
+                    .eq('id', orderId)
+                    .maybeSingle();
+
+                  if (currentOrder?.status === 'APROVACAO') {
+                    await supabase
+                      .from('orders')
+                      .update({
+                        status: 'LINK_ENVIADO',
+                        updated_at: new Date().toISOString(),
+                      })
+                      .eq('id', orderId);
+                  }
                   queryClient.invalidateQueries({ queryKey: ["orders"] });
                   queryClient.invalidateQueries({ queryKey: ["order", orderId] });
                   toast.success("Link copiado e marcado como enviado!");
