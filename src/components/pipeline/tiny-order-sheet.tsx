@@ -111,6 +111,8 @@ type TinyCompleteResponse = {
   vendedor?: { id?: number; nome?: string } | null;
   code?: string;
   hideValues?: boolean;
+  /** Definido pelo GET tiny-complete (mesma regra do servidor que POST unlink-tiny). */
+  canUnlinkTiny?: boolean;
 };
 
 const SITUACAO_COLORS: Record<number, string> = {
@@ -149,7 +151,6 @@ function formatDate(dateStr: string | null | undefined): string {
 export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetProps) {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
-  const canUnlinkTiny = can("orders.edit");
   const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
@@ -172,6 +173,9 @@ export function TinyOrderSheet({ open, onOpenChange, orderId }: TinyOrderSheetPr
     staleTime: 60_000,
     retry: 1,
   });
+
+  /** Preferir flag do servidor (evita perfil desatualizado no client em produção). */
+  const showUnlinkTiny = Boolean(data?.canUnlinkTiny ?? can("orders.edit"));
 
   const syncBlingMutation = useMutation({
     mutationFn: async () => {
@@ -532,8 +536,8 @@ ${data.observacoes || data.observacoesInternas
         {data && (
           <div id="tiny-order-print-area" className="flex flex-1 flex-col p-6">
             <SheetHeader className="pb-4 text-left">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                <div className="min-w-0 flex-1">
                   <SheetTitle className="text-xl font-bold">
                     Pedido Tiny #{data.numeroPedido}
                   </SheetTitle>
@@ -541,7 +545,7 @@ ${data.observacoes || data.observacoesInternas
                     CRM #{data.crmOrderNumber ?? "—"} · {formatDate(data.data)}
                   </SheetDescription>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex min-w-0 w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-initial">
                   <Badge
                     variant="outline"
                     className={
@@ -567,7 +571,7 @@ ${data.observacoes || data.observacoesInternas
                     )}
                     {syncBlingMutation.isPending ? "Enviando..." : "Sincronizar com Bling"}
                   </Button>
-                  {canUnlinkTiny && (
+                  {showUnlinkTiny && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -908,7 +912,7 @@ ${data.observacoes || data.observacoesInternas
           </div>
         )}
       </SheetContent>
-      {canUnlinkTiny && (
+      {showUnlinkTiny && (
         <AlertDialog open={showUnlinkConfirm} onOpenChange={setShowUnlinkConfirm}>
           <AlertDialogContent>
             <AlertDialogHeader>

@@ -146,6 +146,9 @@ export async function GET(
       .single();
 
     const isPrestador = profile?.role === "PRESTADOR";
+    /** Mesma regra que POST /unlink-tiny — UI não depende só do hook client-side. */
+    const canUnlinkTiny =
+      profile?.role === "MASTER" || profile?.role === "GESTOR";
 
     let tinyOrder: unknown;
     try {
@@ -310,6 +313,8 @@ export async function GET(
 
       // Flag pra frontend esconder valores monetários
       hideValues: isPrestador,
+
+      canUnlinkTiny,
     };
 
     return NextResponse.json(response);
