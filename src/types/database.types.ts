@@ -1615,6 +1615,7 @@ export type Database = {
         | "FAZER"
         | "AJUSTE"
         | "APROVACAO"
+        | "LINK_ENVIADO"
         | "AGUARDANDO_APROVACAO"
         | "CONFIRMACAO"
         | "APROVADO"
@@ -1800,6 +1801,7 @@ export const Constants = {
         "FAZER",
         "AJUSTE",
         "APROVACAO",
+        "LINK_ENVIADO",
         "AGUARDANDO_APROVACAO",
         "CONFIRMACAO",
         "APROVADO",
