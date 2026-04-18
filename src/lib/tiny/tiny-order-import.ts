@@ -210,20 +210,26 @@ export async function buildOrderItemsFromTinyRaw(
   // (evita N queries se o pedido tiver muitos itens)
   const { data: personalizedProducts } = await supabase
     .from("products")
-    .select("id, tiny_id, bling_sku, bling_color_sku_map")
+    .select("id, tiny_id, bling_sku, bling_color_sku_map, tiny_color_map")
     .eq("product_type", "personalizado");
 
   type ProdMatcher = {
     id: string;
-    tiny_id: number | null;
-    skus: Set<string>; // todos os SKUs (bling_sku + variações) em uppercase
+    tiny_id: number | null; // tiny_id do produto pai
+    variationTinyIds: Set<number>; // tiny_ids das variações em tiny_color_map
+    skus: Set<string>; // todos os SKUs em uppercase (bling + tiny variações)
   };
 
   const matchers: ProdMatcher[] = (personalizedProducts ?? []).map((p) => {
     const skus = new Set<string>();
+    const variationTinyIds = new Set<number>();
+
+    // bling_sku do produto pai
     if (p.bling_sku && typeof p.bling_sku === "string") {
       skus.add(p.bling_sku.toUpperCase().trim());
     }
+
+    // SKUs do bling_color_sku_map (variações no Bling)
     if (p.bling_color_sku_map && typeof p.bling_color_sku_map === "object") {
       for (const sku of Object.values(p.bling_color_sku_map as Record<string, unknown>)) {
         if (typeof sku === "string") {
@@ -231,9 +237,29 @@ export async function buildOrderItemsFromTinyRaw(
         }
       }
     }
+
+    // tiny_color_map: adicionar SKUs Tiny e tiny_ids das variações
+    if (p.tiny_color_map && typeof p.tiny_color_map === "object") {
+      for (const variation of Object.values(p.tiny_color_map as Record<string, unknown>)) {
+        if (variation && typeof variation === "object") {
+          const v = variation as { sku?: unknown; tiny_id?: unknown };
+          if (typeof v.sku === "string") {
+            skus.add(v.sku.toUpperCase().trim());
+          }
+          if (typeof v.tiny_id === "number" && Number.isFinite(v.tiny_id)) {
+            variationTinyIds.add(v.tiny_id);
+          } else if (typeof v.tiny_id === "string") {
+            const n = Number(v.tiny_id);
+            if (Number.isFinite(n)) variationTinyIds.add(n);
+          }
+        }
+      }
+    }
+
     return {
       id: p.id,
       tiny_id: p.tiny_id,
+      variationTinyIds,
       skus,
     };
   });
@@ -245,11 +271,15 @@ export async function buildOrderItemsFromTinyRaw(
   ): string | null => {
     const skuUpper = itemSku?.toUpperCase().trim() ?? "";
     for (const m of matchers) {
-      // Match por tiny_id
+      // Match 1: tiny_id do produto pai
       if (tinyProductId != null && m.tiny_id === tinyProductId) {
         return m.id;
       }
-      // Match por SKU
+      // Match 2: tiny_id de uma variação em tiny_color_map
+      if (tinyProductId != null && m.variationTinyIds.has(tinyProductId)) {
+        return m.id;
+      }
+      // Match 3: SKU (pode bater em bling_sku, bling_color_sku_map ou sku de tiny_color_map)
       if (skuUpper && m.skus.has(skuUpper)) {
         return m.id;
       }
