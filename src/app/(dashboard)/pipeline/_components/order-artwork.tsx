@@ -31,6 +31,7 @@ import {
   Users,
   Loader2,
   ChevronRight,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -295,7 +296,12 @@ function LatestArtworkCard({
     onSettled: () => setLinkLoading(false),
   });
 
-  const config = STATUS_CONFIG[primary?.status ?? "PENDENTE"] ?? { label: "", color: "" };
+  const aggregatedStatus = (() => {
+    if (variations.some((v) => v.status === "APROVADA")) return "APROVADA";
+    if (variations.some((v) => v.status === "AJUSTE_SOLICITADO")) return "AJUSTE_SOLICITADO";
+    return primary?.status ?? "PENDENTE";
+  })();
+  const config = STATUS_CONFIG[aggregatedStatus] ?? { label: "", color: "" };
   const current = variations[selectedIdx] ?? primary;
 
   return (
@@ -391,6 +397,7 @@ function LatestArtworkCard({
               {variations.map((aw, i) => {
                 const isAdj = aw.status === "AJUSTE_SOLICITADO";
                 const isApproved = aw.status === "APROVADA";
+                const isDiscarded = aw.status === "DESCARTADA";
                 return (
                   <button
                     key={aw.id}
@@ -403,27 +410,41 @@ function LatestArtworkCard({
                           ? "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300"
                           : isApproved
                           ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                          : isDiscarded
+                          ? "border-muted-foreground/40 bg-muted/60 text-muted-foreground opacity-75"
                           : "border-primary bg-primary/10 text-primary"
                         : isAdj
                         ? "border-amber-500/40 bg-amber-500/5 text-amber-600/80 hover:border-amber-500/70 dark:text-amber-400/80"
                         : isApproved
                         ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-600/80 hover:border-emerald-500/70 dark:text-emerald-400/80"
+                        : isDiscarded
+                        ? "border-dashed border-border bg-muted/20 text-muted-foreground/60 opacity-60 hover:opacity-80"
                         : "border-border bg-muted/30 text-muted-foreground hover:border-primary/50"
                     )}
                   >
                     {isAdj && <AlertTriangle className="h-3 w-3" />}
                     {isApproved && <Check className="h-3 w-3" />}
+                    {isDiscarded && <Ban className="h-3 w-3" />}
                     Opção {i + 1}
                     {isAdj && <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">AJUSTAR</span>}
                     {isApproved && <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">OK</span>}
+                    {isDiscarded && <span className="rounded-full bg-muted-foreground/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">NÃO ESCOLHIDA</span>}
                   </button>
                 );
               })}
             </div>
-            <VariationPreview artwork={current} onZoom={() => current && onZoom(current)} />
+            <VariationPreview
+              artwork={current}
+              onZoom={() => current && onZoom(current)}
+              isDiscarded={current?.status === "DESCARTADA"}
+            />
           </div>
         ) : (
-          <VariationPreview artwork={primary} onZoom={() => primary && onZoom(primary)} />
+          <VariationPreview
+            artwork={primary}
+            onZoom={() => primary && onZoom(primary)}
+            isDiscarded={primary?.status === "DESCARTADA"}
+          />
         )}
       </div>
 
@@ -748,9 +769,11 @@ function LatestArtworkCard({
 function VariationPreview({
   artwork,
   onZoom,
+  isDiscarded = false,
 }: {
   artwork: Artwork;
   onZoom: () => void;
+  isDiscarded?: boolean;
 }) {
   if (!artwork) return null;
   const isPdf =
@@ -760,9 +783,17 @@ function VariationPreview({
   if (isPdf) {
     return (
       <div
-        className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-muted/30 p-4 transition-colors hover:bg-muted/50"
+        className={cn(
+          "relative flex cursor-pointer items-center gap-3 rounded-lg border bg-muted/30 p-4 transition-colors hover:bg-muted/50",
+          isDiscarded ? "border-dashed opacity-60 grayscale" : "border-border"
+        )}
         onClick={() => window.open(artwork.file_url, "_blank")}
       >
+        {isDiscarded && (
+          <div className="absolute left-2 top-2 rounded-md border border-muted-foreground/30 bg-background/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Não escolhida
+          </div>
+        )}
         <FileText className="h-12 w-12 shrink-0 text-primary" />
         <div>
           <p className="font-medium text-foreground">{artwork.file_name ?? "Arquivo PDF"}</p>
@@ -778,14 +809,25 @@ function VariationPreview({
   return (
     <>
       <div
-        className="relative cursor-pointer overflow-hidden rounded-lg border border-border bg-muted/30"
+        className={cn(
+          "relative cursor-pointer overflow-hidden rounded-lg border bg-muted/30",
+          isDiscarded ? "border-dashed border-muted-foreground/30 opacity-70" : "border-border"
+        )}
         onClick={onZoom}
       >
         <img
           src={artwork.file_url}
           alt={`Arte v${artwork.version}`}
-          className="aspect-video w-full object-contain"
+          className={cn(
+            "aspect-video w-full object-contain",
+            isDiscarded && "grayscale"
+          )}
         />
+        {isDiscarded && (
+          <div className="absolute left-2 top-2 rounded-md border border-muted-foreground/30 bg-background/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Não escolhida
+          </div>
+        )}
         <div className="absolute bottom-2 right-2 rounded bg-black/50 px-2 py-1 text-xs text-white">
           Clique para ampliar
         </div>
