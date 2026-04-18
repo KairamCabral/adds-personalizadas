@@ -499,6 +499,8 @@ export async function processTinyWebhookNotification(
   switch (tipo) {
     case "pedido":
     case "pedidoenviado":
+    case "inclusao_pedido":
+    case "atualizacao_pedido":
       return handlePedido(supabase, dados);
 
     case "notafiscal":
@@ -513,6 +515,17 @@ export async function processTinyWebhookNotification(
 
     case "contato":
       return handleContato(supabase, dados);
+
+    case "rastreio":
+      // Evento de rastreio recebido — por enquanto só logar.
+      // O rastreio já vem junto com atualizacao_pedido em alguns casos.
+      console.info(
+        `[Webhook Tiny] Rastreio recebido para tiny_order_id=${dados.id ?? dados.idPedido ?? "desconhecido"}`
+      );
+      return {
+        ok: true,
+        message: "Rastreio recebido (não processado nesta versão).",
+      };
 
     default:
       console.warn(`[Webhook Tiny] Tipo não tratado: "${tipo}"`);
