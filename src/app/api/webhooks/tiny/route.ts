@@ -9,6 +9,7 @@
  * Relay opcional: TINY_RELAY_URL — repassa o body bruto após o parse.
  */
 
+import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
@@ -17,6 +18,11 @@ import {
   processTinyWebhookNotification,
   relayWebhook,
 } from "@/lib/tiny/process-webhook-notification";
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 function getServiceClient() {
   return createClient<Database>(
@@ -27,16 +33,17 @@ function getServiceClient() {
 
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.TINY_WEBHOOK_SECRET;
-  if (webhookSecret) {
-    const urlToken = request.nextUrl.searchParams.get("token");
-    const bodyToken = request.headers
-      .get("authorization")
-      ?.replace("Bearer ", "");
+  if (!webhookSecret) {
+    console.error("[Webhook Tiny] TINY_WEBHOOK_SECRET não configurado - fail-closed");
+    return NextResponse.json({ error: "Webhook não configurado" }, { status: 503 });
+  }
 
-    if (urlToken !== webhookSecret && bodyToken !== webhookSecret) {
-      console.warn("[Webhook Tiny] Token inválido. Recebido:", urlToken);
-      return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-    }
+  const urlToken = request.nextUrl.searchParams.get("token") ?? "";
+  const bodyToken = request.headers.get("authorization")?.replace("Bearer ", "") ?? "";
+
+  if (!safeCompare(urlToken, webhookSecret) && !safeCompare(bodyToken, webhookSecret)) {
+    console.warn("[Webhook Tiny] Token inválido recebido");
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   const { payload, rawBody, contentType } = await parseTinyPayloadFromRequest(request);

@@ -41,12 +41,12 @@ export async function POST() {
     const { error } = await (admin as any).rpc("exec_sql", { sql: fullSql });
 
     if (error) {
+      console.error("[run-migration] Falha ao executar. SQL:", fullSql);
       return NextResponse.json(
         {
           error: "Não foi possível aplicar as migrations automaticamente.",
           instructions:
-            "Execute o SQL abaixo no Supabase → SQL Editor:",
-          sql: fullSql,
+            "Consulte os logs do servidor e execute manualmente via Supabase SQL Editor se necessário",
         },
         { status: 500 }
       );
@@ -55,11 +55,11 @@ export async function POST() {
     return NextResponse.json({ ok: true, message: "Migrations aplicadas com sucesso!" });
   } catch (err) {
     const fullSql = MIGRATIONS.join("\n");
+    console.error("[run-migration] Falha ao executar. SQL:", fullSql, "Erro:", err);
     return NextResponse.json(
       {
-        error: "Erro interno",
-        instructions: "Execute o SQL abaixo no Supabase → SQL Editor:",
-        sql: fullSql,
+        error: "Erro interno ao executar migration",
+        instructions: "Consulte os logs do servidor e execute manualmente via Supabase SQL Editor se necessário",
       },
       { status: 500 }
     );

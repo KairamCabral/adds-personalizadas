@@ -169,8 +169,10 @@ export async function tinyApiGet<T = any>(endpoint: string): Promise<T> {
   const base = getTinyApiBase();
   const url = `${base}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
-  console.log("[Tiny API] Token usado:", token?.substring(0, 20) + "...");
-  console.log("[Tiny API] URL final:", url);
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[Tiny API] Token usado:", token?.substring(0, 20) + "...");
+    console.log("[Tiny API] URL final:", url);
+  }
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
@@ -206,8 +208,10 @@ export async function tinyApiPost<T = any>(
   const base = getTinyApiBase();
   const url = `${base}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
-  console.log("[Tiny API] Token usado:", token?.substring(0, 20) + "...");
-  console.log("[Tiny API] URL final:", url);
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[Tiny API] Token usado:", token?.substring(0, 20) + "...");
+    console.log("[Tiny API] URL final:", url);
+  }
 
   const res = await fetch(url, {
     method: "POST",
