@@ -984,7 +984,8 @@ async function buildBlingOrderPayload(
   blingContactId: number,
   apiToken: string,
   baseUrl: string,
-  db: SupabaseClient<Database>
+  db: SupabaseClient<Database>,
+  onlyMappedProducts = false
 ): Promise<BlingOrderPayload> {
   const { data: order, error: orderError } = await db
     .from("orders")
@@ -995,7 +996,7 @@ async function buildBlingOrderPayload(
       created_by_profile:profiles!orders_created_by_fkey(full_name, email),
       items:order_items(
         *,
-        product:products(id, name, bling_sku, bling_color_sku_map)
+        product:products(id, name, bling_sku, bling_color_sku_map, tiny_color_map)
       )
     `
     )
@@ -1053,21 +1054,25 @@ async function buildBlingOrderPayload(
   }
 
   // === ITENS EXTRAS DO TINY (não-personalizados) ===
-  // Se o pedido tem vínculo com Tiny, busca itens que não estão no CRM
+  // Se onlyMappedProducts=true, pula completamente — apenas produtos com SKU Bling mapeado são enviados.
+  // Caso contrário, busca itens do Tiny que não foram incluídos pelos SKUs Bling.
   const tinyOrderId = order.tiny_order_id;
-  if (tinyOrderId) {
+  if (tinyOrderId && !onlyMappedProducts) {
     try {
       const { tinyApiGet } = await import("@/lib/tiny-api");
       const tinyResponse = await tinyApiGet(`/pedidos/${tinyOrderId}`);
       const tinyPedido = unwrapTinyPedidoFromApiResponse(tinyResponse);
       const tinyItems = normalizeTinyApiLineItems(tinyPedido?.itens);
 
+      // Conjunto de SKUs já adicionados: Bling SKUs + Tiny SKUs (via tiny_color_map)
       const addedSkus = new Set<string>();
       for (const item of order.items ?? []) {
         const product = item.product as {
           bling_sku?: string | null;
           bling_color_sku_map?: Record<string, string> | null;
+          tiny_color_map?: Record<string, { sku?: string; tiny_id?: number | string } | null> | null;
         } | null;
+
         if (product?.bling_sku) {
           addedSkus.add(product.bling_sku.toUpperCase().trim());
         }
@@ -1076,42 +1081,49 @@ async function buildBlingOrderPayload(
             if (typeof sku === "string") addedSkus.add(sku.toUpperCase().trim());
           }
         }
+        // Inclui SKUs do Tiny para evitar duplicatas quando o mesmo item vem do Tiny com SKU diferente
+        if (product?.tiny_color_map && typeof product.tiny_color_map === "object") {
+          for (const variation of Object.values(product.tiny_color_map)) {
+            if (variation && typeof variation === "object" && typeof variation.sku === "string") {
+              addedSkus.add(variation.sku.toUpperCase().trim());
+            }
+          }
+        }
       }
+
+      console.info(`[bling] SKUs já mapeados (deduplicação): ${[...addedSkus].join(", ")}`);
 
       const extraTinyItems = tinyItems.filter((ti) => {
         const sku = ti.sku.toUpperCase().trim();
         return sku.length > 0 && !addedSkus.has(sku);
       });
 
+      if (extraTinyItems.length > 0) {
+        console.info(`[bling] ${extraTinyItems.length} item(ns) extra(s) do Tiny (não mapeados no CRM): ${extraTinyItems.map((i) => i.sku).join(", ")}`);
+      }
+
       for (const tinyItem of extraTinyItems) {
         const sku = tinyItem.sku;
         const descricao = tinyItem.descricao || "Item do pedido";
         const quantidade = tinyItem.quantidade > 0 ? tinyItem.quantidade : 1;
-        const valor = tinyItem.valorUnitario > 0 ? tinyItem.valorUnitario : 0.01;
 
         const blingProductId = await findBlingProductByCode(sku, apiToken, baseUrl);
         if (blingProductId) {
           itens.push({
             produto: { id: blingProductId },
             quantidade,
-            valor,
+            valor: 0.01,
           });
         } else {
           itens.push({
             descricao: `${descricao} (${sku})`,
             quantidade,
-            valor,
+            valor: 0.01,
           } as BlingOrderPayload["itens"][number]);
           unmappedItems.push(
             `${descricao} x${quantidade} [SKU Tiny: ${sku} — não encontrado no Bling]`
           );
         }
-      }
-
-      if (extraTinyItems.length > 0) {
-        console.log(
-          `[bling] Adicionados ${extraTinyItems.length} item(ns) extra(s) do Tiny ao pedido Bling`
-        );
       }
     } catch (err) {
       console.warn(
@@ -1119,6 +1131,8 @@ async function buildBlingOrderPayload(
         err instanceof Error ? err.message : err
       );
     }
+  } else if (onlyMappedProducts) {
+    console.info(`[bling] only_mapped_products=true — itens extras do Tiny ignorados`);
   }
 
   const obsLines: string[] = [];
@@ -1287,12 +1301,16 @@ export async function createBlingOrder(
 
   const clientId = orderData.client_id;
 
+  const onlyMappedProducts = !!(supplier as { only_mapped_products?: boolean }).only_mapped_products;
+  console.info(`[bling] createBlingOrder: only_mapped_products=${onlyMappedProducts}`);
+
   const payload = await buildBlingOrderPayload(
     orderId,
     blingContactId,
     apiToken,
     baseUrl,
-    db
+    db,
+    onlyMappedProducts
   );
 
   if (payload.itens.length === 0) {

@@ -57,6 +57,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { normalizeSharedFields } from "@/services/bling.service";
 import type { Supplier, SupplierAgreement, SupplierDataLog } from "@/types/database.types";
@@ -199,6 +200,28 @@ export function SupplierDetail({
                         })
                       }
                     />
+                  </div>
+
+                  <div className="rounded-lg border border-border p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm font-medium">
+                          Enviar apenas produtos mapeados
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Quando ativo, somente produtos com SKU Bling configurado são enviados ao fornecedor. Itens extras vindos do Tiny ERP são ignorados.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={!!(supplier as any).only_mapped_products}
+                        onCheckedChange={(checked) =>
+                          updateMutation.mutate({
+                            id: supplierId,
+                            data: { only_mapped_products: checked } as never,
+                          })
+                        }
+                      />
+                    </div>
                   </div>
                 </TabsContent>
 
