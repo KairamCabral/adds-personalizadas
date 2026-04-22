@@ -23,6 +23,7 @@ import {
   Smartphone,
   RotateCcw,
   Loader2,
+  Check,
 } from "lucide-react";
 import {
   Tooltip,
@@ -31,9 +32,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Order, OrderLabel, Profile } from "@/types/database.types";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { resendToBling } from "@/services/orders.service";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { resendToBling, listAssignableProfiles, updateOrderAssignee } from "@/services/orders.service";
 import { toast } from "sonner";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 type BlingLog = {
   id: string;
@@ -83,6 +90,132 @@ interface KanbanCardProps {
   };
   onClick: () => void;
   isDragging?: boolean;
+}
+
+function OrderAssigneeAvatar({
+  order,
+}: {
+  order: {
+    id: string;
+    assigned_user?: Pick<Profile, "full_name" | "avatar_url"> | null;
+    created_user?: Pick<Profile, "full_name" | "avatar_url"> | null;
+  };
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["assignable-profiles"],
+    queryFn: listAssignableProfiles,
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const mutation = useMutation({
+    mutationFn: (assignedTo: string | null) =>
+      updateOrderAssignee(order.id, assignedTo),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", order.id] });
+      toast.success("Responsável atualizado!");
+      setOpen(false);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Erro ao atualizar";
+      toast.error(msg);
+    },
+  });
+
+  const currentUser = order.assigned_user ?? order.created_user;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className="focus:outline-none"
+          aria-label="Alterar responsável"
+        >
+          {currentUser ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-primary/50 transition-all",
+                      generateAvatarColor(currentUser.full_name || "")
+                    )}
+                  >
+                    {getInitials(currentUser.full_name || "")}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {order.assigned_user
+                    ? `Responsável: ${order.assigned_user.full_name}`
+                    : `Criado por: ${order.created_user?.full_name ?? "?"}`}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground cursor-pointer hover:bg-muted-foreground/20 transition-all">
+              ?
+            </div>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-56 p-1"
+        align="end"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-xs text-muted-foreground px-2 py-1.5 font-medium">
+          Responsável
+        </div>
+        {profiles.length === 0 && (
+          <div className="text-xs text-muted-foreground px-2 py-2">
+            Carregando...
+          </div>
+        )}
+        {profiles.map((p) => {
+          const isCurrent = order.assigned_user?.full_name === p.full_name;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => mutation.mutate(p.id)}
+              disabled={mutation.isPending}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-sm"
+            >
+              <div
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white shrink-0",
+                  generateAvatarColor(p.full_name || "")
+                )}
+              >
+                {getInitials(p.full_name || "")}
+              </div>
+              <span className="flex-1 text-left truncate">{p.full_name}</span>
+              {isCurrent && <Check className="h-3 w-3 shrink-0" />}
+            </button>
+          );
+        })}
+        {order.assigned_user && (
+          <>
+            <div className="my-1 h-px bg-border" />
+            <button
+              type="button"
+              onClick={() => mutation.mutate(null)}
+              disabled={mutation.isPending}
+              className="w-full px-2 py-1.5 rounded hover:bg-muted text-xs text-muted-foreground text-left"
+            >
+              Remover responsável
+            </button>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 const animateLayoutChanges: AnimateLayoutChanges = (args) => {
@@ -416,32 +549,7 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
               </Tooltip>
             </TooltipProvider>
           )}
-          {(order.assigned_user ?? order.created_user) && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    className={cn(
-                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white",
-                      "shadow-[0_0_0_1px_rgba(255,255,255,0.15)_inset]",
-                      generateAvatarColor(
-                        (order.assigned_user ?? order.created_user)!.full_name
-                      )
-                    )}
-                  >
-                    {getInitials(
-                      (order.assigned_user ?? order.created_user)!.full_name
-                    )}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent className="pointer-events-none">
-                  {order.assigned_user
-                    ? `Responsável: ${order.assigned_user.full_name}`
-                    : `Criado por: ${order.created_user!.full_name}`}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          <OrderAssigneeAvatar order={order} />
         </div>
       </div>
     </div>

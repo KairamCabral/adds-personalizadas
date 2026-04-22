@@ -340,22 +340,96 @@ export async function moveOrder(
   newStatus: OrderStatus,
   newPosition: number
 ) {
+  // Capturar status ATUAL antes de mover (para decidir auto-atribuição)
+  const { data: currentOrder } = await supabase
+    .from("orders")
+    .select("status, assigned_to")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  const oldStatus = currentOrder?.status;
+
+  // Mover (RPC atômica original)
   const { error } = await (supabase.rpc as any)("move_order_atomic", {
     p_order_id: orderId,
     p_new_status: newStatus,
     p_new_position: newPosition,
   });
-
   if (error) throw error;
+
+  // Auto-atribuição: se saiu de AUTOMATICO para FAZER e ainda não tem responsável,
+  // atribuir ao usuário logado (se for GESTOR ou MASTER)
+  const shouldAutoAssign =
+    oldStatus === "AUTOMATICO" &&
+    newStatus === "FAZER" &&
+    !currentOrder?.assigned_to;
+
+  if (shouldAutoAssign) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user?.id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile?.role === "GESTOR" || profile?.role === "MASTER") {
+        await supabase
+          .from("orders")
+          .update({
+            assigned_to: user.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", orderId);
+      }
+    }
+  }
 
   const { data, error: fetchError } = await supabase
     .from("orders")
-    .select("id, status, position")
+    .select("id, status, position, assigned_to")
     .eq("id", orderId)
     .single();
-
   if (fetchError) throw fetchError;
   return data;
+}
+
+/**
+ * Atualiza o responsável (assigned_to) de um pedido.
+ * Usado pela edição inline no card.
+ */
+export async function updateOrderAssignee(
+  orderId: string,
+  assignedTo: string | null
+): Promise<void> {
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      assigned_to: assignedTo,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
+
+  if (error) throw error;
+}
+
+/**
+ * Busca lista de profiles que podem ser responsáveis (GESTOR + MASTER).
+ */
+export async function listAssignableProfiles(): Promise<
+  { id: string; full_name: string | null; avatar_url: string | null; role: string }[]
+> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url, role")
+    .in("role", ["GESTOR", "MASTER"])
+    .order("full_name", { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function reorderColumn(
