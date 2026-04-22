@@ -79,9 +79,7 @@ const TINY_SITUACAO_STRING_TO_STATUS: Record<
   Aprovado: "CONFIRMACAO",
   "Em andamento": "PRODUCAO",
   "Preparando envio": "EXPEDICAO",
-  Faturado: "FATURADO",
   Cancelado: "ARQUIVADO",
-  Autorizada: "FATURADO",
 };
 
 /** Mapeia código numérico de situação Tiny (API) → status CRM */
@@ -97,8 +95,6 @@ export function mapTinyNumericSituacaoToStatus(
       return "CONFIRMACAO";
     case 4:
       return "PRODUCAO";
-    case 1:
-      return "FATURADO";
     case 7:
     case 5:
     case 9:
@@ -289,34 +285,39 @@ export async function buildOrderItemsFromTinyRaw(
 
   for (const ti of tinyItens) {
     const t = ti as Record<string, unknown>;
-    const item = t.item ?? t.produto ?? ti;
-    if (!item || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
+    // Suporta dois formatos do Tiny:
+    //   1) { item: { produto, quantidade, valorUnitario, ... } }
+    //   2) { produto, quantidade, valorUnitario, ... }
+    const lineItem = (t.item && typeof t.item === "object" ? t.item : t) as Record<string, unknown>;
+    if (!lineItem || typeof lineItem !== "object") continue;
+
+    // Nível aninhado com id/sku/descricao
+    const prodNested = lineItem.produto as Record<string, unknown> | undefined;
 
     const productName =
-      (row.nome as string | undefined) ??
-      (row.descricao as string | undefined) ??
-      (row.produto as { nome?: string; descricao?: string } | undefined)?.nome ??
-      (row.produto as { nome?: string; descricao?: string } | undefined)?.descricao ??
+      (typeof lineItem.nome === "string" ? lineItem.nome : undefined) ??
+      (typeof lineItem.descricao === "string" ? lineItem.descricao : undefined) ??
+      (typeof prodNested?.nome === "string" ? prodNested.nome : undefined) ??
+      (typeof prodNested?.descricao === "string" ? prodNested.descricao : undefined) ??
       "Item";
 
-    const qty = Number(row.quantidade ?? row.qtd ?? 1) || 1;
+    // lê do nível EXTERNO (lineItem), não do produto aninhado
+    const qty = Number(lineItem.quantidade ?? lineItem.qtd ?? 1) || 1;
 
     const unitPrice =
-      row.valorUnitario ??
-      row.valor_unitario ??
-      row.preco ??
-      (row.produto as { preco?: number } | undefined)?.preco;
+      lineItem.valorUnitario ??
+      lineItem.valor_unitario ??
+      lineItem.preco ??
+      (typeof prodNested?.preco === "number" ? prodNested.preco : undefined);
 
     const totalPrice =
-      row.valorTotal ??
-      row.valor_total ??
-      row.valor ??
+      lineItem.valorTotal ??
+      lineItem.valor_total ??
+      lineItem.valor ??
       (unitPrice != null ? Number(unitPrice) * qty : null);
 
     // Extrair tiny_id e SKU para matching
-    const prodNested = row.produto as Record<string, unknown> | undefined;
-    const tinyProductIdRaw = prodNested?.id ?? row.produto_id ?? row.idProduto;
+    const tinyProductIdRaw = prodNested?.id ?? lineItem.produto_id ?? lineItem.idProduto;
     let tinyProductId: number | null = null;
     if (tinyProductIdRaw != null) {
       const tid =
@@ -327,15 +328,14 @@ export async function buildOrderItemsFromTinyRaw(
     }
 
     const itemSku =
-      (typeof row.codigo === "string" ? row.codigo : null) ??
-      (typeof row.sku === "string" ? row.sku : null) ??
+      (typeof lineItem.codigo === "string" ? lineItem.codigo : null) ??
+      (typeof lineItem.sku === "string" ? lineItem.sku : null) ??
       (typeof prodNested?.sku === "string" ? (prodNested.sku as string) : null) ??
       (typeof prodNested?.codigo === "string" ? (prodNested.codigo as string) : null) ??
       null;
 
     const productId = matchProduct(tinyProductId, itemSku);
 
-    // FILTRO CRÍTICO: só cria order_item se produto foi matcheado (logo, é personalizado)
     if (!productId) {
       console.info(
         `[tiny-order-import] Item "${productName}" (sku=${itemSku ?? "—"}, tiny_id=${tinyProductId ?? "—"}) IGNORADO no CRM: não bateu com produto personalizado cadastrado.`

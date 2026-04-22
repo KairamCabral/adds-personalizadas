@@ -11,6 +11,48 @@ import {
   mapTinySituacaoToCrmStatus,
 } from "@/lib/tiny/tiny-order-import";
 
+/**
+ * Quando um pedido é faturado no Tiny:
+ * - Adiciona a tag "PAGO" em order_labels (idempotente)
+ * - Se status atual for CONFIRMACAO, move para APROVADO
+ * - Nunca coloca o pedido em FATURADO (mantém na pipeline produtiva)
+ */
+async function addPagoLabelAndMaybeMove(
+  supabase: SupabaseClient<Database>,
+  orderId: string,
+  orderStatus: string
+): Promise<{ tagAdded: boolean; statusMoved: boolean }> {
+  const { data: existingLabel } = await supabase
+    .from("order_labels")
+    .select("id")
+    .eq("order_id", orderId)
+    .eq("label", "PAGO")
+    .maybeSingle();
+
+  let tagAdded = false;
+  if (!existingLabel) {
+    const { error: labelError } = await supabase.from("order_labels").insert({
+      order_id: orderId,
+      label: "PAGO",
+    });
+    if (!labelError) tagAdded = true;
+  }
+
+  let statusMoved = false;
+  if (orderStatus === "CONFIRMACAO") {
+    const { error: updErr } = await supabase
+      .from("orders")
+      .update({
+        status: "APROVADO",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
+    if (!updErr) statusMoved = true;
+  }
+
+  return { tagAdded, statusMoved };
+}
+
 export interface TinyPayload {
   tipo: string;
   dados: Record<string, unknown>;
@@ -210,9 +252,22 @@ async function handlePedido(
   const updates: Database["public"]["Tables"]["orders"]["Update"] = {};
 
   const situacaoRaw = dados.situacao;
-  if (situacaoRaw !== undefined && situacaoRaw !== null && situacaoRaw !== "") {
+  const situacaoStr = typeof situacaoRaw === "string" ? situacaoRaw.trim() : String(situacaoRaw ?? "").trim();
+  const situacaoNum = Number(situacaoStr);
+
+  // Tiny situação 1 ou "Faturado" ou "Autorizada" = pedido foi faturado
+  // Nesse caso, adiciona tag PAGO e move só se for CONFIRMACAO -> APROVADO
+  // Nunca marca como FATURADO (mantém na pipeline)
+  const isFaturado =
+    situacaoNum === 1 ||
+    situacaoStr === "Faturado" ||
+    situacaoStr === "Autorizada";
+
+  if (isFaturado) {
+    await addPagoLabelAndMaybeMove(supabase, order.id, order.status);
+  } else if (situacaoRaw !== undefined && situacaoRaw !== null && situacaoRaw !== "") {
     const mappedStatus = mapTinySituacaoToCrmStatus(situacaoRaw);
-    if (mappedStatus !== order.status) {
+    if (mappedStatus !== order.status && mappedStatus !== "FATURADO") {
       updates.status = mappedStatus;
     }
   }
@@ -222,7 +277,7 @@ async function handlePedido(
     : undefined;
   if (idNotaFiscal && idNotaFiscal !== order.tiny_invoice_id) {
     updates.tiny_invoice_id = idNotaFiscal;
-    if (!updates.status) updates.status = "FATURADO";
+    // não muda status automaticamente baseado em idNotaFiscal
   }
 
   if (Object.keys(updates).length === 0) {
@@ -310,10 +365,13 @@ async function handleNotaFiscal(
     }
   }
 
+  // Adicionar tag PAGO e mover CONFIRMACAO -> APROVADO se aplicável
+  await addPagoLabelAndMaybeMove(supabase, order.id, order.status);
+
+  // Atualizar tiny_invoice_id (mas não alterar status para FATURADO)
   const { error } = await supabase
     .from("orders")
     .update({
-      status: "FATURADO",
       tiny_invoice_id: tinyNfId ?? null,
       updated_at: new Date().toISOString(),
     })
@@ -331,8 +389,8 @@ async function handleNotaFiscal(
   return {
     ok: !error,
     message: error
-      ? `Erro ao faturar pedido: ${error.message}`
-      : `Pedido ${order.id} marcado como FATURADO (NF #${tinyNfId}).`,
+      ? `Erro ao processar NF do pedido: ${error.message}`
+      : `Pedido ${order.id} marcado como PAGO (NF #${tinyNfId}).`,
   };
 }
 
