@@ -790,16 +790,70 @@ const BLING_PRODUCT_ID_MAP: Record<string, number> = {
   "PRD00012V": 16615143424, // ESCOVA ADDS ULTRA 11400 - ULTRA MACIA - VERMELHA
 };
 
-/** Mapeamento direto email do criador → ID do vendedor no Bling */
+/** Mapeamento direto e-mail do usuário → ID do vendedor no Bling (fornecedor) */
 const EMAIL_TO_BLING_VENDEDOR_ID: Record<string, number> = {
   "ana@adds.com.br": 15596870450,
   "maysa@adds.com.br": 15596870451,
   "helena@adds.com.br": 15596870453,
 };
 
-function getBlingVendedorId(creatorEmail: string | null): number | null {
-  if (!creatorEmail) return null;
-  return EMAIL_TO_BLING_VENDEDOR_ID[creatorEmail.toLowerCase().trim()] ?? null;
+/** Primeiro nome (ou parte local do e-mail) → mesmo ID Bling, para quando o domínio mudou ou o pedido veio do Tiny */
+const CANON_NAME_TO_BLING_VENDEDOR_ID: Record<string, number> = {
+  ana: 15596870450,
+  maysa: 15596870451,
+  helena: 15596870453,
+};
+
+type BlingVendedorProfile = {
+  full_name?: string | null;
+  email?: string | null;
+} | null;
+
+function resolveBlingVendedorIdFromProfile(profile: BlingVendedorProfile): number | null {
+  if (!profile) return null;
+
+  const email =
+    typeof profile.email === "string" && profile.email.trim()
+      ? profile.email.toLowerCase().trim()
+      : null;
+  const fullName =
+    typeof profile.full_name === "string" && profile.full_name.trim()
+      ? profile.full_name
+      : null;
+
+  if (email) {
+    const byFullEmail = EMAIL_TO_BLING_VENDEDOR_ID[email];
+    if (byFullEmail) return byFullEmail;
+
+    const at = email.indexOf("@");
+    if (at > 0) {
+      const local = email.slice(0, at);
+      const byLocal = CANON_NAME_TO_BLING_VENDEDOR_ID[local];
+      if (byLocal) return byLocal;
+    }
+  }
+
+  if (fullName) {
+    const first = fullName.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+    const byFirst = CANON_NAME_TO_BLING_VENDEDOR_ID[first];
+    if (byFirst) return byFirst;
+  }
+
+  return null;
+}
+
+/**
+ * Vendedor no Bling: prioriza a responsável do pedido (pipeline), depois quem criou/importou.
+ * Pedidos do Tiny muitas vezes têm `created_by` nulo ou sistema — `assigned_to` costuma ser a vendedora.
+ */
+function resolveBlingVendedorIdForOrder(
+  assignedProfile: BlingVendedorProfile,
+  createdByProfile: BlingVendedorProfile
+): number | null {
+  return (
+    resolveBlingVendedorIdFromProfile(assignedProfile) ??
+    resolveBlingVendedorIdFromProfile(createdByProfile)
+  );
 }
 
 /**
@@ -994,6 +1048,7 @@ async function buildBlingOrderPayload(
       *,
       client:clients(*),
       created_by_profile:profiles!orders_created_by_fkey(full_name, email),
+      assigned_to_profile:profiles!orders_assigned_to_fkey(full_name, email),
       items:order_items(
         *,
         product:products(id, name, bling_sku, bling_color_sku_map, tiny_color_map)
@@ -1161,8 +1216,23 @@ async function buildBlingOrderPayload(
   // O cliente já está vinculado ao pedido como contato no Bling
 
   const today = new Date().toISOString().split("T")[0];
-  const createdByProfile = order.created_by_profile as { full_name?: string; email?: string } | null;
-  const vendedorId = getBlingVendedorId(createdByProfile?.email ?? null);
+  const createdByProfile = order.created_by_profile as BlingVendedorProfile;
+  const assignedToProfile = order.assigned_to_profile as BlingVendedorProfile;
+  const vendedorId = resolveBlingVendedorIdForOrder(assignedToProfile, createdByProfile);
+  const vendedorCrmName =
+    assignedToProfile?.full_name?.trim() ||
+    createdByProfile?.full_name?.trim() ||
+    "Sistema";
+
+  if (vendedorId) {
+    console.info(
+      `[bling] vendedor Bling ${vendedorId} (CRM: ${vendedorCrmName} — atribuição: assigned=${!!assignedToProfile?.email} created=${!!createdByProfile?.email})`
+    );
+  } else {
+    console.info(
+      `[bling] nenhum vendedor Bling mapeado (assigned=${assignedToProfile?.email ?? "—"} created=${createdByProfile?.email ?? "—"})`
+    );
+  }
 
   const payload: BlingOrderPayload = {
     data: today,
@@ -1171,7 +1241,7 @@ async function buildBlingOrderPayload(
     ...(vendedorId ? { vendedor: { id: vendedorId } } : {}),
     itens,
     observacoes: obsLines.length > 0 ? obsLines.join("\n") : undefined,
-    observacoesInternas: `Pedido CRM #${order.order_number ?? ""} | Criado por: ${createdByProfile?.full_name ?? "Sistema"}`,
+    observacoesInternas: `Pedido CRM #${order.order_number ?? ""} | Vendedor CRM: ${vendedorCrmName}`,
   };
 
   return payload;
