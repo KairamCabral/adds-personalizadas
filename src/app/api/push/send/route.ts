@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { safeCompare } from "@/lib/crypto-utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,13 +39,13 @@ async function sendExpoBatch(messages: ExpoPushMessage[]): Promise<void> {
 }
 
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     console.error("[cron] CRON_SECRET não configurado - fail-closed");
-    return NextResponse.json({ error: "Servidor não configurado" }, { status: 503 });
+    return NextResponse.json({ error: "CRON_SECRET não configurado" }, { status: 503 });
   }
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  const authHeader = request.headers.get("authorization") ?? "";
+  if (!safeCompare(authHeader, `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 

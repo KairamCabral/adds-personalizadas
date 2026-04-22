@@ -9,7 +9,6 @@
  * Relay opcional: TINY_RELAY_URL — repassa o body bruto após o parse.
  */
 
-import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
@@ -18,11 +17,7 @@ import {
   processTinyWebhookNotification,
   relayWebhook,
 } from "@/lib/tiny/process-webhook-notification";
-
-function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
-}
+import { safeCompare } from "@/lib/crypto-utils";
 
 function getServiceClient() {
   return createClient<Database>(

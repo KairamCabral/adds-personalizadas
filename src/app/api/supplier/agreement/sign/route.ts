@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       name: String(name).trim(),
       role: String(role).trim(),
       document: String(document).replace(/\D/g, ""),
-      ip: ipFromHeader ?? undefined,
+      ip: ipFromHeader,
       userAgent: userAgent ?? request.headers.get("user-agent") ?? undefined,
     });
 

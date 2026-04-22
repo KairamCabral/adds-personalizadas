@@ -170,7 +170,6 @@ export async function tinyApiGet<T = any>(endpoint: string): Promise<T> {
   const url = `${base}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[Tiny API] Token usado:", token?.substring(0, 20) + "...");
     console.log("[Tiny API] URL final:", url);
   }
 
@@ -209,7 +208,6 @@ export async function tinyApiPost<T = any>(
   const url = `${base}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[Tiny API] Token usado:", token?.substring(0, 20) + "...");
     console.log("[Tiny API] URL final:", url);
   }
 
