@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { tinyApiGet, TinyTokenExpiredError } from "@/lib/tiny-api";
-import type { Database } from "@/types/database.types";
+import type { Database, Json } from "@/types/database.types";
 import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
 
 /**
@@ -182,6 +182,7 @@ type OrderItemInsert = {
   quantity: number;
   unit_price: number | null;
   total_price: number | null;
+  personalization: Json | null;
 };
 
 export async function buildOrderItemsFromTinyRaw(
@@ -211,42 +212,54 @@ export async function buildOrderItemsFromTinyRaw(
 
   type ProdMatcher = {
     id: string;
-    tiny_id: number | null; // tiny_id do produto pai
-    variationTinyIds: Set<number>; // tiny_ids das variações em tiny_color_map
-    skus: Set<string>; // todos os SKUs em uppercase (bling + tiny variações)
+    tiny_id: number | null;
+    variationTinyIds: Set<number>;
+    skus: Set<string>;
+    skuToColor: Map<string, string>;
+    tinyIdToColor: Map<number, string>;
   };
 
   const matchers: ProdMatcher[] = (personalizedProducts ?? []).map((p) => {
     const skus = new Set<string>();
     const variationTinyIds = new Set<number>();
+    const skuToColor = new Map<string, string>();
+    const tinyIdToColor = new Map<number, string>();
 
-    // bling_sku do produto pai
+    // bling_sku do produto pai (sem cor específica)
     if (p.bling_sku && typeof p.bling_sku === "string") {
       skus.add(p.bling_sku.toUpperCase().trim());
     }
 
-    // SKUs do bling_color_sku_map (variações no Bling)
+    // SKUs do bling_color_sku_map (variações no Bling — identifica cor)
     if (p.bling_color_sku_map && typeof p.bling_color_sku_map === "object") {
-      for (const sku of Object.values(p.bling_color_sku_map as Record<string, unknown>)) {
+      for (const [colorKey, sku] of Object.entries(p.bling_color_sku_map as Record<string, unknown>)) {
         if (typeof sku === "string") {
-          skus.add(sku.toUpperCase().trim());
+          const skuUpper = sku.toUpperCase().trim();
+          skus.add(skuUpper);
+          skuToColor.set(skuUpper, colorKey);
         }
       }
     }
 
-    // tiny_color_map: adicionar SKUs Tiny e tiny_ids das variações
+    // tiny_color_map: adicionar SKUs Tiny e tiny_ids das variações (identifica cor)
     if (p.tiny_color_map && typeof p.tiny_color_map === "object") {
-      for (const variation of Object.values(p.tiny_color_map as Record<string, unknown>)) {
+      for (const [colorKey, variation] of Object.entries(p.tiny_color_map as Record<string, unknown>)) {
         if (variation && typeof variation === "object") {
           const v = variation as { sku?: unknown; tiny_id?: unknown };
           if (typeof v.sku === "string") {
-            skus.add(v.sku.toUpperCase().trim());
+            const skuUpper = v.sku.toUpperCase().trim();
+            skus.add(skuUpper);
+            skuToColor.set(skuUpper, colorKey);
           }
           if (typeof v.tiny_id === "number" && Number.isFinite(v.tiny_id)) {
             variationTinyIds.add(v.tiny_id);
+            tinyIdToColor.set(v.tiny_id, colorKey);
           } else if (typeof v.tiny_id === "string") {
             const n = Number(v.tiny_id);
-            if (Number.isFinite(n)) variationTinyIds.add(n);
+            if (Number.isFinite(n)) {
+              variationTinyIds.add(n);
+              tinyIdToColor.set(n, colorKey);
+            }
           }
         }
       }
@@ -257,27 +270,29 @@ export async function buildOrderItemsFromTinyRaw(
       tiny_id: p.tiny_id,
       variationTinyIds,
       skus,
+      skuToColor,
+      tinyIdToColor,
     };
   });
 
-  // Função pura de matching
+  // Função pura de matching — retorna produto e cor identificada (se houver)
   const matchProduct = (
     tinyProductId: number | null,
     itemSku: string | null
-  ): string | null => {
+  ): { productId: string; color: string | null } | null => {
     const skuUpper = itemSku?.toUpperCase().trim() ?? "";
     for (const m of matchers) {
-      // Match 1: tiny_id do produto pai
+      // Match 1: tiny_id do produto pai (não identifica cor específica)
       if (tinyProductId != null && m.tiny_id === tinyProductId) {
-        return m.id;
+        return { productId: m.id, color: null };
       }
-      // Match 2: tiny_id de uma variação em tiny_color_map
+      // Match 2: tiny_id de variação — identifica cor
       if (tinyProductId != null && m.variationTinyIds.has(tinyProductId)) {
-        return m.id;
+        return { productId: m.id, color: m.tinyIdToColor.get(tinyProductId) ?? null };
       }
-      // Match 3: SKU (pode bater em bling_sku, bling_color_sku_map ou sku de tiny_color_map)
+      // Match 3: SKU — identifica cor quando mapeado
       if (skuUpper && m.skus.has(skuUpper)) {
-        return m.id;
+        return { productId: m.id, color: m.skuToColor.get(skuUpper) ?? null };
       }
     }
     return null;
@@ -334,9 +349,9 @@ export async function buildOrderItemsFromTinyRaw(
       (typeof prodNested?.codigo === "string" ? (prodNested.codigo as string) : null) ??
       null;
 
-    const productId = matchProduct(tinyProductId, itemSku);
+    const match = matchProduct(tinyProductId, itemSku);
 
-    if (!productId) {
+    if (!match) {
       console.info(
         `[tiny-order-import] Item "${productName}" (sku=${itemSku ?? "—"}, tiny_id=${tinyProductId ?? "—"}) IGNORADO no CRM: não bateu com produto personalizado cadastrado.`
       );
@@ -345,11 +360,12 @@ export async function buildOrderItemsFromTinyRaw(
 
     itemsToInsert.push({
       order_id: orderId,
-      product_id: productId,
+      product_id: match.productId,
       product_name: String(productName),
       quantity: qty,
       unit_price: unitPrice != null ? Number(unitPrice) : null,
       total_price: totalPrice != null ? Number(totalPrice) : null,
+      personalization: match.color ? { colors: [match.color], custom_color: null } : null,
     });
   }
 
