@@ -28,6 +28,7 @@ import {
   archiveOrder,
   unarchiveOrder,
   cancelOrder,
+  tryAutoAssignOnAutomativoToFazer,
 } from "@/services/orders.service";
 import { ArchiveCancelDialog } from "@/components/pipeline/archive-cancel-dialog";
 import { KanbanColumn } from "./kanban-column";
@@ -317,6 +318,8 @@ export function KanbanBoard() {
       destOrderIds: string[];
       /** Pedido que entrou em APROVADO (arraste sem filtros) — dispara sync Bling no onSuccess. */
       blingSyncOrderId?: string;
+      /** Pedido arrastado entre colunas (sem filtros) — auto-atribuição AUTOMATICO → FAZER. */
+      movedOrderId?: string;
     }) => {
       if (vars.sourceStatus === vars.destStatus) {
         await reorderColumn(vars.destStatus, vars.destOrderIds);
@@ -355,6 +358,22 @@ export function KanbanBoard() {
       toast.error("Erro ao reordenar pedidos");
     },
     onSuccess: async (_data, vars) => {
+      if (
+        vars.movedOrderId &&
+        vars.sourceStatus === "AUTOMATICO" &&
+        vars.destStatus === "FAZER"
+      ) {
+        try {
+          await tryAutoAssignOnAutomativoToFazer(
+            vars.movedOrderId,
+            vars.sourceStatus,
+            vars.destStatus
+          );
+        } catch (err) {
+          console.error("[tryAutoAssignOnAutomativoToFazer]", err);
+          toast.error("Não foi possível atribuir o pedido automaticamente.");
+        }
+      }
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
       if (
         vars.blingSyncOrderId &&
@@ -627,6 +646,7 @@ export function KanbanBoard() {
         sourceOrderIds,
         destStatus: targetStatus as OrderStatus,
         destOrderIds,
+        movedOrderId: activeIdStr,
         blingSyncOrderId:
           targetStatus === "APROVADO" && originalStatus !== "APROVADO"
             ? activeIdStr

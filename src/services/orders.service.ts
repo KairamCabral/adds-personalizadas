@@ -335,6 +335,51 @@ export async function unarchiveOrder(id: string) {
   return data;
 }
 
+/**
+ * Se o pedido saiu de AUTOMATICO para FAZER, ainda sem responsável, atribui ao usuário logado
+ * (somente GESTOR ou MASTER). Chamar após o status do pedido já estar FAZER no banco.
+ * Usada por `moveOrder` e pelo arraste com `reorderColumn` (kanban sem filtros).
+ */
+export async function tryAutoAssignOnAutomativoToFazer(
+  orderId: string,
+  fromStatus: OrderStatus,
+  toStatus: OrderStatus
+): Promise<void> {
+  if (fromStatus !== "AUTOMATICO" || toStatus !== "FAZER") return;
+
+  const { data: row, error: selectError } = await supabase
+    .from("orders")
+    .select("status, assigned_to")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (selectError) throw selectError;
+  if (!row || row.status !== "FAZER" || row.assigned_to) return;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.id) return;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profile?.role !== "GESTOR" && profile?.role !== "MASTER") return;
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({
+      assigned_to: user.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
+
+  if (updateError) throw updateError;
+}
+
 export async function moveOrder(
   orderId: string,
   newStatus: OrderStatus,
@@ -347,8 +392,6 @@ export async function moveOrder(
     .eq("id", orderId)
     .maybeSingle();
 
-  const oldStatus = currentOrder?.status;
-
   // Mover (RPC atômica original)
   const { error } = await (supabase.rpc as any)("move_order_atomic", {
     p_order_id: orderId,
@@ -357,35 +400,12 @@ export async function moveOrder(
   });
   if (error) throw error;
 
-  // Auto-atribuição: se saiu de AUTOMATICO para FAZER e ainda não tem responsável,
-  // atribuir ao usuário logado (se for GESTOR ou MASTER)
-  const shouldAutoAssign =
-    oldStatus === "AUTOMATICO" &&
-    newStatus === "FAZER" &&
-    !currentOrder?.assigned_to;
-
-  if (shouldAutoAssign) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user?.id) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profile?.role === "GESTOR" || profile?.role === "MASTER") {
-        await supabase
-          .from("orders")
-          .update({
-            assigned_to: user.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", orderId);
-      }
-    }
+  if (currentOrder) {
+    await tryAutoAssignOnAutomativoToFazer(
+      orderId,
+      currentOrder.status as OrderStatus,
+      newStatus
+    );
   }
 
   const { data, error: fetchError } = await supabase
