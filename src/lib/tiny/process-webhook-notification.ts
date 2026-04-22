@@ -38,6 +38,13 @@ async function addPagoLabelAndMaybeMove(
     if (!labelError) tagAdded = true;
   }
 
+  // Remove tags de "aguardando pagamento" (agora obsoletas com PAGO)
+  await supabase
+    .from("order_labels")
+    .delete()
+    .eq("order_id", orderId)
+    .in("label", ["AGUARDANDO_PAGAMENTO", "APROV_AGUARDANDO_PAGAMENTO"]);
+
   let statusMoved = false;
   if (orderStatus === "CONFIRMACAO") {
     const { error: updErr } = await supabase
