@@ -17,7 +17,11 @@ export const maxDuration = 30;
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    console.error("[cron] CRON_SECRET não configurado - fail-closed");
+    return NextResponse.json({ error: "Servidor não configurado" }, { status: 503 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 

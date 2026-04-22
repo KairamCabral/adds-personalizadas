@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { NextRequest } from "next/server";
 import { after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -7,6 +8,11 @@ import {
   parseTinyPayloadFromRawBody,
   processTinyWebhookNotification,
 } from "@/lib/tiny/process-webhook-notification";
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,7 +72,7 @@ export async function GET(
     return new Response("misconfigured", { status: 503 });
   }
 
-  if (secret !== expected) {
+  if (!safeCompare(secret ?? "", expected ?? "")) {
     return new Response("forbidden", { status: 403 });
   }
 
@@ -85,7 +91,7 @@ export async function POST(
     return new Response("misconfigured", { status: 503 });
   }
 
-  if (secret !== expected) {
+  if (!safeCompare(secret ?? "", expected ?? "")) {
     return new Response("forbidden", { status: 403 });
   }
 
