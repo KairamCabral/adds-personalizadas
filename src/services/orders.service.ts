@@ -28,6 +28,7 @@ export async function getOrders() {
     `)
     .is("is_pipeline_managed", true)
     .is("archived_at", null)
+    .is("deleted_at", null)
     .order("status", { ascending: true })
     .order("position", { ascending: true })
     .order("id", { ascending: true });
@@ -50,7 +51,25 @@ export async function getArchivedOrders() {
     `)
     .is("tiny_order_id", null)
     .not("archived_at", "is", null)
+    .is("deleted_at", null)
     .order("archived_at", { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getTrashedOrders() {
+  const { data, error } = await supabase
+    .from("orders")
+    .select(`
+      *,
+      client:clients(id, name, company, logo_url),
+      assigned_user:profiles!orders_assigned_to_fkey(id, full_name, avatar_url),
+      labels:order_labels(id, label),
+      items:order_items(product_name, quantity)
+    `)
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
 
   if (error) throw error;
   return data;
@@ -94,6 +113,7 @@ export async function getOrdersByStatus(status: OrderStatus) {
     .eq("status", status)
     .is("is_pipeline_managed", true)
     .is("archived_at", null)
+    .is("deleted_at", null)
     .order("position", { ascending: true });
 
   if (error) throw error;
@@ -242,6 +262,31 @@ export async function updateOrder(id: string, updates: Partial<Order>) {
   return data;
 }
 
+/** Move pedido para lixeira (soft-delete). Purge automático após 30 dias pelo cron. */
+export async function trashOrder(id: string) {
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ deleted_at: new Date().toISOString() } as any)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/** Restaura pedido da lixeira de volta ao estado anterior. */
+export async function restoreOrder(id: string) {
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ deleted_at: null } as any)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/** Exclusão permanente (usada apenas internamente em rollbacks de formulário). */
 export async function deleteOrder(id: string) {
   const { error } = await supabase.from("orders").delete().eq("id", id);
   if (error) throw error;

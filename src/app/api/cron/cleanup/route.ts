@@ -26,9 +26,14 @@ export async function GET(request: NextRequest) {
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const sevenDaysCutoff = sevenDaysAgo.toISOString();
 
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const thirtyDaysCutoff = thirtyDaysAgo.toISOString();
+
   let tokensDeleted = 0;
   let notificationsDeleted = 0;
   let notificationsAutoMarked = 0;
+  let trashedOrdersPurged = 0;
 
   try {
     const { data: expiredTokens, error: tokensError } = await supabase
@@ -69,11 +74,32 @@ export async function GET(request: NextRequest) {
       console.error("Cleanup auto-mark notifications error:", autoMarkError);
     }
 
+    // Purge permanente de pedidos na lixeira há mais de 30 dias
+    const { data: purgedOrders, error: purgeError } = await supabase
+      .from("orders")
+      .delete()
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", thirtyDaysCutoff)
+      .select("id, order_number");
+
+    if (!purgeError && purgedOrders) {
+      trashedOrdersPurged = purgedOrders.length;
+      if (trashedOrdersPurged > 0) {
+        console.log(
+          `[cron:cleanup] Purged ${trashedOrdersPurged} trashed order(s):`,
+          purgedOrders.map((o) => `#${o.order_number ?? o.id}`)
+        );
+      }
+    } else if (purgeError) {
+      console.error("[cron:cleanup] Purge trashed orders error:", purgeError);
+    }
+
     return NextResponse.json({
       success: true,
       deleted: {
         approval_tokens: tokensDeleted,
         notifications: notificationsDeleted,
+        trashed_orders: trashedOrdersPurged,
       },
       auto_marked: {
         notifications: notificationsAutoMarked,

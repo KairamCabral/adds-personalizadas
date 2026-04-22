@@ -14,6 +14,10 @@ export const PERMISSIONS = {
   "orders.change_status": ["MASTER", "GESTOR", "PRESTADOR"],
   "orders.archive": ["MASTER", "GESTOR"],
   "orders.assign": ["MASTER", "GESTOR"],
+  "orders.trash": ["MASTER", "GESTOR"],
+  "orders.restore": ["MASTER", "GESTOR"],
+  "orders.trash_view": ["MASTER", "GESTOR"],
+  "orders.purge": ["MASTER"],
 
   // Clientes
   "clients.view": ["MASTER", "GESTOR"],

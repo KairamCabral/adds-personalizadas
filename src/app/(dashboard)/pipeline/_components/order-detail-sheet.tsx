@@ -18,7 +18,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { PriorityIndicator } from "@/components/shared/priority-indicator";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { createClient } from "@/lib/supabase/client";
-import { getOrderById, deleteOrder, moveOrder, archiveOrder, unarchiveOrder, updateOrder, cancelOrder } from "@/services/orders.service";
+import { getOrderById, trashOrder, restoreOrder, moveOrder, archiveOrder, unarchiveOrder, updateOrder, cancelOrder } from "@/services/orders.service";
 import { ArchiveCancelDialog } from "@/components/pipeline/archive-cancel-dialog";
 import { TinyOrderSheet } from "@/components/pipeline/tiny-order-sheet";
 import { useUIStore } from "@/stores/ui.store";
@@ -299,15 +299,26 @@ export function OrderDetailSheet() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, isError, order, selectedOrderId]);
 
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteOrder(selectedOrderId!),
+  const trashMutation = useMutation({
+    mutationFn: () => trashOrder(selectedOrderId!),
     onSuccess: () => {
-      toast.success("Pedido excluído com sucesso.");
+      toast.success("Pedido movido para a lixeira.", {
+        description: "Será excluído permanentemente em 30 dias, a menos que seja restaurado.",
+        action: {
+          label: "Restaurar",
+          onClick: () => restoreOrder(selectedOrderId!).then(() => {
+            queryClient.invalidateQueries({ queryKey: ["orders"] });
+            queryClient.invalidateQueries({ queryKey: ["trashed-orders"] });
+            toast.success("Pedido restaurado com sucesso.");
+          }).catch(() => toast.error("Erro ao restaurar pedido.")),
+        },
+      });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["trashed-orders"] });
       setSelectedOrderId(null);
     },
     onError: () => {
-      toast.error("Erro ao excluir pedido.");
+      toast.error("Erro ao mover pedido para lixeira.");
     },
   });
 
@@ -870,13 +881,13 @@ export function OrderDetailSheet() {
                               Arquivar / Cancelar...
                             </DropdownMenuItem>
                           ))}
-                        {can("orders.delete") && (
+                        {can("orders.trash") && (
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => setDeleteDialogOpen(true)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir
+                            Mover para lixeira
                           </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
@@ -1243,12 +1254,12 @@ export function OrderDetailSheet() {
       <ConfirmDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        title="Excluir pedido"
-        description="Tem certeza que deseja excluir este pedido? Esta ação não pode ser desfeita."
-        confirmLabel="Excluir"
+        title="Mover para lixeira?"
+        description="O pedido será movido para a lixeira e excluído permanentemente após 30 dias. Você pode restaurá-lo antes disso."
+        confirmLabel="Mover para lixeira"
         variant="destructive"
-        onConfirm={() => deleteMutation.mutate()}
-        loading={deleteMutation.isPending}
+        onConfirm={() => trashMutation.mutate()}
+        loading={trashMutation.isPending}
       />
 
       <AlertDialog

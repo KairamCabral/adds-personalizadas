@@ -23,11 +23,14 @@ import { useKanbanRealtime } from "@/hooks/use-kanban-realtime";
 import {
   getOrders,
   getArchivedOrders,
+  getTrashedOrders,
   moveOrder,
   reorderColumn,
   archiveOrder,
   unarchiveOrder,
   cancelOrder,
+  trashOrder,
+  restoreOrder,
   tryAutoAssignOnAutomativoToFazer,
 } from "@/services/orders.service";
 import { ArchiveCancelDialog } from "@/components/pipeline/archive-cancel-dialog";
@@ -38,7 +41,8 @@ import { OrderDetailSheet } from "./order-detail-sheet";
 import { OrderForm } from "./order-form";
 import { OrderFilters } from "./order-filters";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, Archive, LayoutGrid, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Search, Archive, LayoutGrid, X, Trash2, RotateCcw, Clock, AlertTriangle, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -69,6 +73,7 @@ export function KanbanBoard() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [showTrashed, setShowTrashed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ lastX: number } | null>(null);
@@ -169,11 +174,10 @@ export function KanbanBoard() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ordersQuery = useQuery<any[], Error>({
-    queryKey: showArchived ? ["archived-orders"] : ["orders"],
+    queryKey: showTrashed ? ["trashed-orders"] : showArchived ? ["archived-orders"] : ["orders"],
     queryFn: async () => {
-      if (showArchived) {
-        return getArchivedOrders();
-      }
+      if (showTrashed) return getTrashedOrders();
+      if (showArchived) return getArchivedOrders();
       const versionAtStart = ordersListVersion.current;
       const data = await getOrders();
       if (versionAtStart !== ordersListVersion.current) {
@@ -222,6 +226,16 @@ export function KanbanBoard() {
       toast.success("Pedido desarquivado.");
     },
     onError: () => toast.error("Erro ao desarquivar pedido."),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (orderId: string) => restoreOrder(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["trashed-orders"] });
+      toast.success("Pedido restaurado com sucesso.");
+    },
+    onError: () => toast.error("Erro ao restaurar pedido."),
   });
 
   const moveMutation = useMutation({
@@ -525,7 +539,7 @@ export function KanbanBoard() {
       return;
     }
 
-    if (showArchived || !over || !originalStatus) {
+    if (showArchived || showTrashed || !over || !originalStatus) {
       clearDrag();
       return;
     }
@@ -695,18 +709,18 @@ export function KanbanBoard() {
       <div className="flex items-center justify-between border-b border-border bg-primary/10 px-6 py-3 dark:bg-background">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-bold text-foreground">
-            {showArchived ? "Arquivados" : "Pipeline"}
+            {showTrashed ? "Lixeira" : showArchived ? "Arquivados" : "Pipeline"}
           </h1>
           <div className="flex h-6 items-center rounded-full bg-primary/10 px-2.5">
             <span className="text-xs font-semibold text-primary">
-              {hasActiveFilters ? filteredCount : (orders as any[]).length}{" "}
-              {showArchived ? "arquivados" : "pedidos"}
-              {hasActiveFilters && ` de ${(orders as any[]).length}`}
+              {hasActiveFilters && !showArchived && !showTrashed ? filteredCount : (orders as any[]).length}{" "}
+              {showTrashed ? "na lixeira" : showArchived ? "arquivados" : "pedidos"}
+              {hasActiveFilters && !showArchived && !showTrashed && ` de ${(orders as any[]).length}`}
             </span>
           </div>
           {can("orders.archive") && (
             <button
-              onClick={() => setShowArchived(!showArchived)}
+              onClick={() => { setShowArchived(!showArchived); setShowTrashed(false); }}
               className={cn(
                 "flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors",
                 showArchived
@@ -727,27 +741,43 @@ export function KanbanBoard() {
               )}
             </button>
           )}
+          {can("orders.trash_view") && (
+            <button
+              onClick={() => { setShowTrashed(!showTrashed); setShowArchived(false); }}
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors",
+                showTrashed
+                  ? "border-destructive/40 bg-destructive/5 text-destructive"
+                  : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
+              )}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {showTrashed ? "Sair da lixeira" : "Lixeira"}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search
-              className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <input
-              type="text"
-              aria-label="Buscar por cliente"
-              placeholder="Buscar por cliente..."
-              value={busca ?? ""}
-              onChange={(e) => setBusca(e.target.value || null)}
-              className="h-8 w-52 rounded-lg border border-border bg-secondary/50 pl-8 pr-3 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/30 focus:bg-card"
-            />
-          </div>
+          {!showTrashed && (
+            <div className="relative">
+              <Search
+                className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                aria-label="Buscar por cliente"
+                placeholder="Buscar por cliente..."
+                value={busca ?? ""}
+                onChange={(e) => setBusca(e.target.value || null)}
+                className="h-8 w-52 rounded-lg border border-border bg-secondary/50 pl-8 pr-3 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/30 focus:bg-card"
+              />
+            </div>
+          )}
 
-          <OrderFilters />
+          {!showTrashed && <OrderFilters />}
 
-          {hasActiveFilters && (
+          {hasActiveFilters && !showTrashed && (
             <Button
               type="button"
               variant="secondary"
@@ -761,7 +791,7 @@ export function KanbanBoard() {
             </Button>
           )}
 
-          {can("orders.create") && !showArchived && (
+          {can("orders.create") && !showArchived && !showTrashed && (
             <button
               onClick={() => {
                 setCreateOrderStatus("FAZER");
@@ -776,6 +806,18 @@ export function KanbanBoard() {
         </div>
       </div>
 
+      {/* Lixeira — lista de pedidos deletados */}
+      {showTrashed && (
+        <TrashedOrdersView
+          orders={orders as any[]}
+          isLoading={isLoading}
+          onRestore={(id) => restoreMutation.mutate(id)}
+          onSelect={(id) => setSelectedOrderId(id)}
+          isRestoring={restoreMutation.isPending}
+          canPurge={can("orders.purge")}
+        />
+      )}
+
       {/* Kanban board — azul claro só no tema claro; tema escuro inalterado */}
       <div
         ref={scrollRef}
@@ -785,6 +827,7 @@ export function KanbanBoard() {
         onWheel={handleWheel}
         className={cn(
           "kanban-scroll flex-1 overflow-x-auto overflow-y-hidden select-none touch-pan-x bg-primary/5 dark:bg-background",
+          showTrashed ? "hidden" : "",
           isPanning ? "cursor-grabbing" : "cursor-grab"
         )}
       >
@@ -879,6 +922,140 @@ export function KanbanBoard() {
         }
         loading={archiveMutation.isPending || cancelMutation.isPending}
       />
+    </div>
+  );
+}
+
+// ============================================================
+// TrashedOrdersView — lista compacta de pedidos na lixeira
+// ============================================================
+
+function getDaysUntilPurge(deletedAt: string): number {
+  const purgeAt = new Date(deletedAt);
+  purgeAt.setDate(purgeAt.getDate() + 30);
+  const diff = purgeAt.getTime() - Date.now();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
+function TrashedOrdersView({
+  orders,
+  isLoading,
+  onRestore,
+  onSelect,
+  isRestoring,
+  canPurge,
+}: {
+  orders: any[];
+  isLoading: boolean;
+  onRestore: (id: string) => void;
+  onSelect: (id: string) => void;
+  isRestoring: boolean;
+  canPurge: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden bg-destructive/3 dark:bg-background">
+      {/* Banner informativo */}
+      <div className="flex items-center gap-2.5 border-b border-destructive/20 bg-destructive/5 px-6 py-2.5">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+        <p className="text-xs text-destructive/80">
+          Pedidos na lixeira são <strong>excluídos permanentemente após 30 dias</strong>. Restaure antes do prazo para recuperá-los.
+        </p>
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
+          <Trash2 className="h-10 w-10 opacity-20" />
+          <p className="text-sm font-medium">Lixeira vazia</p>
+          <p className="text-xs">Nenhum pedido foi movido para a lixeira.</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="mx-auto max-w-3xl space-y-2">
+            {orders.map((order: any) => {
+              const daysLeft = order.deleted_at ? getDaysUntilPurge(order.deleted_at) : 30;
+              const isUrgent = daysLeft <= 7;
+              const totalQty = (order.items ?? []).reduce(
+                (acc: number, i: any) => acc + (i.quantity ?? 0),
+                0
+              );
+              return (
+                <div
+                  key={order.id}
+                  className={cn(
+                    "group flex items-center gap-4 rounded-xl border bg-card px-4 py-3 shadow-sm transition-all",
+                    isUrgent
+                      ? "border-destructive/30 bg-destructive/5"
+                      : "border-border hover:border-border/80 hover:shadow"
+                  )}
+                >
+                  {/* Info principal */}
+                  <button
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => onSelect(order.id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                        {order.title ?? `Pedido #${order.order_number}`}
+                      </span>
+                      {order.order_number && (
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          #{order.order_number}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      {order.client?.name && (
+                        <span className="truncate">{order.client.name}</span>
+                      )}
+                      {totalQty > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Package className="h-3 w-3" />
+                          {totalQty} un.
+                        </span>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Prazo de exclusão */}
+                  <div
+                    className={cn(
+                      "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                      isUrgent
+                        ? "bg-destructive/10 text-destructive"
+                        : daysLeft <= 15
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                          : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    <Clock className="h-3 w-3" />
+                    {daysLeft === 0
+                      ? "Expira hoje"
+                      : `${daysLeft}d restantes`}
+                  </div>
+
+                  {/* Botão restaurar */}
+                  <button
+                    onClick={() => onRestore(order.id)}
+                    disabled={isRestoring}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Restaurar
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
