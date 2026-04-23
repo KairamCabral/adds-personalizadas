@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tinyApiGet, tinyApiPatch, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
 
-// Tiny v3 API usa "telefone" (não "fone") e o array de pessoas é "contatos" (não "pessoasContato")
-// Ref: GET /contatos/{id} → ObterContatoModelResponse.contatos → PessoaContatoModel
+// Tiny v3 documenta "telefone" mas na prática a API pode retornar "fone" também.
+// O array de pessoas é "contatos" (V3) ou "pessoasContato" (legado).
+// Ref: GET /contatos/{id} → ObterContatoModelResponse.contatos → BasePessoaContatoModel
 interface TinyContactPerson {
   id?: number | null;
   nome?: string | null;
   setor?: string | null;
   email?: string | null;
   telefone?: string | null;
+  fone?: string | null;
   ramal?: string | null;
 }
 
@@ -58,7 +60,8 @@ export async function GET(
       nome: p.nome ?? null,
       setor: p.setor ?? null,
       email: p.email ?? null,
-      telefone: p.telefone ?? null,
+      // Tiny V3 documenta "telefone" mas pode retornar "fone" na prática
+      telefone: p.telefone ?? p.fone ?? null,
       ramal: p.ramal ?? null,
     }));
 
@@ -114,7 +117,7 @@ export async function PATCH(
     if (idx >= 0) {
       updatedPeople = existing.map((p, i) =>
         i === idx
-          ? { ...p, telefone: phone ?? p.telefone, setor: body.setor ?? p.setor }
+          ? { ...p, telefone: phone ?? p.telefone ?? p.fone, setor: body.setor ?? p.setor }
           : p
       );
     } else {
