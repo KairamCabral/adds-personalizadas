@@ -80,6 +80,7 @@ const TINY_SITUACAO_STRING_TO_STATUS: Record<
   "Em andamento": "PRODUCAO",
   "Preparando envio": "EXPEDICAO",
   Cancelado: "ARQUIVADO",
+  Faturado: "FATURADO",
 };
 
 /** Mapeia código numérico de situação Tiny (API) → status CRM */
@@ -207,11 +208,13 @@ export async function buildOrderItemsFromTinyRaw(
   // (evita N queries se o pedido tiver muitos itens)
   const { data: personalizedProducts } = await supabase
     .from("products")
-    .select("id, tiny_id, bling_sku, bling_color_sku_map, tiny_color_map")
+    .select("id, name, available_colors, tiny_id, bling_sku, bling_color_sku_map, tiny_color_map")
     .eq("product_type", "personalizado");
 
   type ProdMatcher = {
     id: string;
+    name: string;
+    colorKeyToLabel: Map<string, string>;
     tiny_id: number | null;
     variationTinyIds: Set<number>;
     skus: Set<string>;
@@ -224,6 +227,16 @@ export async function buildOrderItemsFromTinyRaw(
     const variationTinyIds = new Set<number>();
     const skuToColor = new Map<string, string>();
     const tinyIdToColor = new Map<number, string>();
+
+    // Mapeia color key → label legível a partir de available_colors
+    const colorKeyToLabel = new Map<string, string>();
+    if (Array.isArray(p.available_colors)) {
+      for (const c of p.available_colors as { key?: string; label?: string }[]) {
+        if (typeof c.key === "string" && typeof c.label === "string") {
+          colorKeyToLabel.set(c.key, c.label);
+        }
+      }
+    }
 
     // bling_sku do produto pai (sem cor específica)
     if (p.bling_sku && typeof p.bling_sku === "string") {
@@ -267,6 +280,8 @@ export async function buildOrderItemsFromTinyRaw(
 
     return {
       id: p.id,
+      name: p.name ?? "",
+      colorKeyToLabel,
       tiny_id: p.tiny_id,
       variationTinyIds,
       skus,
@@ -275,24 +290,36 @@ export async function buildOrderItemsFromTinyRaw(
     };
   });
 
-  // Função pura de matching — retorna produto e cor identificada (se houver)
+  // Função pura de matching — retorna produto, cor e label da cor identificados
   const matchProduct = (
     tinyProductId: number | null,
     itemSku: string | null
-  ): { productId: string; color: string | null } | null => {
+  ): { productId: string; productName: string; color: string | null; colorLabel: string | null } | null => {
     const skuUpper = itemSku?.toUpperCase().trim() ?? "";
     for (const m of matchers) {
       // Match 1: tiny_id do produto pai (não identifica cor específica)
       if (tinyProductId != null && m.tiny_id === tinyProductId) {
-        return { productId: m.id, color: null };
+        return { productId: m.id, productName: m.name, color: null, colorLabel: null };
       }
       // Match 2: tiny_id de variação — identifica cor
       if (tinyProductId != null && m.variationTinyIds.has(tinyProductId)) {
-        return { productId: m.id, color: m.tinyIdToColor.get(tinyProductId) ?? null };
+        const color = m.tinyIdToColor.get(tinyProductId) ?? null;
+        return {
+          productId: m.id,
+          productName: m.name,
+          color,
+          colorLabel: color ? (m.colorKeyToLabel.get(color) ?? null) : null,
+        };
       }
       // Match 3: SKU — identifica cor quando mapeado
       if (skuUpper && m.skus.has(skuUpper)) {
-        return { productId: m.id, color: m.skuToColor.get(skuUpper) ?? null };
+        const color = m.skuToColor.get(skuUpper) ?? null;
+        return {
+          productId: m.id,
+          productName: m.name,
+          color,
+          colorLabel: color ? (m.colorKeyToLabel.get(color) ?? null) : null,
+        };
       }
     }
     return null;
@@ -358,10 +385,22 @@ export async function buildOrderItemsFromTinyRaw(
       continue;
     }
 
+    // Quando a cor é identificada, usa o nome canônico do CRM + label da cor
+    // para evitar que o Tiny retorne sempre o nome da variação-pai (ex.: "Lilás")
+    // mesmo quando o item é de outra cor.
+    const resolvedProductName: string = (() => {
+      if (match.color && match.colorLabel) {
+        // Remove sufixo de cor existente (ex.: " – Lilás" ou " - Lilás") e adiciona o correto
+        const base = match.productName.replace(/\s*[-–—]\s*[^-–—]+$/, "").trim();
+        return `${base} – ${match.colorLabel}`;
+      }
+      return match.productName || String(productName);
+    })();
+
     itemsToInsert.push({
       order_id: orderId,
       product_id: match.productId,
-      product_name: String(productName),
+      product_name: resolvedProductName,
       quantity: qty,
       unit_price: unitPrice != null ? Number(unitPrice) : null,
       total_price: totalPrice != null ? Number(totalPrice) : null,
@@ -494,6 +533,12 @@ export async function importTinyOrderFromApi(
     raw.dataPedido ?? raw.data_pedido ?? raw.data ?? raw.dataCriacao;
   const situacao = raw.situacao ?? raw.status ?? 0;
 
+  // Observações internas do Tiny → campo description do CRM (exibido como "Personalização" no pipeline)
+  const obsInternas =
+    (typeof raw.observacoesInternas === "string" ? raw.observacoesInternas.trim() : undefined) ??
+    (typeof raw.obs_internas === "string" ? raw.obs_internas.trim() : undefined) ??
+    null;
+
   // Checar se pedido já existe no CRM — se sim, preservar status via mapeamento; se não, AUTOMATICO
   const { data: existingOrder } = await supabase
     .from("orders")
@@ -509,7 +554,7 @@ export async function importTinyOrderFromApi(
 
   const orderData: Database["public"]["Tables"]["orders"]["Insert"] = {
     title: `Pedido #${numeroPedido} - ${clienteNome}`,
-    description: valor != null ? `Valor: R$ ${valor}` : null,
+    description: obsInternas || (valor != null ? `Valor: R$ ${valor}` : null),
     client_id: clientIdRow.id,
     status,
     due_date: dataPrevista ? parseTinyDate(String(dataPrevista)) : null,
