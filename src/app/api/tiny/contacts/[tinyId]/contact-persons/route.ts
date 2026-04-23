@@ -1,42 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tinyApiGet, tinyApiPost, tinyApiPut, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
-
-// Tiny v3 documenta "telefone" mas na prática a API pode retornar "fone" também.
-// O array de pessoas é "contatos" (V3) ou "pessoasContato" (legado).
-// Ref: GET /contatos/{id} → ObterContatoModelResponse.contatos → BasePessoaContatoModel
-interface TinyContactPerson {
-  id?: number | null;
-  nome?: string | null;
-  setor?: string | null;
-  email?: string | null;
-  telefone?: string | null;
-  fone?: string | null;
-  ramal?: string | null;
-}
-
-interface TinyContactDetail {
-  id?: number;
-  nome?: string;
-  contatos?: TinyContactPerson[];
-  pessoasContato?: TinyContactPerson[];
-}
-
-/**
- * Tiny v3 retorna o contato nas formas:
- *   { id, nome, contatos, ... }          — objeto direto (mais comum)
- *   { data: { id, nome, contatos, ... } } — envolvido em data
- *   { contato: { ... } }                 — wrapper legado
- */
-function extractContact(raw: unknown): TinyContactDetail {
-  if (!raw || typeof raw !== "object") return {};
-  const r = raw as Record<string, unknown>;
-  return (r.data as TinyContactDetail) ?? (r.contato as TinyContactDetail) ?? (raw as TinyContactDetail);
-}
-
-/** Extrai o array de pessoas de contato independente do nome do campo (V3 ou legado). */
-function extractContactPersons(contact: TinyContactDetail): TinyContactPerson[] {
-  return contact.contatos ?? contact.pessoasContato ?? [];
-}
+import {
+  extractContact,
+  extractContactPersons,
+  type TinyContactPerson,
+} from "@/lib/tiny/tiny-contact-pessoas";
 
 // ─── GET: listar pessoas de contato ──────────────────────────────────────────
 

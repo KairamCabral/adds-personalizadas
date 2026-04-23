@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { tinyApiGet, TinyTokenExpiredError } from "@/lib/tiny-api";
 import type { Database, Json } from "@/types/database.types";
 import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
+import { fetchFirstPessoaContatoForChat } from "@/lib/tiny/tiny-contact-pessoas";
 
 /**
  * Verifica se o pedido é de personalizadas.
@@ -552,6 +553,15 @@ export async function importTinyOrderFromApi(
     : mapTinySituacaoToCrmStatus(situacao);
   const position = await nextPositionForOrderStatus(supabase, status);
 
+  // Preencher "Contato do chat" a partir das Pessoas de Contato do Tiny (só no primeiro import)
+  let contactChat: { contact_name: string; contact_phone: string } | null = null;
+  if (isNewOrder) {
+    const picked = await fetchFirstPessoaContatoForChat(clienteId);
+    if (picked) {
+      contactChat = { contact_name: picked.nome, contact_phone: picked.telefone };
+    }
+  }
+
   const orderData: Database["public"]["Tables"]["orders"]["Insert"] = {
     title: `Pedido #${numeroPedido} - ${clienteNome}`,
     description: obsInternas || (valor != null ? `Valor: R$ ${valor}` : null),
@@ -565,6 +575,7 @@ export async function importTinyOrderFromApi(
     position,
     is_pipeline_managed: true,
     origin: "TINY_WEBHOOK",
+    ...(contactChat ? { contact_name: contactChat.contact_name, contact_phone: contactChat.contact_phone } : {}),
   };
 
   const { data: upsertedOrder, error: orderErr } = await supabase
