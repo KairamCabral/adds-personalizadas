@@ -49,13 +49,13 @@ function whatsappUrl(phone: string): string {
   return `https://wa.me/${international}`;
 }
 
-// Tiny v3 pessoasContato uses fone (not celular) and setor (not cargo)
+// Tiny v3 usa "contatos" e campo "telefone" (não "fone") — ref: BasePessoaContatoModel
 interface TinyContactPerson {
-  nome?: string;
-  fone?: string;
-  setor?: string;
-  email?: string;
-  ramal?: string;
+  nome?: string | null;
+  telefone?: string | null;
+  setor?: string | null;
+  email?: string | null;
+  ramal?: string | null;
 }
 
 export function OrderContactCard({
@@ -101,12 +101,12 @@ export function OrderContactCard({
         try {
           // Tiny pessoasContato uses "fone" for phone
           const digits = phoneVal.replace(/\D/g, "");
-          const res = await fetch(`/api/tiny/contacts/${tinyId}/contact-persons`, {
+              const res = await fetch(`/api/tiny/contacts/${tinyId}/contact-persons`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               nome: nameVal.trim(),
-              fone: digits || undefined,
+              telefone: digits || undefined,
             }),
           });
           const json = await res.json();
@@ -164,7 +164,7 @@ export function OrderContactCard({
 
   function handleSelectTinyPerson(p: TinyContactPerson) {
     setNameVal(p.nome ?? "");
-    setPhoneVal(p.fone ?? "");
+    setPhoneVal(p.telefone ?? "");
     setShowTinyPeople(false);
   }
 
@@ -253,8 +253,8 @@ export function OrderContactCard({
                 <User className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="font-medium">{p.nome}</span>
                 {p.setor && <span className="text-xs text-muted-foreground">({p.setor})</span>}
-                {p.fone && (
-                  <span className="ml-auto text-xs text-muted-foreground">{p.fone}</span>
+                {p.telefone && (
+                  <span className="ml-auto text-xs text-muted-foreground">{p.telefone}</span>
                 )}
               </button>
             ))}
