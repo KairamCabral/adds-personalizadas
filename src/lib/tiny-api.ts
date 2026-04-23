@@ -255,6 +255,39 @@ export async function tinyApiPatch<T = any>(
   return res.json();
 }
 
+/** Olist/Tiny v3: atualizar contato e pessoas de contato usam PUT (não PATCH). */
+export async function tinyApiPut<T = any>(
+  endpoint: string,
+  body: unknown
+): Promise<T> {
+  const token = await getValidAccessToken();
+  const base = getTinyApiBase();
+  const url = `${base}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Tiny API PUT ${endpoint} failed: ${res.status} ${text}`);
+  }
+
+  if (res.status === 204) return {} as T;
+  const text = await res.text();
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
 export async function isTinyConnected(): Promise<boolean> {
   const supabase = getServiceClient();
   const { data } = await supabase
