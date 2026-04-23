@@ -91,7 +91,10 @@ export function OrderContactCard({
   }, [isEditing, contactName, contactPhone, tinyId]);
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{
+      tinySyncAttempted: boolean;
+      tinySyncOk: boolean;
+    }> => {
       // 1. Save to Supabase
       await updateOrderContact(orderId, nameVal, phoneVal);
 
@@ -99,9 +102,8 @@ export function OrderContactCard({
       if (syncToTiny && tinyId && nameVal.trim()) {
         setTinySyncStatus("syncing");
         try {
-          // Tiny pessoasContato uses "fone" for phone
           const digits = phoneVal.replace(/\D/g, "");
-              const res = await fetch(`/api/tiny/contacts/${tinyId}/contact-persons`, {
+          const res = await fetch(`/api/tiny/contacts/${tinyId}/contact-persons`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -112,23 +114,26 @@ export function OrderContactCard({
           const json = await res.json();
           if (!res.ok || !json.success) throw new Error(json.error ?? "Falha no Tiny");
           setTinySyncStatus("ok");
+          return { tinySyncAttempted: true, tinySyncOk: true };
         } catch (err) {
           setTinySyncStatus("error");
           toast.warning(
             `Contato salvo no CRM, mas não foi possível sincronizar com o Tiny: ${err instanceof Error ? err.message : "erro desconhecido"}`
           );
-          return;
+          return { tinySyncAttempted: true, tinySyncOk: false };
         }
       }
+      return { tinySyncAttempted: false, tinySyncOk: false };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["order", orderId] });
       setIsEditing(false);
-      if (syncToTiny && tinyId) {
+      if (data.tinySyncAttempted && data.tinySyncOk) {
         toast.success("Contato salvo e sincronizado com o Tiny");
-      } else {
+      } else if (!data.tinySyncAttempted) {
         toast.success("Contato atualizado");
       }
+      // se tinySyncAttempted && !tinySyncOk: o aviso já foi exibido no mutationFn
     },
     onError: () => toast.error("Erro ao salvar contato"),
   });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { tinyApiGet, tinyApiPatch, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
+import { tinyApiGet, tinyApiPost, tinyApiPut, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
 
 // Tiny v3 documenta "telefone" mas na prática a API pode retornar "fone" também.
 // O array de pessoas é "contatos" (V3) ou "pessoasContato" (legado).
@@ -17,9 +17,7 @@ interface TinyContactPerson {
 interface TinyContactDetail {
   id?: number;
   nome?: string;
-  // Tiny V3 usa "contatos" para pessoas de contato
   contatos?: TinyContactPerson[];
-  // Fallback para eventual resposta legada
   pessoasContato?: TinyContactPerson[];
 }
 
@@ -60,7 +58,6 @@ export async function GET(
       nome: p.nome ?? null,
       setor: p.setor ?? null,
       email: p.email ?? null,
-      // Tiny V3 documenta "telefone" mas pode retornar "fone" na prática
       telefone: p.telefone ?? p.fone ?? null,
       ramal: p.ramal ?? null,
     }));
@@ -75,14 +72,22 @@ export async function GET(
   }
 }
 
-// ─── PATCH: adicionar ou atualizar pessoa de contato ─────────────────────────
-// Body: { nome: string, telefone?: string, setor?: string }
+// ─── PATCH: adicionar ou atualizar pessoa de contato (CRM) ────────────────────
+// A API Olist v3 NÃO oferece PATCH em /contatos/{id}. Usar:
+//   - PUT /contatos/{idContato}/pessoas/{idPessoa}  (atualizar existente)
+//   - POST /contatos/{idContato}/pessoas            (criar nova)
+// Fallback raro: PUT /contatos/{id} com { contatos: [...] } (sem id na pessoa)
+// Body: { nome: string, telefone?: string, fone?: string, setor?: string }
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ tinyId: string }> }
 ) {
   const { tinyId } = await params;
+  const idContato = Number(tinyId);
+  if (!Number.isFinite(idContato)) {
+    return NextResponse.json({ error: "tinyId inválido" }, { status: 400 });
+  }
 
   try {
     const connected = await isTinyConnected();
@@ -95,13 +100,12 @@ export async function PATCH(
       return NextResponse.json({ error: "nome é obrigatório" }, { status: 400 });
     }
 
-    // Aceitar "fone" por compatibilidade com chamadas existentes
     const phone = body.telefone ?? body.fone;
+    const nomeTrim = body.nome.trim();
 
-    // 1. Buscar contato atual para preservar pessoasContato existentes
     let existing: TinyContactPerson[] = [];
     try {
-      const raw = await tinyApiGet(`/contatos/${tinyId}`);
+      const raw = await tinyApiGet(`/contatos/${idContato}`);
       console.log("[Tiny contact-persons PATCH] raw contact:", JSON.stringify(raw).slice(0, 500));
       const contact = extractContact(raw);
       existing = extractContactPersons(contact);
@@ -109,33 +113,65 @@ export async function PATCH(
       console.warn("[Tiny contact-persons PATCH] Could not fetch current contact:", err);
     }
 
-    // 2. Adicionar ou atualizar a pessoa
-    const normName = body.nome.trim().toLowerCase();
+    const normName = nomeTrim.toLowerCase();
     const idx = existing.findIndex((p) => (p.nome ?? "").toLowerCase() === normName);
 
-    let updatedPeople: TinyContactPerson[];
     if (idx >= 0) {
-      updatedPeople = existing.map((p, i) =>
+      const p = existing[idx];
+      const pid = p.id != null && Number.isFinite(Number(p.id)) ? Number(p.id) : null;
+
+      if (pid != null) {
+        // Olist v3: atualizar pessoa de contato
+        const telefoneVal =
+          (phone != null && String(phone).trim() !== "" ? String(phone).trim() : null) ??
+          p.telefone ??
+          p.fone ??
+          undefined;
+        await tinyApiPut(`/contatos/${idContato}/pessoas/${pid}`, {
+          nome: nomeTrim,
+          telefone: telefoneVal,
+          setor: body.setor ?? p.setor ?? undefined,
+          email: p.email ?? undefined,
+          ramal: p.ramal ?? undefined,
+        });
+        return NextResponse.json({ success: true, updated: true, totalPeople: existing.length, mode: "put-pessoa" });
+      }
+
+      // Pessoa existente no array mas sem id (raro) — enviar array completo via PUT do contato
+      const updatedPeople: TinyContactPerson[] = existing.map((ep, i) =>
         i === idx
-          ? { ...p, telefone: phone ?? p.telefone ?? p.fone, setor: body.setor ?? p.setor }
-          : p
+          ? {
+              ...ep,
+              telefone: phone != null && String(phone).trim() !== "" ? String(phone).trim() : ep.telefone ?? ep.fone,
+              setor: body.setor ?? ep.setor,
+            }
+          : ep
       );
-    } else {
-      updatedPeople = [
-        ...existing,
-        {
-          nome: body.nome.trim(),
-          telefone: phone?.trim() || undefined,
-          setor: body.setor?.trim() || undefined,
-        },
-      ];
+      const contatosPayload = updatedPeople.map((x) => ({
+        id: x.id ?? undefined,
+        nome: x.nome ?? undefined,
+        telefone: x.telefone ?? x.fone ?? undefined,
+        setor: x.setor ?? undefined,
+        email: x.email ?? undefined,
+        ramal: x.ramal ?? undefined,
+      }));
+      console.log("[Tiny contact-persons PATCH] fallback PUT contatos (sem id pessoa):", JSON.stringify(contatosPayload));
+      await tinyApiPut(`/contatos/${idContato}`, { contatos: contatosPayload });
+      return NextResponse.json({ success: true, updated: true, totalPeople: updatedPeople.length, mode: "put-contato-fallback" });
     }
 
-    // 3. PATCH no contato Tiny (V3 usa "contatos")
-    console.log("[Tiny contact-persons PATCH] sending contatos:", JSON.stringify(updatedPeople));
-    await tinyApiPatch(`/contatos/${tinyId}`, { contatos: updatedPeople });
-
-    return NextResponse.json({ success: true, updated: idx >= 0, totalPeople: updatedPeople.length });
+    // Nova pessoa de contato
+    await tinyApiPost(`/contatos/${idContato}/pessoas`, {
+      nome: nomeTrim,
+      telefone: phone?.trim() || undefined,
+      setor: body.setor?.trim() || undefined,
+    });
+    return NextResponse.json({
+      success: true,
+      updated: false,
+      totalPeople: existing.length + 1,
+      mode: "post-pessoa",
+    });
   } catch (err) {
     if (err instanceof TinyTokenExpiredError) {
       return NextResponse.json({ success: false, code: "TINY_RECONNECT" }, { status: 401 });
