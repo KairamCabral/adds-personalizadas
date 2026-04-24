@@ -10,55 +10,11 @@ import {
   importTinyOrderFromApi,
   mapTinySituacaoToCrmStatus,
 } from "@/lib/tiny/tiny-order-import";
-
-/**
- * Quando um pedido é faturado no Tiny:
- * - Adiciona a tag "PAGO" em order_labels (idempotente)
- * - Se status atual for CONFIRMACAO, move para APROVADO
- * - Nunca coloca o pedido em FATURADO (mantém na pipeline produtiva)
- */
-async function addPagoLabelAndMaybeMove(
-  supabase: SupabaseClient<Database>,
-  orderId: string,
-  orderStatus: string
-): Promise<{ tagAdded: boolean; statusMoved: boolean }> {
-  const { data: existingLabel } = await supabase
-    .from("order_labels")
-    .select("id")
-    .eq("order_id", orderId)
-    .eq("label", "PAGO")
-    .maybeSingle();
-
-  let tagAdded = false;
-  if (!existingLabel) {
-    const { error: labelError } = await supabase.from("order_labels").insert({
-      order_id: orderId,
-      label: "PAGO",
-    });
-    if (!labelError) tagAdded = true;
-  }
-
-  // Remove tags de "aguardando pagamento" (agora obsoletas com PAGO)
-  await supabase
-    .from("order_labels")
-    .delete()
-    .eq("order_id", orderId)
-    .in("label", ["AGUARDANDO_PAGAMENTO", "APROV_AGUARDANDO_PAGAMENTO"]);
-
-  let statusMoved = false;
-  if (orderStatus === "CONFIRMACAO") {
-    const { error: updErr } = await supabase
-      .from("orders")
-      .update({
-        status: "APROVADO",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orderId);
-    if (!updErr) statusMoved = true;
-  }
-
-  return { tagAdded, statusMoved };
-}
+import {
+  applyFaturadoCrmFromTiny,
+  isTinySituacaoFaturado,
+  notaFiscalIdFromTinyDados,
+} from "@/lib/tiny/tiny-faturado-crm";
 
 export interface TinyPayload {
   tipo: string;
@@ -259,19 +215,15 @@ async function handlePedido(
   const updates: Database["public"]["Tables"]["orders"]["Update"] = {};
 
   const situacaoRaw = dados.situacao;
-  const situacaoStr = typeof situacaoRaw === "string" ? situacaoRaw.trim() : String(situacaoRaw ?? "").trim();
-  const situacaoNum = Number(situacaoStr);
-
-  // Tiny situação 1 ou "Faturado" ou "Autorizada" = pedido foi faturado
-  // Nesse caso, adiciona tag PAGO e move só se for CONFIRMACAO -> APROVADO
-  // Nunca marca como FATURADO (mantém na pipeline)
+  const nfFromDados = notaFiscalIdFromTinyDados(dados);
+  // Código 1, texto "faturado" (Olist), NF no payload, etc.
   const isFaturado =
-    situacaoNum === 1 ||
-    situacaoStr === "Faturado" ||
-    situacaoStr === "Autorizada";
+    isTinySituacaoFaturado(situacaoRaw) || nfFromDados != null;
 
+  let faturadoEffectsRun = false;
   if (isFaturado) {
-    await addPagoLabelAndMaybeMove(supabase, order.id, order.status);
+    await applyFaturadoCrmFromTiny(supabase, order.id, order.status);
+    faturadoEffectsRun = true;
   } else if (situacaoRaw !== undefined && situacaoRaw !== null && situacaoRaw !== "") {
     const mappedStatus = mapTinySituacaoToCrmStatus(situacaoRaw);
     if (mappedStatus !== order.status && mappedStatus !== "FATURADO") {
@@ -279,9 +231,8 @@ async function handlePedido(
     }
   }
 
-  const idNotaFiscal = dados.idNotaFiscal
-    ? Number(dados.idNotaFiscal)
-    : undefined;
+  const idNotaFiscal =
+    nfFromDados ?? (dados.idNotaFiscal ? Number(dados.idNotaFiscal) : undefined);
   if (idNotaFiscal && idNotaFiscal !== order.tiny_invoice_id) {
     updates.tiny_invoice_id = idNotaFiscal;
     // não muda status automaticamente baseado em idNotaFiscal
@@ -295,7 +246,12 @@ async function handlePedido(
       direction: "pull",
       status: "success",
     });
-    return { ok: true, message: "Pedido já sincronizado, sem alterações." };
+    return {
+      ok: true,
+      message: faturadoEffectsRun
+        ? "Faturado processado: tag PAGO e etapa ajustada se aplicável."
+        : "Pedido já sincronizado, sem alterações.",
+    };
   }
 
   updates.updated_at = new Date().toISOString();
@@ -372,8 +328,7 @@ async function handleNotaFiscal(
     }
   }
 
-  // Adicionar tag PAGO e mover CONFIRMACAO -> APROVADO se aplicável
-  await addPagoLabelAndMaybeMove(supabase, order.id, order.status);
+  await applyFaturadoCrmFromTiny(supabase, order.id, order.status);
 
   // Atualizar tiny_invoice_id (mas não alterar status para FATURADO)
   const { error } = await supabase
