@@ -24,7 +24,11 @@ import { TinyOrderSheet } from "@/components/pipeline/tiny-order-sheet";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { ORDER_STATUSES, type OrderStatus, type LabelType } from "@/lib/constants";
+import {
+  ORDER_STATUS_DROPDOWN,
+  type OrderStatus,
+  type LabelType,
+} from "@/lib/constants";
 import {
   Calendar,
   Package,
@@ -607,7 +611,7 @@ export function OrderDetailSheet() {
                               <SelectValue placeholder="Alterar etapa" />
                             </SelectTrigger>
                             <SelectContent className="z-[110]">
-                              {ORDER_STATUSES.map((s) => (
+                              {ORDER_STATUS_DROPDOWN.map((s) => (
                                 <SelectItem key={s.key} value={s.key}>
                                   {s.label}
                                 </SelectItem>

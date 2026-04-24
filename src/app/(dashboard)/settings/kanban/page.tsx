@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ORDER_STATUSES } from "@/lib/constants";
+import { KANBAN_COLUMN_STATUSES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export default function SettingsKanbanPage() {
@@ -17,14 +17,14 @@ export default function SettingsKanbanPage() {
         <CardHeader>
           <CardTitle>Colunas do pipeline</CardTitle>
           <CardDescription>
-            As 12 colunas do Kanban estão definidas na ordem abaixo. A
-            personalização da ordem e nomes será disponibilizada em versões
-            futuras.
+            As {KANBAN_COLUMN_STATUSES.length} colunas do Kanban (etapa final:
+            Finalizado) estão na ordem abaixo. A personalização da ordem e nomes
+            será disponibilizada em versões futuras.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            {ORDER_STATUSES.map((status, index) => {
+            {KANBAN_COLUMN_STATUSES.map((status, index) => {
               const Icon = status.icon;
               return (
                 <div

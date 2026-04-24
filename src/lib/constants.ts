@@ -187,8 +187,13 @@ export const KANBAN_COLUMN_STATUSES = ORDER_STATUSES.filter(
   (s) => s.key !== "ENTREGUE" && s.key !== "FATURADO" && s.key !== "ARQUIVADO"
 );
 
+/** Etapas no seletor do pedido: fim de fluxo = FINALIZADO; entregue/faturado = etiquetas */
+export const ORDER_STATUS_DROPDOWN = ORDER_STATUSES.filter(
+  (s) => s.key !== "ENTREGUE" && s.key !== "FATURADO"
+);
+
 // ============================================
-// LABELS (7 tipos de etiqueta)
+// LABELS (incl. ENTREGUE = envio concluído, sem coluna de etapa)
 // ============================================
 
 export type LabelType =
@@ -199,7 +204,8 @@ export type LabelType =
   | "AMOSTRAS"
   | "PAGO"
   | "ORCAMENTO_PUBLICO"
-  | "LINK_ENVIADO";
+  | "LINK_ENVIADO"
+  | "ENTREGUE";
 
 export interface LabelConfig {
   key: LabelType;
@@ -264,6 +270,13 @@ export const LABELS: LabelConfig[] = [
     label: "Link enviado",
     color: "#1e40af",
     bgColor: "bg-blue-800",
+    textColor: "text-white",
+  },
+  {
+    key: "ENTREGUE",
+    label: "Entregue",
+    color: "#0f766e",
+    bgColor: "bg-teal-600",
     textColor: "text-white",
   },
 ];

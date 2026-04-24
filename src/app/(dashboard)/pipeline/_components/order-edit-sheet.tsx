@@ -40,7 +40,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOrderById, updateOrder, replaceOrderItems } from "@/services/orders.service";
 import { getUsers } from "@/services/users.service";
 import { getActiveProducts } from "@/services/products.service";
-import { ORDER_STATUSES, type OrderStatus } from "@/lib/constants";
+import { ORDER_STATUS_DROPDOWN, type OrderStatus } from "@/lib/constants";
 import { Loader2, Minus, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -625,7 +625,7 @@ export function OrderEditSheet({
                         <SelectValue placeholder="Selecione o status" />
                       </SelectTrigger>
                       <SelectContent>
-                        {ORDER_STATUSES.map((s) => (
+                        {ORDER_STATUS_DROPDOWN.map((s) => (
                           <SelectItem key={s.key} value={s.key}>
                             {s.label}
                           </SelectItem>

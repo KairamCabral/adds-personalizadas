@@ -1609,6 +1609,7 @@ export type Database = {
         | "AMOSTRAS"
         | "PAGO"
         | "ORCAMENTO_PUBLICO"
+        | "ENTREGUE"
       order_priority: "NORMAL" | "ALTA"
       order_status:
         | "AUTOMATICO"
@@ -1794,6 +1795,7 @@ export const Constants = {
         "AMOSTRAS",
         "PAGO",
         "ORCAMENTO_PUBLICO",
+        "ENTREGUE",
       ],
       order_priority: ["NORMAL", "ALTA"],
       order_status: [

@@ -49,7 +49,6 @@ export async function getArchivedOrders() {
       items:order_items(product_name, quantity),
       attachments:attachments(id)
     `)
-    .is("tiny_order_id", null)
     .not("archived_at", "is", null)
     .is("deleted_at", null)
     .order("archived_at", { ascending: false });
