@@ -34,7 +34,24 @@ export async function getOrders() {
     .order("id", { ascending: true });
 
   if (error) throw error;
-  return data;
+  const orders = data ?? [];
+  if (orders.length === 0) return orders;
+
+  const ids = orders.map((o) => o.id);
+  const { data: stamps, error: stampsError } = await supabase.rpc(
+    "order_status_stamps",
+    { p_order_ids: ids }
+  );
+  if (stampsError) throw stampsError;
+
+  const byId = new Map(
+    (stamps ?? []).map((r) => [r.order_id, r.entered_status_at])
+  );
+
+  return orders.map((o) => ({
+    ...o,
+    entered_status_at: byId.get(o.id) ?? o.created_at,
+  }));
 }
 
 export async function getArchivedOrders() {

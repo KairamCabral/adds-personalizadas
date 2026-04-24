@@ -1,11 +1,6 @@
--- Dashboard CRM: filtrar apenas pedidos "reais" do CRM (24/04/2026)
--- Critério: created_at >= '2026-03-01' OR exists histórico status_changed
--- Exclui ~2400 pedidos importados em lote que nunca passaram pelo CRM
--- Adiciona 3 cards separados: Cancelados, Arquivados, Excluídos
--- Remove FATURADO do tempo por etapa (status legado)
--- Corrige "Em andamento" no funil
--- Corrige lógica de "Pedidos Parados"
--- Mantém chave pedidosParados (retrocompat): top 5 parados por dias sem movimento
+-- Dashboard: Pedidos ativos / "Em andamento" = mesmo critério do badge do Pipeline (Kanban).
+-- pedidos_crm inclui só is_pipeline_managed; mantém corte março/2026 OU status_changed.
+-- Aplique no remoto se a migration 20260426100000 já tinha sido executada sem estes ajustes.
 
 CREATE OR REPLACE FUNCTION get_dashboard_crm(p_from timestamptz, p_to timestamptz)
 RETURNS json
@@ -455,4 +450,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_dashboard_crm IS
-'Dashboard CRM: pedidos reais (março+ ou status_changed) + geridos no pipeline; ativos e funil em andamento = total do Kanban; FATURADO excluído do tempo por etapa.';
+'Dashboard CRM: pedidos reais (março+ ou status_changed) + geridos no pipeline; ativos/funil em andamento = total do Kanban; FATURADO excluído do tempo por etapa.';

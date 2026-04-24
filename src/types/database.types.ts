@@ -1549,6 +1549,10 @@ export type Database = {
         Args: { p_from: string; p_to: string }
         Returns: Json
       }
+      order_status_stamps: {
+        Args: { p_order_ids: string[] }
+        Returns: { order_id: string; entered_status_at: string }[]
+      }
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
