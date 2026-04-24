@@ -130,11 +130,12 @@ export async function POST(request: NextRequest) {
       .eq("status", newOrderStatus)
       .is("archived_at", null);
 
-    await supabase.from("orders").update({
-      status: newOrderStatus,
-      position: statusCount ?? 0,
-      updated_at: now,
-    }).eq("id", tokenRow.order_id);
+    const { error: moveOrderErr } = await (supabase.rpc as any)("move_order_atomic", {
+      p_order_id: tokenRow.order_id,
+      p_new_status: newOrderStatus,
+      p_new_position: statusCount ?? 0,
+    });
+    if (moveOrderErr) throw moveOrderErr;
 
     // History entry
     const approvedCount = decisions.filter((d) => d.approved).length;
