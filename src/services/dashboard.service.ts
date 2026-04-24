@@ -135,6 +135,16 @@ export interface PedidoParado {
   title: string;
   status: string;
   diasParado: number;
+  /** ISO ou null quando ausente (RPC pedidos parados atrasados / no prazo) */
+  dueDate?: string | null;
+}
+
+export interface PedidoCanceladoRecente {
+  id: string;
+  title: string;
+  status: string;
+  canceladoEm: string;
+  diasDesdeCancelamento: number;
 }
 
 /** Resposta bruta do RPC (campos opcionais para compat com versões antigas) */
@@ -145,7 +155,7 @@ type DashboardRpcRow = Partial<DashboardCrmData> & {
   pedidosCanceladosPrev?: number;
   pedidosParadosAtrasados?: PedidoParado[];
   pedidosParadosNoPrazo?: PedidoParado[];
-  pedidosCanceladosRecentes?: PedidoParado[];
+  pedidosCanceladosRecentes?: PedidoCanceladoRecente[];
 };
 
 export interface DashboardCrmData {
@@ -168,6 +178,7 @@ export interface DashboardCrmData {
   pedidosFinalizadosPrev?: number;
 
   pedidosArquivados: number;
+  pedidosExcluidos: number;
   taxaConclusao: number;
   tempoMedioTotal: { mediaHoras: number; pedidos: number };
   tempoPorEtapa: TempoPorEtapa[];
@@ -180,7 +191,7 @@ export interface DashboardCrmData {
   pedidosParados?: PedidoParado[];
   pedidosParadosAtrasados?: PedidoParado[];
   pedidosParadosNoPrazo?: PedidoParado[];
-  pedidosCanceladosRecentes?: PedidoParado[];
+  pedidosCanceladosRecentes?: PedidoCanceladoRecente[];
 }
 
 export async function getDashboardCrmData(
@@ -217,6 +228,7 @@ export async function getDashboardCrmData(
     pedidosFinalizados: r?.pedidosFinalizados ?? pedidosConcluidos,
     pedidosFinalizadosPrev: r?.pedidosFinalizadosPrev ?? pedidosConcluidosPrev,
     pedidosArquivados: r?.pedidosArquivados ?? 0,
+    pedidosExcluidos: r?.pedidosExcluidos ?? 0,
     taxaConclusao: Number(r?.taxaConclusao ?? 0),
     tempoMedioTotal: r?.tempoMedioTotal ?? { mediaHoras: 0, pedidos: 0 },
     tempoPorEtapa: r?.tempoPorEtapa ?? [],
