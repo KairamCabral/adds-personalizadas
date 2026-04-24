@@ -180,6 +180,45 @@ async function handlePedido(
     .maybeSingle();
 
   if (!order) {
+    // PROTEÇÃO: não criar pedido antigo retroativamente via webhook.
+    // O Tiny pode enviar atualizacao_pedido para pedidos que nunca
+    // chegaram ao CRM (ex.: webhook original perdido). Se o pedido for
+    // antigo e não existir no CRM, ignoramos em vez de importá-lo agora.
+    const MAX_RETRO_DAYS = 7;
+    const orderDateRaw = dados.data as string | undefined;
+    if (orderDateRaw) {
+      // Tiny envia em DD/MM/YYYY
+      const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(orderDateRaw.trim());
+      if (match) {
+        const [, dd, mm, yyyy] = match;
+        const orderDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
+        if (!isNaN(orderDate.getTime())) {
+          const daysSinceOrder =
+            (Date.now() - orderDate.getTime()) / 86_400_000;
+          if (daysSinceOrder > MAX_RETRO_DAYS) {
+            console.info(
+              `[Webhook Tiny] Ignorando atualização retroativa: ` +
+                `tiny_order_id=${tinyOrderId} data=${orderDateRaw} ` +
+                `(${daysSinceOrder.toFixed(0)} dias atrás, > ${MAX_RETRO_DAYS})`
+            );
+            await logSync(supabase, {
+              entity_type: "order",
+              entity_id: null,
+              tiny_id: tinyOrderId,
+              direction: "pull",
+              status: "success",
+              error_message: `Ignorado: pedido antigo não existente no CRM (${daysSinceOrder.toFixed(0)}d)`,
+            });
+            return {
+              ok: true,
+              message: `Pedido antigo (${daysSinceOrder.toFixed(0)} dias) ignorado — não está no CRM e é muito antigo para importar retroativamente.`,
+            };
+          }
+        }
+      }
+    }
+
+    // Pedido não existe mas é recente — importa normalmente
     const imported = await importTinyOrderFromApi(supabase, tinyOrderId);
     await logSync(supabase, {
       entity_type: "order",
