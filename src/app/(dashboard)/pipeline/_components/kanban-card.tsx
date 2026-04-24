@@ -266,6 +266,7 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
   const enteredAt = order.entered_status_at ?? order.created_at;
   const daysInStage = calendarAgeDays(enteredAt);
   const daysSinceCreated = calendarAgeDays(order.created_at);
+  const createdOlderThan15Days = daysSinceCreated > 15;
 
   const queryClient = useQueryClient();
   const resendMutation = useMutation({
@@ -389,12 +390,33 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
         {order.title}
       </h4>
 
-      {/* Idade na etapa · idade do cadastro (minimalista) */}
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] tabular-nums leading-none text-muted-foreground">
+      {/* Idade na etapa · idade do cadastro — à direita; vermelho se cadastro &gt; 15 dias */}
+      <div
+        className={cn(
+          "mt-1.5 flex w-full items-center justify-end gap-1 text-[10px] tabular-nums leading-none",
+          createdOlderThan15Days
+            ? "text-destructive"
+            : "text-muted-foreground"
+        )}
+      >
+        <Clock
+          className={cn(
+            "h-3 w-3 shrink-0 opacity-65",
+            createdOlderThan15Days && "text-destructive opacity-90"
+          )}
+          aria-hidden
+        />
         <TooltipProvider delayDuration={250}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="cursor-default border-b border-dotted border-muted-foreground/35">
+              <span
+                className={cn(
+                  "cursor-default border-b border-dotted",
+                  createdOlderThan15Days
+                    ? "border-destructive/45"
+                    : "border-muted-foreground/35"
+                )}
+              >
                 {daysInStage}d
               </span>
             </TooltipTrigger>
@@ -402,17 +424,31 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
               Na etapa atual
             </TooltipContent>
           </Tooltip>
-          <span className="text-muted-foreground/45" aria-hidden>
+          <span
+            className={cn(
+              "opacity-45",
+              createdOlderThan15Days && "text-destructive opacity-70"
+            )}
+            aria-hidden
+          >
             ·
           </span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="cursor-default border-b border-dotted border-muted-foreground/35">
+              <span
+                className={cn(
+                  "cursor-default border-b border-dotted",
+                  createdOlderThan15Days
+                    ? "border-destructive/45"
+                    : "border-muted-foreground/35"
+                )}
+              >
                 {daysSinceCreated}d
               </span>
             </TooltipTrigger>
             <TooltipContent side="top" className="text-xs">
               Desde o cadastro
+              {createdOlderThan15Days ? " — acima de 15 dias" : ""}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
