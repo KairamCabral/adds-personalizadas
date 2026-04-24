@@ -35,6 +35,8 @@ export const PERMISSIONS = {
   "artworks.upload": ["MASTER", "GESTOR", "PRESTADOR"],
   "artworks.approve": ["MASTER", "GESTOR"],
   "artworks.generate_token": ["MASTER", "GESTOR"],
+  /** Reabrir aprovação pública; pedido retorna à coluna Ajuste. */
+  "artworks.reset_approval": ["MASTER", "GESTOR"],
 
   // Dashboard
   "dashboard.view_full": ["MASTER"],

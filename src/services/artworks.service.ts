@@ -268,3 +268,16 @@ export async function getActiveToken(artworkId: string): Promise<ApprovalToken |
 
   return data as ApprovalToken | null;
 }
+
+/** Reabre aprovação: API move o pedido para AJUSTE (fim da fila) quando aplicável. */
+export async function resetClientArtworkApproval(orderId: string): Promise<void> {
+  const res = await fetch("/api/art/reset-approval", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId }),
+  });
+  const json = (await res.json()) as { error?: string };
+  if (!res.ok) {
+    throw new Error(json.error ?? "Erro ao resetar aprovação");
+  }
+}
