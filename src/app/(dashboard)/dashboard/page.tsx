@@ -60,9 +60,12 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 const STATUS_LABELS: Record<string, string> = {
-  FAZER: "Fazer",
+  AUTOMATICO: "Automático",
+  FAZER: "A Fazer",
   AJUSTE: "Ajuste",
   APROVACAO: "Aprovação",
+  LINK_ENVIADO: "Link Enviado",
+  AGUARDANDO_APROVACAO: "Aguardando Aprovação",
   CONFIRMACAO: "Confirmação",
   APROVADO: "Aprovado",
   PRODUCAO: "Produção",
@@ -70,6 +73,7 @@ const STATUS_LABELS: Record<string, string> = {
   FINALIZADO: "Finalizado",
   ENTREGUE: "Entregue",
   FATURADO: "Faturado",
+  ARQUIVADO: "Arquivado",
 };
 
 function DashboardSkeleton() {
@@ -278,7 +282,7 @@ export default function DashboardPage() {
                 <TooltipTrigger asChild>
                   <div>
                     <MetricCard
-                      title="Pedidos no pipeline hoje"
+                      title="Pedidos Ativos"
                       value={String(data.pedidosAtivos)}
                       icon={Package}
                       trend="neutral"
@@ -287,7 +291,8 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Pedidos ativos (não arquivados), sem filtro de data
+                  Pedidos em andamento no CRM — exceto Finalizados, Arquivados,
+                  deletados e com tag PEDIDO_CANCELADO. Sem filtro de data.
                 </TooltipContent>
               </UITooltip>
 
@@ -295,7 +300,7 @@ export default function DashboardPage() {
                 <TooltipTrigger asChild>
                   <div>
                     <MetricCard
-                      title="Criados no período"
+                      title="Criados no Período"
                       value={String(data.pedidosCriados)}
                       icon={Package}
                       trend="neutral"
@@ -310,7 +315,8 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Pedidos CRM criados no período selecionado
+                  Pedidos criados no período selecionado. Inclui todos os
+                  pedidos (CRM e integrações).
                 </TooltipContent>
               </UITooltip>
 
@@ -318,7 +324,7 @@ export default function DashboardPage() {
                 <TooltipTrigger asChild>
                   <div>
                     <MetricCard
-                      title="Concluídos"
+                      title="Finalizados"
                       value={String(data.pedidosConcluidos)}
                       icon={CheckCircle2}
                       trend="neutral"
@@ -333,7 +339,8 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Pedidos que chegaram em FINALIZADO/ENTREGUE/FATURADO no período (exclui cancelados)
+                  Pedidos que chegaram ao status FINALIZADO no período
+                  selecionado.
                 </TooltipContent>
               </UITooltip>
               <UITooltip>
@@ -356,7 +363,8 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Pedidos arquivados com tag PEDIDO_CANCELADO no período
+                  Pedidos cancelados no período: arquivados, deletados ou com
+                  tag PEDIDO_CANCELADO.
                 </TooltipContent>
               </UITooltip>
 
