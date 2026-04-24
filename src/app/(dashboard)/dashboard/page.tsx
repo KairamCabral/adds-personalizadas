@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { PageHeader } from "@/components/shared/page-header";
 import { usePermissions } from "@/hooks/use-permissions";
 import { PeriodSelector } from "./_components/period-selector";
 import { MetricCard } from "./_components/metric-card";
@@ -48,6 +47,8 @@ import {
   BarChart3,
   TrendingDown,
   XCircle,
+  Info,
+  Trash2,
 } from "lucide-react";
 import {
   getDashboardCrmData,
@@ -221,7 +222,11 @@ export default function DashboardPage() {
   if (!canView) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 p-6">
-        <PageHeader title="Dashboard" className="mb-6" />
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Dashboard
+          </h1>
+        </div>
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/30 p-16 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
             <Package className="h-7 w-7 text-muted-foreground" />
@@ -240,11 +245,48 @@ export default function DashboardPage() {
   return (
     <TooltipProvider delayDuration={100}>
       <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 p-6">
-        <PageHeader
-          title="Dashboard CRM"
-          description={`Visão estratégica · ${periodLabel}`}
-          className="mb-8 [&_h1]:text-3xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_p]:text-base [&_p]:font-medium [&_p]:text-foreground/80"
+        <div
+          className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between [&_h1]:text-3xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_p]:text-base [&_p]:font-medium [&_p]:text-foreground/80"
         >
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                Dashboard CRM
+              </h1>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Critérios dos dados do dashboard"
+                  >
+                    <Info className="h-5 w-5 shrink-0" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="max-w-sm space-y-2 text-left text-sm font-normal"
+                >
+                  <p className="font-semibold text-foreground">
+                    Este dashboard mostra apenas pedidos reais do CRM:
+                  </p>
+                  <ul className="list-disc space-y-1 pl-4 text-foreground/90">
+                    <li>Criados a partir de 01/03/2026</li>
+                    <li>
+                      OU pedidos com histórico de alteração de status
+                    </li>
+                  </ul>
+                  <p className="text-foreground/85">
+                    Pedidos importados em lote anteriormente (que nunca
+                    passaram pelo fluxo do CRM) não são contabilizados.
+                  </p>
+                </TooltipContent>
+              </UITooltip>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Visão estratégica · {periodLabel}
+            </p>
+          </div>
           <PeriodSelector
             period={period}
             activeMonth={activeMonth}
@@ -257,7 +299,7 @@ export default function DashboardPage() {
             onCustomApply={handleCustomApply}
             onShowCustomPickerChange={setShowCustomPicker}
           />
-        </PageHeader>
+        </div>
 
         {isLoading && <DashboardSkeleton />}
 
@@ -277,7 +319,7 @@ export default function DashboardPage() {
           <div className="space-y-6 stagger-children">
             {/* KPIs: seção compacta */}
             <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               <UITooltip>
                 <TooltipTrigger asChild>
                   <div>
@@ -291,8 +333,9 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Pedidos em andamento no CRM — exceto Finalizados, Arquivados,
-                  deletados e com tag PEDIDO_CANCELADO. Sem filtro de data.
+                  Pedidos reais do CRM em andamento — exceto Finalizados,
+                  Arquivados, deletados e com tag PEDIDO_CANCELADO. Sem filtro
+                  de data.
                 </TooltipContent>
               </UITooltip>
 
@@ -315,8 +358,8 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Pedidos criados no período selecionado. Inclui todos os
-                  pedidos (CRM e integrações).
+                  Pedidos reais do CRM criados no período selecionado (critério
+                  no ícone de informação ao lado do título).
                 </TooltipContent>
               </UITooltip>
 
@@ -352,19 +395,48 @@ export default function DashboardPage() {
                       icon={XCircle}
                       trend={data.pedidosCancelados > 0 ? "down" : "neutral"}
                       iconVariant={data.pedidosCancelados > 0 ? "warning" : "muted"}
-                      extra={
-                        <TrendBadge
-                          current={data.pedidosCancelados}
-                          previous={data.pedidosCanceladosPrev ?? 0}
-                          invertColor
-                        />
-                      }
                     />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Pedidos cancelados no período: arquivados, deletados ou com
-                  tag PEDIDO_CANCELADO.
+                  Pedidos com tag PEDIDO_CANCELADO adicionada no período (não
+                  arquivados).
+                </TooltipContent>
+              </UITooltip>
+
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <MetricCard
+                      title="Arquivados"
+                      value={String(data.pedidosArquivados)}
+                      icon={Archive}
+                      trend="neutral"
+                      iconVariant="muted"
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Pedidos arquivados no período (finalizados ou encerrados sem
+                  cancelamento).
+                </TooltipContent>
+              </UITooltip>
+
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <MetricCard
+                      title="Excluídos"
+                      value={String(data.pedidosExcluidos)}
+                      icon={Trash2}
+                      trend="neutral"
+                      iconVariant="muted"
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Pedidos excluídos no período (deletados via botão de
+                  exclusão).
                 </TooltipContent>
               </UITooltip>
 
@@ -414,7 +486,7 @@ export default function DashboardPage() {
                 </TooltipContent>
               </UITooltip>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <UITooltip>
                 <TooltipTrigger asChild>
                   <div>
@@ -448,20 +520,6 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>Criados no período selecionado</TooltipContent>
-              </UITooltip>
-              <UITooltip>
-                <TooltipTrigger asChild>
-                  <div>
-                    <MetricCard
-                      title="Arquivados"
-                      value={String(data.pedidosArquivados)}
-                      icon={Archive}
-                      trend="neutral"
-                      iconVariant="muted"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>Arquivados no período selecionado</TooltipContent>
               </UITooltip>
               <UITooltip>
                 <TooltipTrigger asChild>
@@ -708,14 +766,34 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   {(() => {
-                    const criados = data.pedidosCriados ?? 0;
-                    const concluidos = data.pedidosConcluidos ?? 0;
-                    const cancelados = data.pedidosCancelados ?? 0;
-                    const emAndamento = Math.max(0, criados - concluidos - cancelados);
-                    const taxaConclusao =
-                      criados > 0
-                        ? ((concluidos / criados) * 100).toFixed(1)
-                        : "0.0";
+                    const sortedFunil = [...(data.funil ?? [])].sort(
+                      (a, b) => a.ordem - b.ordem
+                    );
+                    const criados =
+                      sortedFunil.find((f) => f.ordem === 1)?.quantidade ?? 0;
+
+                    const funilMeta: Record<
+                      string,
+                      { color: string; icon: string }
+                    > = {
+                      "Entrada (criados)": {
+                        color:
+                          "from-dashboard-primary to-dashboard-primary-strong",
+                        icon: "🟢",
+                      },
+                      Concluídos: {
+                        color: "from-dashboard-success to-emerald-700",
+                        icon: "✅",
+                      },
+                      Cancelados: {
+                        color: "from-dashboard-danger to-red-700",
+                        icon: "🚫",
+                      },
+                      "Em andamento": {
+                        color: "from-dashboard-warning to-amber-600",
+                        icon: "⏳",
+                      },
+                    };
 
                     if (criados === 0) {
                       return (
@@ -730,55 +808,39 @@ export default function DashboardPage() {
                       );
                     }
 
-                    const items = [
-                      {
-                        label: "Entrada (criados)",
-                        value: criados,
-                        color: "from-dashboard-primary to-dashboard-primary-strong",
-                        icon: "🟢",
-                      },
-                      {
-                        label: "Concluídos",
-                        value: concluidos,
-                        color: "from-dashboard-success to-emerald-700",
-                        icon: "✅",
-                      },
-                      {
-                        label: "Cancelados",
-                        value: cancelados,
-                        color: "from-dashboard-danger to-red-700",
-                        icon: "🚫",
-                      },
-                      {
-                        label: "Em andamento",
-                        value: emAndamento,
-                        color: "from-dashboard-warning to-amber-600",
-                        icon: "⏳",
-                      },
-                    ];
-
-                    const max = Math.max(...items.map((i) => i.value), 1);
+                    const max = Math.max(
+                      ...sortedFunil.map((i) => i.quantidade),
+                      1
+                    );
 
                     return (
                       <div className="space-y-3">
-                        {items.map((item) => {
-                          const pct = (item.value / max) * 100;
+                        {sortedFunil.map((item) => {
+                          const meta = funilMeta[item.etapa] ?? {
+                            color:
+                              "from-dashboard-primary to-dashboard-primary-strong",
+                            icon: "•",
+                          };
+                          const pct = (item.quantidade / max) * 100;
                           return (
-                            <div key={item.label} className="space-y-2">
+                            <div key={item.etapa} className="space-y-2">
                               <div className="flex items-center justify-between text-base">
                                 <span className="font-bold text-foreground">
-                                  <span className="mr-2">{item.icon}</span>
-                                  {item.label}
+                                  <span className="mr-2">{meta.icon}</span>
+                                  {item.etapa}
                                 </span>
                                 <span className="text-lg font-bold tabular-nums text-foreground">
-                                  {item.value}
+                                  {item.quantidade}
                                 </span>
                               </div>
                               <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted">
                                 <div
-                                  className={`dashboard-progress-animate h-full rounded-full bg-gradient-to-r ${item.color}`}
+                                  className={`dashboard-progress-animate h-full rounded-full bg-gradient-to-r ${meta.color}`}
                                   style={{
-                                    width: `${Math.max(pct, item.value > 0 ? 3 : 0)}%`,
+                                    width: `${Math.max(
+                                      pct,
+                                      item.quantidade > 0 ? 3 : 0
+                                    )}%`,
                                   }}
                                 />
                               </div>
@@ -790,7 +852,7 @@ export default function DashboardPage() {
                             Taxa de conclusão (Concluídos ÷ Criados)
                           </span>
                           <span className="text-lg font-bold text-dashboard-success">
-                            {taxaConclusao}%
+                            {data.taxaConclusao}%
                           </span>
                         </div>
                       </div>
@@ -818,24 +880,47 @@ export default function DashboardPage() {
                 <CardContent>
                   <Tabs defaultValue="atrasados" className="w-full">
                     <TabsList className="grid w-full grid-cols-3 mb-3">
-                      <TabsTrigger value="atrasados" className="gap-1.5">
-                        🔴 Atrasados
-                        <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
-                          {data.pedidosParadosAtrasados?.length ?? 0}
-                        </Badge>
-                      </TabsTrigger>
-                      <TabsTrigger value="no-prazo" className="gap-1.5">
-                        🔵 No prazo
-                        <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
-                          {data.pedidosParadosNoPrazo?.length ?? 0}
-                        </Badge>
-                      </TabsTrigger>
-                      <TabsTrigger value="cancelados" className="gap-1.5">
-                        🚫 Cancelados
-                        <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
-                          {data.pedidosCanceladosRecentes?.length ?? 0}
-                        </Badge>
-                      </TabsTrigger>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger value="atrasados" className="gap-1.5">
+                            🔴 Atrasados
+                            <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
+                              {data.pedidosParadosAtrasados?.length ?? 0}
+                            </Badge>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-left">
+                          Pedidos com data de entrega (due_date) passada, ainda
+                          ativos.
+                        </TooltipContent>
+                      </UITooltip>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger value="no-prazo" className="gap-1.5">
+                            🔵 No prazo
+                            <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
+                              {data.pedidosParadosNoPrazo?.length ?? 0}
+                            </Badge>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-left">
+                          Pedidos ainda ativos com data de entrega futura ou sem
+                          data definida.
+                        </TooltipContent>
+                      </UITooltip>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger value="cancelados" className="gap-1.5">
+                            🚫 Cancelados
+                            <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
+                              {data.pedidosCanceladosRecentes?.length ?? 0}
+                            </Badge>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-left">
+                          Pedidos cancelados nos últimos 7 dias.
+                        </TooltipContent>
+                      </UITooltip>
                     </TabsList>
 
                     <TabsContent value="atrasados" className="mt-0">
@@ -931,7 +1016,7 @@ export default function DashboardPage() {
                             <XCircle className="h-7 w-7 text-muted-foreground" />
                           </div>
                           <p className="text-base font-bold text-foreground">
-                            Nenhum pedido cancelado no período
+                            Nenhum cancelamento nos últimos 7 dias
                           </p>
                         </div>
                       ) : (
@@ -949,8 +1034,13 @@ export default function DashboardPage() {
                                   {p.title}
                                 </p>
                                 <p className="text-sm font-medium text-foreground/70">
-                                  Cancelado a {p.diasParado} dia
-                                  {p.diasParado !== 1 ? "s" : ""}
+                                  Há {p.diasDesdeCancelamento} dia
+                                  {p.diasDesdeCancelamento !== 1 ? "s" : ""} ·{" "}
+                                  {format(
+                                    parseISO(p.canceladoEm),
+                                    "dd/MM/yyyy HH:mm",
+                                    { locale: ptBR }
+                                  )}
                                 </p>
                               </div>
                               <Badge variant="outline" className="shrink-0 border-dashboard-danger/40 text-dashboard-danger">
