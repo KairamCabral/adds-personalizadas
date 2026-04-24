@@ -23,6 +23,54 @@ export function isTinySituacaoFaturado(situacao: unknown): boolean {
   return false;
 }
 
+/**
+ * Situação Tiny: código 6 = entregue (API). Sincronismo só aplica a tag ENTREGUE;
+ * não muda a coluna do pedido.
+ */
+export function isTinySituacaoEntregue(situacao: unknown): boolean {
+  if (situacao === null || situacao === undefined) return false;
+  if (typeof situacao === "number" && Number.isFinite(situacao)) {
+    return situacao === 6;
+  }
+  const s = String(situacao).trim();
+  if (s === "") return false;
+  const n = Number(s);
+  if (Number.isFinite(n) && n === 6) return true;
+  const lower = s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  return (
+    lower === "entregue" ||
+    lower === "entrega" ||
+    lower === "entregues"
+  );
+}
+
+/**
+ * Marca o pedido como entregue no CRM via etiqueta (idempotente). Não altera status.
+ */
+export async function applyEntregueCrmFromTiny(
+  supabase: SupabaseClient<Database>,
+  orderId: string
+): Promise<{ tagAdded: boolean }> {
+  const { data: existingLabel } = await supabase
+    .from("order_labels")
+    .select("id")
+    .eq("order_id", orderId)
+    .eq("label", "ENTREGUE")
+    .maybeSingle();
+
+  if (existingLabel) {
+    return { tagAdded: false };
+  }
+  const { error } = await supabase.from("order_labels").insert({
+    order_id: orderId,
+    label: "ENTREGUE",
+  });
+  return { tagAdded: !error };
+}
+
 export function notaFiscalIdFromTinyDados(
   dados: Record<string, unknown> | null | undefined
 ): number | null {

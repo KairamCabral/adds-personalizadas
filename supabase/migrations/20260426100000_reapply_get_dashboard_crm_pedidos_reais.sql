@@ -1,11 +1,6 @@
--- Dashboard CRM: filtrar apenas pedidos "reais" do CRM (24/04/2026)
--- Critério: created_at >= '2026-03-01' OR exists histórico status_changed
--- Exclui ~2400 pedidos importados em lote que nunca passaram pelo CRM
--- Adiciona 3 cards separados: Cancelados, Arquivados, Excluídos
--- Remove FATURADO do tempo por etapa (status legado)
--- Corrige "Em andamento" no funil
--- Corrige lógica de "Pedidos Parados"
--- Mantém chave pedidosParados (retrocompat): top 5 parados por dias sem movimento
+-- Reaplica get_dashboard_crm com filtro de pedidos reais (março/2026+ OU status_changed).
+-- Use este arquivo se a função no banco foi sobrescrita por SQL antigo (ex.: 20260424180000)
+-- ou se a migration 20260424210000 não chegou a rodar no projeto remoto.
 
 CREATE OR REPLACE FUNCTION get_dashboard_crm(p_from timestamptz, p_to timestamptz)
 RETURNS json
@@ -25,9 +20,6 @@ BEGIN
       p_from AS prev_to
   ),
 
-  -- CRITÉRIO CENTRAL: pedidos "reais" do CRM
-  -- Incluir: criados após 01/03/2026 OU com histórico de mudança de status
-  -- Mesmo universo do Kanban (getOrders): só pedidos geridos no pipeline
   pedidos_crm AS (
     SELECT o.id, o.created_at, o.status, o.due_date,
            o.archived_at, o.deleted_at, o.client_id,
@@ -45,7 +37,6 @@ BEGIN
       )
   ),
 
-  -- Contagem idêntica ao badge "N pedidos" do Pipeline (sem filtro de período)
   pipeline_quadro AS (
     SELECT COUNT(*)::int AS total
     FROM orders o
@@ -68,10 +59,8 @@ BEGIN
       (SELECT COUNT(*)::int FROM clients c, periodo p
        WHERE c.created_at >= p.prev_from AND c.created_at <= p.prev_to) AS novos_clientes_prev,
 
-      -- ATIVOS: igual ao total de cards no Pipeline (Kanban)
       (SELECT total FROM pipeline_quadro) AS pedidos_ativos,
 
-      -- ATRASADOS: ativos com due_date passado
       (SELECT COUNT(*)::int FROM pedidos_crm o
        WHERE o.due_date IS NOT NULL
          AND o.due_date < CURRENT_DATE
@@ -80,14 +69,12 @@ BEGIN
          AND NOT EXISTS (SELECT 1 FROM pedido_com_cancelado c WHERE c.order_id = o.id)
       ) AS pedidos_atrasados,
 
-      -- CRIADOS no período
       (SELECT COUNT(*)::int FROM pedidos_crm o
        WHERE o.created_at >= p_from AND o.created_at <= p_to) AS pedidos_criados,
 
       (SELECT COUNT(*)::int FROM pedidos_crm o, periodo p
        WHERE o.created_at >= p.prev_from AND o.created_at <= p.prev_to) AS pedidos_criados_prev,
 
-      -- FINALIZADOS: transição para FINALIZADO no período
       (SELECT COUNT(DISTINCT oh.order_id)::int FROM order_history oh
        WHERE oh.action = 'status_changed'
          AND oh.new_value = 'FINALIZADO'
@@ -102,21 +89,18 @@ BEGIN
          AND oh.order_id IN (SELECT id FROM pedidos_crm)
       ) AS pedidos_finalizados_prev,
 
-      -- CANCELADOS: tag PEDIDO_CANCELADO adicionada no período (sem archived_at)
       (SELECT COUNT(DISTINCT ol.order_id)::int FROM order_labels ol
        WHERE ol.label = 'PEDIDO_CANCELADO'::label_type
          AND ol.created_at >= p_from AND ol.created_at <= p_to
          AND ol.order_id IN (SELECT id FROM pedidos_crm WHERE archived_at IS NULL)
       ) AS pedidos_cancelados,
 
-      -- ARQUIVADOS: archived_at no período (sem tag de cancelamento)
       (SELECT COUNT(*)::int FROM pedidos_crm o
        WHERE o.archived_at IS NOT NULL
          AND o.archived_at >= p_from AND o.archived_at <= p_to
          AND NOT EXISTS (SELECT 1 FROM pedido_com_cancelado c WHERE c.order_id = o.id)
       ) AS pedidos_arquivados,
 
-      -- EXCLUÍDOS: deleted_at no período (pedidos do CRM, inclui sem histórico também)
       (SELECT COUNT(*)::int FROM orders o
        WHERE o.deleted_at IS NOT NULL
          AND o.deleted_at >= p_from AND o.deleted_at <= p_to
@@ -140,7 +124,7 @@ BEGIN
       AND oh.created_at >= p_from AND oh.created_at <= p_to
       AND oh.order_id IN (SELECT id FROM pedidos_crm)
       AND oh.old_value IS NOT NULL
-      AND oh.old_value NOT IN ('FATURADO', 'ARQUIVADO')  -- Excluir status legado
+      AND oh.old_value NOT IN ('FATURADO', 'ARQUIVADO')
   ),
 
   transicoes_com_entrada AS (
@@ -198,7 +182,6 @@ BEGIN
     JOIN pedidos_crm o ON o.id = ff.order_id
   ),
 
-  -- FUNIL: apenas pedidos CRM criados no período
   funil_entrada AS (
     SELECT DISTINCT o.id AS order_id
     FROM pedidos_crm o
@@ -229,7 +212,6 @@ BEGIN
     UNION ALL
     SELECT 'Cancelados', (SELECT COUNT(*)::int FROM funil_cancelados), 3
     UNION ALL
-    -- Mesmo número do card "Pedidos ativos" / badge do Pipeline (snapshot atual)
     SELECT 'Em andamento', (SELECT total FROM pipeline_quadro), 4
   ),
 
@@ -241,7 +223,6 @@ BEGIN
     FROM funil
   ),
 
-  -- STATUS: apenas pedidos CRM ativos
   por_status AS (
     SELECT
       o.status::text AS status,
@@ -258,7 +239,6 @@ BEGIN
     FROM por_status
   ),
 
-  -- TOP CLIENTES: apenas pedidos CRM no período
   top_clientes AS (
     SELECT
       c.id,
@@ -281,7 +261,6 @@ BEGIN
     FROM top_clientes
   ),
 
-  -- POR RESPONSÁVEL: apenas pedidos CRM ativos
   por_responsavel AS (
     SELECT
       COALESCE(
@@ -309,7 +288,6 @@ BEGIN
     FROM por_responsavel
   ),
 
-  -- TENDÊNCIA mensal (últimos 6 meses), apenas pedidos CRM
   meses AS (
     SELECT date_trunc('month', CURRENT_DATE - (n || ' months')::interval) AS mes
     FROM generate_series(0, 5) AS n
@@ -340,10 +318,6 @@ BEGIN
     FROM tendencia
   ),
 
-  -- PARADOS: pedidos CRM ativos (não finalizados, não cancelados, não arquivados)
-  -- - Atrasados: due_date < hoje
-  -- - No prazo: due_date >= hoje (ou sem due_date)
-  -- - Cancelados recentes: com tag PEDIDO_CANCELADO nos últimos 7 dias
   parados_ativos AS (
     SELECT
       o.id,

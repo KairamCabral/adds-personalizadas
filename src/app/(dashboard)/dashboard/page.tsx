@@ -280,6 +280,11 @@ export default function DashboardPage() {
                     Pedidos importados em lote anteriormente (que nunca
                     passaram pelo fluxo do CRM) não são contabilizados.
                   </p>
+                  <p className="text-foreground/85">
+                    O card &quot;Pedidos ativos&quot; e &quot;Em andamento&quot;
+                    no funil usam o mesmo critério do Kanban: apenas pedidos
+                    marcados como gerenciados no pipeline.
+                  </p>
                 </TooltipContent>
               </UITooltip>
             </div>
@@ -333,9 +338,9 @@ export default function DashboardPage() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Pedidos reais do CRM em andamento — exceto Finalizados,
-                  Arquivados, deletados e com tag PEDIDO_CANCELADO. Sem filtro
-                  de data.
+                  Mesma contagem do badge do Pipeline: pedidos com
+                  &quot;gerenciado no pipeline&quot;, não arquivados e não
+                  excluídos. Sem filtro de data.
                 </TooltipContent>
               </UITooltip>
 
@@ -761,7 +766,9 @@ export default function DashboardPage() {
                     Funil de Conversão
                   </CardTitle>
                   <p className="text-base font-medium text-foreground/70">
-                    Resumo do fluxo de pedidos no período
+                    Entrada, concluídos e cancelados no período; &quot;Em
+                    andamento&quot; = total atual no Pipeline (igual ao card
+                    Pedidos ativos).
                   </p>
                 </CardHeader>
                 <CardContent>

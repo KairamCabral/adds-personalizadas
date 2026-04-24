@@ -11,7 +11,9 @@ import {
   mapTinySituacaoToCrmStatus,
 } from "@/lib/tiny/tiny-order-import";
 import {
+  applyEntregueCrmFromTiny,
   applyFaturadoCrmFromTiny,
+  isTinySituacaoEntregue,
   isTinySituacaoFaturado,
   notaFiscalIdFromTinyDados,
 } from "@/lib/tiny/tiny-faturado-crm";
@@ -258,14 +260,19 @@ async function handlePedido(
   // Código 1, texto "faturado" (Olist), NF no payload, etc.
   const isFaturado =
     isTinySituacaoFaturado(situacaoRaw) || nfFromDados != null;
+  const isEntregue = isTinySituacaoEntregue(situacaoRaw);
 
   let faturadoEffectsRun = false;
+  let entregueEffectsRun = false;
   if (isFaturado) {
     await applyFaturadoCrmFromTiny(supabase, order.id, order.status);
     faturadoEffectsRun = true;
+  } else if (isEntregue) {
+    await applyEntregueCrmFromTiny(supabase, order.id);
+    entregueEffectsRun = true;
   } else if (situacaoRaw !== undefined && situacaoRaw !== null && situacaoRaw !== "") {
     const mappedStatus = mapTinySituacaoToCrmStatus(situacaoRaw);
-    if (mappedStatus !== order.status && mappedStatus !== "FATURADO") {
+    if (mappedStatus !== order.status) {
       updates.status = mappedStatus;
     }
   }
@@ -289,7 +296,9 @@ async function handlePedido(
       ok: true,
       message: faturadoEffectsRun
         ? "Faturado processado: tag PAGO e etapa ajustada se aplicável."
-        : "Pedido já sincronizado, sem alterações.",
+        : entregueEffectsRun
+          ? "Entrega registrada: tag ENTREGUE aplicada (etapa inalterada)."
+          : "Pedido já sincronizado, sem alterações.",
     };
   }
 

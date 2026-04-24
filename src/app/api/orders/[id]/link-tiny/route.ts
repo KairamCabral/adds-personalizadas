@@ -248,16 +248,33 @@ export async function POST(
 
     const { data: existing } = await supabase
       .from("orders")
-      .select("id, title")
+      .select(
+        "id, title, archived_at, is_pipeline_managed, client:clients ( name, company )"
+      )
       .eq("tiny_order_id", tinyOrderId)
       .neq("id", orderId)
       .maybeSingle();
 
     if (existing) {
+      const c = existing.client as
+        | { name?: string | null; company?: string | null }
+        | null
+        | undefined;
+      const cliente = [c?.name, c?.company].filter(Boolean).join(" · ");
+      const dicaOnde = existing.archived_at
+        ? "Ele pode estar arquivado: abra a visão Arquivados e busque. Pedidos arquivados com Tiny voltam a aparecer em Arquivados."
+        : existing.is_pipeline_managed === false
+          ? "Esse registro não aparece no Kanban (pedido fora do pipeline do quadro). Abra o card pelo id no Supabase/URL ou ajuste is_pipeline_managed."
+          : "Confira a busca do pipeline (sem filtro) pelo título do pedido ou pelo número.";
+      const sufixoCliente = cliente
+        ? ` Cliente: ${cliente}.`
+        : " (sem nome de cliente vinculado).";
       return NextResponse.json(
         {
-          error: `Pedido Tiny #${numeroPedido} já vinculado ao pedido CRM "${existing.title}".`,
+          error: `Esse nº do Tiny (id interno no CRM: ${tinyOrderId}) já está vinculado a outro registro: "${existing.title}".${sufixoCliente} ${dicaOnde} Conflito — id CRM: ${existing.id} (abrir em /pipeline?order=… use este UUID se o sistema permitir, ou desvincule o Tiny nesse outro card).`,
           conflictOrderId: existing.id,
+          conflictTinyIdResolved: tinyOrderId,
+          conflictIsPipelineManaged: existing.is_pipeline_managed,
         },
         { status: 409 }
       );

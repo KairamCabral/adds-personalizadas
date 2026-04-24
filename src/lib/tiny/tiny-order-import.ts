@@ -4,7 +4,9 @@ import type { Database, Json } from "@/types/database.types";
 import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
 import { fetchFirstPessoaContatoForChat } from "@/lib/tiny/tiny-contact-pessoas";
 import {
+  applyEntregueCrmFromTiny,
   applyFaturadoCrmFromTiny,
+  isTinySituacaoEntregue,
   isTinySituacaoFaturado,
   notaFiscalIdFromTinyPedidoRaw,
 } from "@/lib/tiny/tiny-faturado-crm";
@@ -86,7 +88,8 @@ const TINY_SITUACAO_STRING_TO_STATUS: Record<
   "Em andamento": "PRODUCAO",
   "Preparando envio": "EXPEDICAO",
   Cancelado: "ARQUIVADO",
-  Faturado: "FATURADO",
+  /** Faturado: etapa = FINALIZADO; PAGO vem de applyFaturadoCrmFromTiny */
+  Faturado: "FINALIZADO",
 };
 
 /** Mapeia código numérico de situação Tiny (API) → status CRM */
@@ -96,7 +99,7 @@ export function mapTinyNumericSituacaoToStatus(
   const s = typeof situacao === "string" ? parseInt(situacao, 10) : situacao;
   switch (s) {
     case 1:
-      return "FATURADO";
+      return "FINALIZADO";
     case 8:
     case 0:
       return "FAZER";
@@ -109,7 +112,7 @@ export function mapTinyNumericSituacaoToStatus(
     case 9:
       return "EXPEDICAO";
     case 6:
-      return "ENTREGUE";
+      return "FINALIZADO";
     case 2:
       return "ARQUIVADO";
     default:
@@ -550,6 +553,7 @@ export async function importTinyOrderFromApi(
     raw as Record<string, unknown>
   );
   const faturadoNaApi = isTinySituacaoFaturado(situacao) || notaFromRaw != null;
+  const entregueNaApi = isTinySituacaoEntregue(situacao);
 
   // Observações internas do Tiny → campo description do CRM (exibido como "Personalização" no pipeline)
   const obsInternas =
@@ -566,9 +570,14 @@ export async function importTinyOrderFromApi(
 
   const isNewOrder = !existingOrder;
   let status: Database["public"]["Enums"]["order_status"] = isNewOrder
-    ? "AUTOMATICO"
+    ? entregueNaApi
+      ? "FINALIZADO"
+      : "AUTOMATICO"
     : mapTinySituacaoToCrmStatus(situacao);
   if (!isNewOrder && faturadoNaApi && existingOrder) {
+    status = existingOrder.status;
+  }
+  if (!isNewOrder && entregueNaApi && existingOrder) {
     status = existingOrder.status;
   }
   let position: number;
@@ -641,6 +650,9 @@ export async function importTinyOrderFromApi(
       .maybeSingle();
     const statusForApply = stRow?.status ?? existingOrder?.status ?? "CONFIRMACAO";
     await applyFaturadoCrmFromTiny(supabase, orderId, statusForApply);
+  }
+  if (entregueNaApi) {
+    await applyEntregueCrmFromTiny(supabase, orderId);
   }
 
   return {

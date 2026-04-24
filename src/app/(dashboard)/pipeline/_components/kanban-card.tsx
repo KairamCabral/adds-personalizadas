@@ -36,6 +36,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { resendToBling, listAssignableProfiles, updateOrderAssignee } from "@/services/orders.service";
 import { toast } from "sonner";
+import { differenceInCalendarDays, parseISO } from "date-fns";
 import {
   Popover,
   PopoverContent,
@@ -74,6 +75,18 @@ function deriveBlingState(logs: BlingLog[] | undefined | null): BlingDisplayStat
 type OrderItem = { product_name: string; quantity: number };
 type OrderAttachment = { id: string };
 
+/** Dias corridos desde fromIso (ISO) até hoje; mínimo 0. */
+function calendarAgeDays(fromIso: string | null | undefined): number {
+  if (!fromIso) return 0;
+  try {
+    const d = parseISO(fromIso);
+    if (Number.isNaN(d.getTime())) return 0;
+    return Math.max(0, differenceInCalendarDays(new Date(), d));
+  } catch {
+    return 0;
+  }
+}
+
 interface KanbanCardProps {
   disabled?: boolean;
   onArchive?: (orderId: string) => void;
@@ -87,6 +100,8 @@ interface KanbanCardProps {
     bling_logs?: BlingLog[];
     items?: OrderItem[];
     attachments?: OrderAttachment[];
+    /** Preenchido por getOrders via RPC order_status_stamps */
+    entered_status_at?: string | null;
   };
   onClick: () => void;
   isDragging?: boolean;
@@ -248,6 +263,9 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
   const isOverdue =
     order.due_date && new Date(order.due_date) < new Date();
   const blingState = deriveBlingState(order.bling_logs as BlingLog[] | undefined);
+  const enteredAt = order.entered_status_at ?? order.created_at;
+  const daysInStage = calendarAgeDays(enteredAt);
+  const daysSinceCreated = calendarAgeDays(order.created_at);
 
   const queryClient = useQueryClient();
   const resendMutation = useMutation({
@@ -370,6 +388,35 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
       <h4 className="text-sm font-medium leading-snug text-foreground">
         {order.title}
       </h4>
+
+      {/* Idade na etapa · idade do cadastro (minimalista) */}
+      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] tabular-nums leading-none text-muted-foreground">
+        <TooltipProvider delayDuration={250}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="cursor-default border-b border-dotted border-muted-foreground/35">
+                {daysInStage}d
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Na etapa atual
+            </TooltipContent>
+          </Tooltip>
+          <span className="text-muted-foreground/45" aria-hidden>
+            ·
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="cursor-default border-b border-dotted border-muted-foreground/35">
+                {daysSinceCreated}d
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Desde o cadastro
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
 
       {/* Footer */}
       <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
