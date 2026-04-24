@@ -3,6 +3,11 @@ import { tinyApiGet, TinyTokenExpiredError } from "@/lib/tiny-api";
 import type { Database, Json } from "@/types/database.types";
 import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
 import { fetchFirstPessoaContatoForChat } from "@/lib/tiny/tiny-contact-pessoas";
+import {
+  applyFaturadoCrmFromTiny,
+  isTinySituacaoFaturado,
+  notaFiscalIdFromTinyPedidoRaw,
+} from "@/lib/tiny/tiny-faturado-crm";
 
 /**
  * Verifica se o pedido é de personalizadas.
@@ -90,6 +95,8 @@ export function mapTinyNumericSituacaoToStatus(
 ): Database["public"]["Enums"]["order_status"] {
   const s = typeof situacao === "string" ? parseInt(situacao, 10) : situacao;
   switch (s) {
+    case 1:
+      return "FATURADO";
     case 8:
     case 0:
       return "FAZER";
@@ -121,6 +128,12 @@ export function mapTinySituacaoToCrmStatus(
     const trimmed = situacao.trim();
     if (TINY_SITUACAO_STRING_TO_STATUS[trimmed]) {
       return TINY_SITUACAO_STRING_TO_STATUS[trimmed];
+    }
+    const ciKey = Object.keys(TINY_SITUACAO_STRING_TO_STATUS).find(
+      (k) => k.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (ciKey) {
+      return TINY_SITUACAO_STRING_TO_STATUS[ciKey];
     }
     const n = parseInt(trimmed, 10);
     if (!Number.isNaN(n)) {
@@ -533,6 +546,10 @@ export async function importTinyOrderFromApi(
   const dataPedido =
     raw.dataPedido ?? raw.data_pedido ?? raw.data ?? raw.dataCriacao;
   const situacao = raw.situacao ?? raw.status ?? 0;
+  const notaFromRaw = notaFiscalIdFromTinyPedidoRaw(
+    raw as Record<string, unknown>
+  );
+  const faturadoNaApi = isTinySituacaoFaturado(situacao) || notaFromRaw != null;
 
   // Observações internas do Tiny → campo description do CRM (exibido como "Personalização" no pipeline)
   const obsInternas =
@@ -543,15 +560,25 @@ export async function importTinyOrderFromApi(
   // Checar se pedido já existe no CRM — se sim, preservar status via mapeamento; se não, AUTOMATICO
   const { data: existingOrder } = await supabase
     .from("orders")
-    .select("id")
+    .select("id, status, position, tiny_invoice_id")
     .eq("tiny_order_id", resolvedTinyOrderId)
     .maybeSingle();
 
   const isNewOrder = !existingOrder;
-  const status: Database["public"]["Enums"]["order_status"] = isNewOrder
+  let status: Database["public"]["Enums"]["order_status"] = isNewOrder
     ? "AUTOMATICO"
     : mapTinySituacaoToCrmStatus(situacao);
-  const position = await nextPositionForOrderStatus(supabase, status);
+  if (!isNewOrder && faturadoNaApi && existingOrder) {
+    status = existingOrder.status;
+  }
+  let position: number;
+  if (isNewOrder) {
+    position = await nextPositionForOrderStatus(supabase, status);
+  } else if (faturadoNaApi && existingOrder) {
+    position = existingOrder.position;
+  } else {
+    position = await nextPositionForOrderStatus(supabase, status);
+  }
 
   // Preencher "Contato do chat" a partir das Pessoas de Contato do Tiny (só no primeiro import)
   let contactChat: { contact_name: string; contact_phone: string } | null = null;
@@ -575,6 +602,11 @@ export async function importTinyOrderFromApi(
     position,
     is_pipeline_managed: true,
     origin: "TINY_WEBHOOK",
+    ...(notaFromRaw != null
+      ? { tiny_invoice_id: notaFromRaw }
+      : existingOrder?.tiny_invoice_id != null
+        ? { tiny_invoice_id: existingOrder.tiny_invoice_id }
+        : {}),
     ...(contactChat ? { contact_name: contactChat.contact_name, contact_phone: contactChat.contact_phone } : {}),
   };
 
@@ -599,6 +631,16 @@ export async function importTinyOrderFromApi(
   if (itemsToInsert.length > 0) {
     await supabase.from("order_items").delete().eq("order_id", orderId);
     await supabase.from("order_items").insert(itemsToInsert);
+  }
+
+  if (faturadoNaApi) {
+    const { data: stRow } = await supabase
+      .from("orders")
+      .select("status")
+      .eq("id", orderId)
+      .maybeSingle();
+    const statusForApply = stRow?.status ?? existingOrder?.status ?? "CONFIRMACAO";
+    await applyFaturadoCrmFromTiny(supabase, orderId, statusForApply);
   }
 
   return {

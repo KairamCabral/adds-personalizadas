@@ -5,6 +5,7 @@ import { mapTinySituacaoToCrmStatus } from "@/lib/tiny/tiny-order-import";
 describe("mapTinySituacaoToCrmStatus", () => {
   it("mapeia códigos numéricos da API Tiny", () => {
     expect(mapTinySituacaoToCrmStatus(0)).toBe("FAZER");
+    expect(mapTinySituacaoToCrmStatus(1)).toBe("FATURADO");
     expect(mapTinySituacaoToCrmStatus(3)).toBe("CONFIRMACAO");
     expect(mapTinySituacaoToCrmStatus(2)).toBe("ARQUIVADO");
   });
@@ -13,6 +14,7 @@ describe("mapTinySituacaoToCrmStatus", () => {
     expect(mapTinySituacaoToCrmStatus("Em aberto")).toBe("FAZER");
     expect(mapTinySituacaoToCrmStatus("Aprovado")).toBe("CONFIRMACAO");
     expect(mapTinySituacaoToCrmStatus("Faturado")).toBe("FATURADO");
+    expect(mapTinySituacaoToCrmStatus("faturado")).toBe("FATURADO");
   });
 });
 

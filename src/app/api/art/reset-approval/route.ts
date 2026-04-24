@@ -14,14 +14,9 @@ const BLOCKED: OrderStatus[] = [
   "ARQUIVADO",
 ];
 
-const MOVE_BACK_TO_APROVACAO: OrderStatus[] = [
-  "CONFIRMACAO",
-  "APROVADO",
-  "LINK_ENVIADO",
-];
-
 /**
- * Reverte aprovação do cliente (artes APROVADA / DESCARTADA da última versão).
+ * Reverte aprovação pública: artes APROVADA / DESCARTADA da última versão;
+ * o pedido vai para a coluna **AJUSTE** no fim da fila.
  * Acesso: MASTER, GESTOR.
  */
 export async function POST(request: NextRequest) {
@@ -134,35 +129,37 @@ export async function POST(request: NextRequest) {
       .is("used_at", null);
     if (tokenErr) throw tokenErr;
 
-    if (MOVE_BACK_TO_APROVACAO.includes(order.status as OrderStatus)) {
-      const { count, error: countError } = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "APROVACAO")
-        .is("archived_at", null);
+    const { count: ajusteCount, error: countError } = await supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "AJUSTE")
+      .is("archived_at", null);
 
-      if (countError) throw countError;
-      const pos = count ?? 0;
-      const { error: rpcError } = await (supabase.rpc as any)("move_order_atomic", {
-        p_order_id: orderId,
-        p_new_status: "APROVACAO",
-        p_new_position: pos,
-      });
-      if (rpcError) throw rpcError;
+    if (countError) throw countError;
+    const n = ajusteCount ?? 0;
+    // Entrando noutra coluna: fim = índice n; já em AJUSTE: fim = último índice n-1
+    const targetPosition =
+      order.status === "AJUSTE" ? Math.max(0, n - 1) : n;
 
-      await supabase
-        .from("order_labels")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .delete()
-        .eq("order_id", orderId)
-        .eq("label", "LINK_ENVIADO" as any);
-    }
+    const { error: rpcError } = await (supabase.rpc as any)("move_order_atomic", {
+      p_order_id: orderId,
+      p_new_status: "AJUSTE",
+      p_new_position: targetPosition,
+    });
+    if (rpcError) throw rpcError;
+
+    await supabase
+      .from("order_labels")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .delete()
+      .eq("order_id", orderId)
+      .eq("label", "LINK_ENVIADO" as any);
 
     const { error: histError } = await supabase.from("order_history").insert({
       order_id: orderId,
       user_id: user.id,
       action: "artwork_approval_reset",
-      new_value: `Aprovação de arte (v${maxVersion}) revertida; fluxo reaberto para nova aprovação`,
+      new_value: `Aprovação de arte (v${maxVersion}) revertida; pedido movido para Ajuste (fim da fila)`,
     });
     if (histError) throw histError;
 

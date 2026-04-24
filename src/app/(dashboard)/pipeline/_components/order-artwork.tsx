@@ -315,7 +315,9 @@ function LatestArtworkCard({
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["approval-token", representativeId] });
       setShowResetConfirm(false);
-      toast.success("Aprovação resetada. Gere um novo link para o cliente.");
+      toast.success(
+        "Aprovação resetada. Pedido na coluna Ajuste (fim da fila). Gere um novo link para o cliente se precisar."
+      );
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -360,7 +362,8 @@ function LatestArtworkCard({
       {canResetApproval && (
         <div className="mt-3 flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/8 p-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-foreground">
-            Cliente já aprovou. Para reabrir a aprovação (ex.: mudou de ideia), use reset — só gestor/master.
+            Cliente já aprovou. Para reabrir a aprovação (ex.: mudou de ideia), o pedido volta à coluna{" "}
+            <strong className="font-semibold">Ajuste</strong> (fim da fila). Só gestor/master.
           </p>
           <Button
             type="button"
@@ -829,8 +832,8 @@ function LatestArtworkCard({
         open={showResetConfirm}
         onOpenChange={(o) => !o && setShowResetConfirm(false)}
         title="Resetar aprovação do cliente?"
-        description="As aprovações e opções descartadas desta versão voltam a aguardar decisão. Links ainda não usados serão invalidados. O pedido pode retornar à coluna Aprovação (fim da fila), se aplicável."
-        confirmLabel="Resetar aprovação"
+        description="As aprovações e opções descartadas desta versão voltam a aguardar decisão. O pedido será colocado na coluna Ajuste, no fim da fila. Links de aprovação ainda não usados serão invalidados."
+        confirmLabel="Resetar e mover para Ajuste"
         variant="destructive"
         onConfirm={() => resetApprovalMutation.mutate()}
         loading={resetApprovalMutation.isPending}
