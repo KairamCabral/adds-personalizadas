@@ -109,11 +109,12 @@ export async function POST(request: NextRequest) {
         .eq("status", "CONFIRMACAO")
         .is("archived_at", null);
 
-      await supabase.from("orders").update({
-        status: "CONFIRMACAO",
-        position: confirmacaoCount ?? 0,
-        updated_at: now,
-      }).eq("id", tokenRow.order_id);
+      const { error: moveConfErr } = await (supabase.rpc as any)("move_order_atomic", {
+        p_order_id: tokenRow.order_id,
+        p_new_status: "CONFIRMACAO",
+        p_new_position: confirmacaoCount ?? 0,
+      });
+      if (moveConfErr) throw moveConfErr;
 
       await supabase.from("order_history").insert({
         order_id: tokenRow.order_id,
@@ -176,11 +177,12 @@ export async function POST(request: NextRequest) {
         .eq("status", "AJUSTE")
         .is("archived_at", null);
 
-      await supabase.from("orders").update({
-        status: "AJUSTE",
-        position: ajusteCount ?? 0,
-        updated_at: now,
-      }).eq("id", tokenRow.order_id);
+      const { error: moveAjusteErr } = await (supabase.rpc as any)("move_order_atomic", {
+        p_order_id: tokenRow.order_id,
+        p_new_status: "AJUSTE",
+        p_new_position: ajusteCount ?? 0,
+      });
+      if (moveAjusteErr) throw moveAjusteErr;
 
       const revVersion = tokenArtwork?.version ?? artwork.version;
       await supabase.from("order_history").insert({

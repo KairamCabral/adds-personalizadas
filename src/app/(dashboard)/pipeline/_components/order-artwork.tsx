@@ -10,7 +10,10 @@ import {
   getActiveToken,
   deleteArtwork,
   groupArtworksByVersion,
+  resetClientArtworkApproval,
 } from "@/services/artworks.service";
+import { moveOrder } from "@/services/orders.service";
+import { usePermissions } from "@/hooks/use-permissions";
 import { formatDateTime, formatFileSize } from "@/lib/utils";
 import { FileUpload } from "@/components/shared/file-upload";
 import { Button } from "@/components/ui/button";
@@ -32,6 +35,7 @@ import {
   Loader2,
   ChevronRight,
   Ban,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -268,6 +272,13 @@ function LatestArtworkCard({
   const [showBundleDialog, setShowBundleDialog] = useState(false);
   const [bundleLabels, setBundleLabels] = useState<Record<string, string>>({});
   const [bundleLinkLoading, setBundleLinkLoading] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const { can, isLoading: permLoading } = usePermissions();
+  const canResetApproval =
+    !permLoading &&
+    can("artworks.reset_approval") &&
+    variations.some((v) => v.status === "APROVADA");
 
   const primary = variations[0];
   const representativeId = primary?.id ?? "";
@@ -294,6 +305,19 @@ function LatestArtworkCard({
     },
     onError: (err: Error) => toast.error(err.message),
     onSettled: () => setLinkLoading(false),
+  });
+
+  const resetApprovalMutation = useMutation({
+    mutationFn: () => resetClientArtworkApproval(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artworks", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["order", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["approval-token", representativeId] });
+      setShowResetConfirm(false);
+      toast.success("Aprovação resetada. Gere um novo link para o cliente.");
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const aggregatedStatus = (() => {
@@ -332,6 +356,29 @@ function LatestArtworkCard({
           </Button>
         )}
       </div>
+
+      {canResetApproval && (
+        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/8 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-foreground">
+            Cliente já aprovou. Para reabrir a aprovação (ex.: mudou de ideia), use reset — só gestor/master.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5 border-amber-600/50"
+            onClick={() => setShowResetConfirm(true)}
+            disabled={resetApprovalMutation.isPending}
+          >
+            {resetApprovalMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RotateCcw className="h-3.5 w-3.5" />
+            )}
+            Resetar aprovação
+          </Button>
+        </div>
+      )}
 
       {hasAdjustmentRequested && (
         <div className="mt-3 space-y-2">
@@ -747,8 +794,7 @@ function LatestArtworkCard({
                       added_by: user?.id ?? null,
                     });
                   }
-                  // Move para LINK_ENVIADO somente se estiver em APROVACAO
-                  // (não altera status se pedido já avançou)
+                  // Move para LINK_ENVIADO no fim da coluna (igual arrastar no kanban)
                   const { data: currentOrder } = await supabase
                     .from('orders')
                     .select('status')
@@ -756,13 +802,12 @@ function LatestArtworkCard({
                     .maybeSingle();
 
                   if (currentOrder?.status === 'APROVACAO') {
-                    await supabase
+                    const { count } = await supabase
                       .from('orders')
-                      .update({
-                        status: 'LINK_ENVIADO',
-                        updated_at: new Date().toISOString(),
-                      })
-                      .eq('id', orderId);
+                      .select('*', { count: 'exact', head: true })
+                      .eq('status', 'LINK_ENVIADO')
+                      .is('archived_at', null);
+                    await moveOrder(orderId, 'LINK_ENVIADO', count ?? 0);
                   }
                   queryClient.invalidateQueries({ queryKey: ["orders"] });
                   queryClient.invalidateQueries({ queryKey: ["order", orderId] });
@@ -779,6 +824,17 @@ function LatestArtworkCard({
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={showResetConfirm}
+        onOpenChange={(o) => !o && setShowResetConfirm(false)}
+        title="Resetar aprovação do cliente?"
+        description="As aprovações e opções descartadas desta versão voltam a aguardar decisão. Links ainda não usados serão invalidados. O pedido pode retornar à coluna Aprovação (fim da fila), se aplicável."
+        confirmLabel="Resetar aprovação"
+        variant="destructive"
+        onConfirm={() => resetApprovalMutation.mutate()}
+        loading={resetApprovalMutation.isPending}
+      />
     </div>
   );
 }

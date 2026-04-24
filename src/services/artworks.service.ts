@@ -268,3 +268,19 @@ export async function getActiveToken(artworkId: string): Promise<ApprovalToken |
 
   return data as ApprovalToken | null;
 }
+
+/**
+ * Reverte aprovação pública (GESTOR/MASTER) — API valida função e etapa do pedido.
+ * Invalida links de aprovação ainda não usados do pedido.
+ */
+export async function resetClientArtworkApproval(orderId: string): Promise<void> {
+  const res = await fetch("/api/art/reset-approval", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId }),
+  });
+  const json = (await res.json()) as { error?: string };
+  if (!res.ok) {
+    throw new Error(json.error ?? "Erro ao resetar aprovação");
+  }
+}
