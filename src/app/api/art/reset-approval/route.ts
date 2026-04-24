@@ -15,7 +15,8 @@ const BLOCKED: OrderStatus[] = [
 ];
 
 /**
- * Reverte aprovação pública; pedido vai para a coluna **AJUSTE** no fim da fila.
+ * Reverte aprovação pública: artes APROVADA / DESCARTADA da última versão;
+ * o pedido vai para a coluna **AJUSTE** no fim da fila.
  * Acesso: MASTER, GESTOR.
  */
 export async function POST(request: NextRequest) {

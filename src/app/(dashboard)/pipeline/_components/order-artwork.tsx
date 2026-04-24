@@ -315,7 +315,9 @@ function LatestArtworkCard({
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["approval-token", representativeId] });
       setShowResetConfirm(false);
-      toast.success("Aprovação resetada. Pedido na coluna Ajuste (fim da fila). Gere um novo link se precisar.");
+      toast.success(
+        "Aprovação resetada. Pedido na coluna Ajuste (fim da fila). Gere um novo link para o cliente se precisar."
+      );
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -360,7 +362,8 @@ function LatestArtworkCard({
       {canResetApproval && (
         <div className="mt-3 flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/8 p-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-foreground">
-            Cliente já aprovou. Para reabrir a aprovação, o pedido voltará à coluna <strong className="font-semibold">Ajuste</strong> (fim da fila). Só gestor/master.
+            Cliente já aprovou. Para reabrir a aprovação (ex.: mudou de ideia), o pedido volta à coluna{" "}
+            <strong className="font-semibold">Ajuste</strong> (fim da fila). Só gestor/master.
           </p>
           <Button
             type="button"
@@ -794,7 +797,7 @@ function LatestArtworkCard({
                       added_by: user?.id ?? null,
                     });
                   }
-                  // Fim da coluna Link enviado (igual arrastar no kanban)
+                  // Move para LINK_ENVIADO no fim da coluna (igual arrastar no kanban)
                   const { data: currentOrder } = await supabase
                     .from('orders')
                     .select('status')
