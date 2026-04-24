@@ -1,6 +1,20 @@
 import { createClient } from "@/lib/supabase/client";
-import { format, subDays, startOfDay, startOfYear, parseISO } from "date-fns";
+import {
+  endOfDay,
+  endOfMonth,
+  endOfYear,
+  format,
+  isSameDay,
+  parseISO,
+  startOfDay,
+  startOfMonth,
+  startOfYear,
+  subDays,
+} from "date-fns";
+import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { ptBR } from "date-fns/locale";
+
+const TIMEZONE = "America/Sao_Paulo";
 
 // ============================================
 // PERIOD
@@ -9,51 +23,66 @@ import { ptBR } from "date-fns/locale";
 export type PeriodValue = "hoje" | "7d" | "30d" | "90d" | "ano";
 export type PeriodRange = { from: string; to: string };
 
+/**
+ * Limites de período no fuso de São Paulo, serializados em ISO (UTC) para a RPC.
+ */
 export function getPeriodRange(period: PeriodValue): PeriodRange {
   const now = new Date();
-  const to = now.toISOString();
-  let from: Date;
+  const nowInZone = toZonedTime(now, TIMEZONE);
+
+  let fromLocal: Date;
+  let toLocal: Date;
 
   switch (period) {
     case "hoje":
-      from = startOfDay(now);
+      fromLocal = startOfDay(nowInZone);
+      toLocal = endOfDay(nowInZone);
       break;
     case "7d":
-      from = subDays(now, 7);
+      fromLocal = startOfDay(subDays(nowInZone, 6));
+      toLocal = endOfDay(nowInZone);
       break;
     case "90d":
-      from = subDays(now, 90);
+      fromLocal = startOfDay(subDays(nowInZone, 89));
+      toLocal = endOfDay(nowInZone);
       break;
     case "ano":
-      from = startOfYear(now);
+      fromLocal = startOfYear(nowInZone);
+      toLocal = endOfYear(nowInZone);
       break;
     case "30d":
     default:
-      from = subDays(now, 30);
+      fromLocal = startOfDay(subDays(nowInZone, 29));
+      toLocal = endOfDay(nowInZone);
+      break;
   }
 
-  return { from: from.toISOString(), to };
+  return {
+    from: fromZonedTime(fromLocal, TIMEZONE).toISOString(),
+    to: fromZonedTime(toLocal, TIMEZONE).toISOString(),
+  };
 }
 
 export function formatPeriodLabel(range: PeriodRange): string {
-  const fromDate = parseISO(range.from);
-  const toDate = parseISO(range.to);
-  const sameYear = fromDate.getFullYear() === toDate.getFullYear();
-  const sameDay = range.from === range.to;
-  if (sameDay) {
-    return format(fromDate, "dd/MM/yyyy", { locale: ptBR });
+  const fromZ = toZonedTime(parseISO(range.from), TIMEZONE);
+  const toZ = toZonedTime(parseISO(range.to), TIMEZONE);
+  if (isSameDay(fromZ, toZ)) {
+    return format(fromZ, "dd/MM/yyyy", { locale: ptBR });
   }
+  const sameYear = fromZ.getFullYear() === toZ.getFullYear();
   if (sameYear) {
-    return `${format(fromDate, "dd/MM", { locale: ptBR })} - ${format(toDate, "dd/MM/yyyy", { locale: ptBR })}`;
+    return `${format(fromZ, "dd/MM", { locale: ptBR })} - ${format(toZ, "dd/MM/yyyy", { locale: ptBR })}`;
   }
-  return `${format(fromDate, "dd/MM/yyyy", { locale: ptBR })} - ${format(toDate, "dd/MM/yyyy", { locale: ptBR })}`;
+  return `${format(fromZ, "dd/MM/yyyy", { locale: ptBR })} - ${format(toZ, "dd/MM/yyyy", { locale: ptBR })}`;
 }
 
-/** Converte range de datas para PeriodRange (ISO strings) */
+/** Intervalo de datas (ex.: mês / personalizado) ancorado em 00:00 e 23:59:59 no fuso de São Paulo. */
 export function formatRangeFromDates(from: Date, to: Date): PeriodRange {
+  const fromZ = toZonedTime(from, TIMEZONE);
+  const toZ = toZonedTime(to, TIMEZONE);
   return {
-    from: from.toISOString(),
-    to: to.toISOString(),
+    from: fromZonedTime(startOfDay(fromZ), TIMEZONE).toISOString(),
+    to: fromZonedTime(endOfDay(toZ), TIMEZONE).toISOString(),
   };
 }
 
