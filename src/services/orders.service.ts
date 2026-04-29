@@ -174,6 +174,10 @@ export interface CreateOrderItemParams {
     custom_color: string | null;
     notes?: string;
   };
+  color?: string | null;
+  color_name?: string | null;
+  unit_price?: number | null;
+  total_price?: number | null;
 }
 
 export interface CreateOrderWithItemsParams {
@@ -221,6 +225,10 @@ export async function createOrderWithItems(
       product_name: item.product_name,
       quantity: item.quantity,
       personalization: item.personalization,
+      color: item.color ?? item.personalization.colors?.[0] ?? null,
+      color_name: item.color_name ?? null,
+      unit_price: item.unit_price ?? null,
+      total_price: item.total_price ?? null,
     });
 
     if (error) throw error;
@@ -260,6 +268,10 @@ export async function replaceOrderItems(
     product_name: item.product_name,
     quantity: item.quantity,
     personalization: item.personalization as Json,
+    color: item.color ?? item.personalization.colors?.[0] ?? null,
+    color_name: item.color_name ?? null,
+    unit_price: item.unit_price ?? null,
+    total_price: item.total_price ?? null,
   }));
 
   const { error: insError } = await supabase.from("order_items").insert(rows);

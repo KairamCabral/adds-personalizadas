@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getOrderById } from "./orders.service";
 import { hasValidAgreement } from "./agreements.service";
 import { enqueueBlingRequest } from "@/lib/bling/rate-limiter";
+import { formatProductWithColor } from "@/lib/products/format";
 
 const supabase = createClient();
 
@@ -1069,16 +1070,21 @@ async function buildBlingOrderPayload(
     const personalization = item.personalization as
       | { colors?: string[]; custom_color?: string | null; notes?: string }
       | null;
-    const colorKey = personalization?.colors?.[0] ?? null;
+    const colorKey = personalization?.colors?.[0] ?? item.color ?? null;
     const colorLabel =
       colorKey === "custom"
         ? personalization?.custom_color ?? "Personalizada"
-        : colorKey;
+        : item.color_name ?? colorKey;
 
     const product = item.product as
       | { bling_sku?: string | null; bling_color_sku_map?: Record<string, string> | null }
       | null;
     const blingSku = resolveBlingSkuForItem(product, colorKey);
+
+    const descricao = formatProductWithColor({
+      product_name: item.product_name,
+      color_name: colorLabel,
+    });
 
     if (blingSku) {
       const blingProductId = await findBlingProductByCode(blingSku, apiToken, baseUrl);
@@ -1091,20 +1097,16 @@ async function buildBlingOrderPayload(
         });
       } else {
         itens.push({
-          descricao: colorLabel
-            ? `${item.product_name} - ${colorLabel}`
-            : item.product_name,
+          descricao,
           quantidade: item.quantity,
           valor: 0.01,
         } as BlingOrderPayload["itens"][number]);
         unmappedItems.push(
-          `${item.product_name}${colorLabel ? ` (${colorLabel})` : ""} x${item.quantity} [SKU: ${blingSku} não encontrado no Bling]`
+          `${descricao} x${item.quantity} [SKU: ${blingSku} não encontrado no Bling]`
         );
       }
     } else {
-      unmappedItems.push(
-        `${item.product_name}${colorLabel ? ` (${colorLabel})` : ""} x${item.quantity}`
-      );
+      unmappedItems.push(`${descricao} x${item.quantity}`);
     }
   }
 
