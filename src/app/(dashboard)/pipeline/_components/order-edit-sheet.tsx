@@ -54,11 +54,23 @@ import type { ColorOption } from "./color-picker";
 /** Quantidade por chave de cor: { lilas: 4, amarelo: 4 } */
 type ColorQuantities = Record<string, number>;
 
+/** Preço/label por cor preservados ao reabrir um pedido para edição. */
+type ColorMeta = Record<
+  string,
+  {
+    unit_price?: number | null;
+    total_price?: number | null;
+    color_name?: string | null;
+  }
+>;
+
 interface EditItem {
   product_id: string;
   product_name: string;
   product: Product;
   colorQuantities: ColorQuantities;
+  colorMeta: ColorMeta;
+  custom_color: string | null;
 }
 
 // ─────────────────────────────────────────────
@@ -90,6 +102,10 @@ interface RawOrderItem {
     colors?: string[];
     custom_color?: string | null;
   } | null;
+  color?: string | null;
+  color_name?: string | null;
+  unit_price?: number | null;
+  total_price?: number | null;
   product?: {
     id: string;
     name: string;
@@ -101,7 +117,12 @@ interface RawOrderItem {
 
 /**
  * Cada linha do banco = 1 produto × 1 cor (personalization.colors[0]).
- * Agrupa por product_id acumulando colorQuantities.
+ * Agrupa por product_id acumulando colorQuantities. Preserva preços e custom_color
+ * por cor em colorMeta para reescrever fielmente no save.
+ *
+ * `product_name` adotado é o do `products.name` (canônico, vindo do JOIN). Antes a
+ * importação Tiny gravava o nome com cor concatenada e o agrupamento aqui colapsava
+ * tudo no nome do primeiro item lido — origem do bug "todos viram Implant Lilás".
  */
 function dbItemsToEditItems(rawItems: RawOrderItem[]): EditItem[] {
   const map = new Map<string, EditItem>();
@@ -109,7 +130,7 @@ function dbItemsToEditItems(rawItems: RawOrderItem[]): EditItem[] {
   for (const raw of rawItems) {
     const pid = raw.product_id ?? raw.product_name;
     // Uma linha = exatamente uma cor
-    const colorKey = raw.personalization?.colors?.[0] ?? "sem_cor";
+    const colorKey = raw.personalization?.colors?.[0] ?? raw.color ?? "sem_cor";
 
     if (!map.has(pid)) {
       const product = raw.product
@@ -124,18 +145,39 @@ function dbItemsToEditItems(rawItems: RawOrderItem[]): EditItem[] {
 
       map.set(pid, {
         product_id: pid,
-        product_name: raw.product_name,
+        product_name: raw.product?.name ?? raw.product_name,
         product,
         colorQuantities: { [colorKey]: raw.quantity },
+        colorMeta: {
+          [colorKey]: {
+            unit_price: raw.unit_price ?? null,
+            total_price: raw.total_price ?? null,
+            color_name: raw.color_name ?? null,
+          },
+        },
+        custom_color: raw.personalization?.custom_color ?? null,
       });
     } else {
       const existing = map.get(pid)!;
       existing.colorQuantities[colorKey] =
         (existing.colorQuantities[colorKey] ?? 0) + raw.quantity;
+      existing.colorMeta[colorKey] = {
+        unit_price: raw.unit_price ?? existing.colorMeta[colorKey]?.unit_price ?? null,
+        total_price: raw.total_price ?? existing.colorMeta[colorKey]?.total_price ?? null,
+        color_name: raw.color_name ?? existing.colorMeta[colorKey]?.color_name ?? null,
+      };
+      if (!existing.custom_color && raw.personalization?.custom_color) {
+        existing.custom_color = raw.personalization.custom_color;
+      }
     }
   }
 
   return Array.from(map.values());
+}
+
+function colorLabelFromProduct(product: Product, colorKey: string): string | null {
+  const colors = parseColors(product);
+  return colors.find((c) => c.key === colorKey)?.label ?? null;
 }
 
 /**
@@ -145,15 +187,24 @@ function editItemsToDbParams(items: EditItem[]) {
   return items.flatMap((item) =>
     Object.entries(item.colorQuantities)
       .filter(([, qty]) => qty >= 1)
-      .map(([colorKey, qty]) => ({
-        product_id: item.product_id,
-        product_name: item.product_name,
-        quantity: qty,
-        personalization: {
-          colors: [colorKey],
-          custom_color: null,
-        },
-      }))
+      .map(([colorKey, qty]) => {
+        const meta = item.colorMeta[colorKey];
+        const colorName =
+          meta?.color_name ?? colorLabelFromProduct(item.product, colorKey);
+        return {
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: qty,
+          personalization: {
+            colors: [colorKey],
+            custom_color: colorKey === "custom" ? item.custom_color : null,
+          },
+          color: colorKey === "sem_cor" ? null : colorKey,
+          color_name: colorName,
+          unit_price: meta?.unit_price ?? null,
+          total_price: meta?.total_price ?? null,
+        };
+      })
   );
 }
 
@@ -447,6 +498,7 @@ export function OrderEditSheet({
   const addProduct = (product: Product) => {
     const colors = parseColors(product);
     const firstKey = colors.length > 0 ? colors[0].key : "sem_cor";
+    const firstLabel = colors.length > 0 ? colors[0].label : null;
     setItems((prev) => [
       ...prev,
       {
@@ -454,6 +506,14 @@ export function OrderEditSheet({
         product_name: product.name,
         product,
         colorQuantities: { [firstKey]: 1 },
+        colorMeta: {
+          [firstKey]: {
+            unit_price: null,
+            total_price: null,
+            color_name: firstLabel,
+          },
+        },
+        custom_color: null,
       },
     ]);
     setProductPopoverOpen(false);

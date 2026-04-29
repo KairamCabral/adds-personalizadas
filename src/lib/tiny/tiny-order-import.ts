@@ -201,6 +201,8 @@ type OrderItemInsert = {
   unit_price: number | null;
   total_price: number | null;
   personalization: Json | null;
+  color: string | null;
+  color_name: string | null;
 };
 
 export async function buildOrderItemsFromTinyRaw(
@@ -402,26 +404,21 @@ export async function buildOrderItemsFromTinyRaw(
       continue;
     }
 
-    // Quando a cor é identificada, usa o nome canônico do CRM + label da cor
-    // para evitar que o Tiny retorne sempre o nome da variação-pai (ex.: "Lilás")
-    // mesmo quando o item é de outra cor.
-    const resolvedProductName: string = (() => {
-      if (match.color && match.colorLabel) {
-        // Remove sufixo de cor existente (ex.: " – Lilás" ou " - Lilás") e adiciona o correto
-        const base = match.productName.replace(/\s*[-–—]\s*[^-–—]+$/, "").trim();
-        return `${base} – ${match.colorLabel}`;
-      }
-      return match.productName || String(productName);
-    })();
+    // Nome canônico do CRM (sem cor concatenada). A cor mora em `color`/`color_name`
+    // e em `personalization.colors`. Display que precisa do label combinado usa
+    // `formatProductWithColor` (src/lib/products/format.ts).
+    const canonicalName = match.productName || String(productName);
 
     itemsToInsert.push({
       order_id: orderId,
       product_id: match.productId,
-      product_name: resolvedProductName,
+      product_name: canonicalName,
       quantity: qty,
       unit_price: unitPrice != null ? Number(unitPrice) : null,
       total_price: totalPrice != null ? Number(totalPrice) : null,
       personalization: match.color ? { colors: [match.color], custom_color: null } : null,
+      color: match.color,
+      color_name: match.colorLabel,
     });
   }
 

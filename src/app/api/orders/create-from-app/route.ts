@@ -5,6 +5,7 @@ import {
   isTinyConnected,
   TinyTokenExpiredError,
 } from "@/lib/tiny-api";
+import { formatProductWithColor } from "@/lib/products/format";
 import type { Database } from "@/types/database.types";
 
 const CORS_HEADERS = {
@@ -143,12 +144,18 @@ export async function POST(request: NextRequest) {
     try {
       const client = (order as any).clients;
 
-      // Formatar itens para o Tiny
+      // Formatar itens para o Tiny — descrição combina product_name + color_name
+      // dinamicamente via helper (banco mantém os campos separados).
       const tinyItems = (orderItems ?? []).map((item: any) => ({
         produto: {
           id: item.tiny_product_id ?? undefined,
           codigo: item.product_code ?? item.sku ?? undefined,
-          descricao: item.product_name ?? item.description ?? "Produto",
+          descricao: item.product_name
+            ? formatProductWithColor({
+                product_name: item.product_name,
+                color_name: item.color_name,
+              })
+            : item.description ?? "Produto",
         },
         quantidade: item.quantity ?? 1,
         valorUnitario: item.unit_price ?? item.price ?? 0,

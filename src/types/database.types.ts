@@ -523,13 +523,58 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          desconto_resultado: boolean
+          id: string
+          lead_online: boolean
+          pedido_sincronizado: boolean
+          retornos_hoje: boolean
+          updated_at: string
+          user_id: string
+          vinculo_expirando: boolean
+        }
+        Insert: {
+          created_at?: string
+          desconto_resultado?: boolean
+          id?: string
+          lead_online?: boolean
+          pedido_sincronizado?: boolean
+          retornos_hoje?: boolean
+          updated_at?: string
+          user_id: string
+          vinculo_expirando?: boolean
+        }
+        Update: {
+          created_at?: string
+          desconto_resultado?: boolean
+          id?: string
+          lead_online?: boolean
+          pedido_sincronizado?: boolean
+          retornos_hoje?: boolean
+          updated_at?: string
+          user_id?: string
+          vinculo_expirando?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
           data: Json | null
           id: string
           message: string | null
-          push_sent: boolean
+          push_sent: boolean | null
+          push_sent_at: string | null
           read_at: string | null
           title: string
           type: string
@@ -540,7 +585,8 @@ export type Database = {
           data?: Json | null
           id?: string
           message?: string | null
-          push_sent?: boolean
+          push_sent?: boolean | null
+          push_sent_at?: string | null
           read_at?: string | null
           title: string
           type: string
@@ -551,7 +597,8 @@ export type Database = {
           data?: Json | null
           id?: string
           message?: string | null
-          push_sent?: boolean
+          push_sent?: boolean | null
+          push_sent_at?: string | null
           read_at?: string | null
           title?: string
           type?: string
@@ -653,6 +700,8 @@ export type Database = {
       }
       order_items: {
         Row: {
+          color: string | null
+          color_name: string | null
           created_at: string
           id: string
           order_id: string
@@ -664,6 +713,8 @@ export type Database = {
           unit_price: number | null
         }
         Insert: {
+          color?: string | null
+          color_name?: string | null
           created_at?: string
           id?: string
           order_id: string
@@ -675,6 +726,8 @@ export type Database = {
           unit_price?: number | null
         }
         Update: {
+          color?: string | null
+          color_name?: string | null
           created_at?: string
           id?: string
           order_id?: string
@@ -787,6 +840,7 @@ export type Database = {
           contact_phone: string | null
           created_at: string
           created_by: string | null
+          deleted_at: string | null
           description: string | null
           discount_pending_approval: boolean | null
           discount_percentage: number | null
@@ -794,6 +848,7 @@ export type Database = {
           id: string
           is_personalized: boolean | null
           is_pipeline_managed: boolean
+          notes: string | null
           order_date: string | null
           order_number: number
           order_type: Database["public"]["Enums"]["order_type"]
@@ -818,6 +873,7 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           description?: string | null
           discount_pending_approval?: boolean | null
           discount_percentage?: number | null
@@ -825,6 +881,7 @@ export type Database = {
           id?: string
           is_personalized?: boolean | null
           is_pipeline_managed?: boolean
+          notes?: string | null
           order_date?: string | null
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
@@ -849,6 +906,7 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           description?: string | null
           discount_pending_approval?: boolean | null
           discount_percentage?: number | null
@@ -856,6 +914,7 @@ export type Database = {
           id?: string
           is_personalized?: boolean | null
           is_pipeline_managed?: boolean
+          notes?: string | null
           order_date?: string | null
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
@@ -893,6 +952,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "orders_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       products: {
@@ -915,11 +981,9 @@ export type Database = {
           min_order_qty: number | null
           name: string
           price: number | null
-          print_area_image_url: string | null
           product_type: string | null
           stock: number | null
           supplier_code: string | null
-          supplier_color_map: Json | null
           supplier_name: string | null
           tiny_code: string | null
           tiny_color_map: Json | null
@@ -947,11 +1011,9 @@ export type Database = {
           min_order_qty?: number | null
           name: string
           price?: number | null
-          print_area_image_url?: string | null
           product_type?: string | null
           stock?: number | null
           supplier_code?: string | null
-          supplier_color_map?: Json | null
           supplier_name?: string | null
           tiny_code?: string | null
           tiny_color_map?: Json | null
@@ -979,11 +1041,9 @@ export type Database = {
           min_order_qty?: number | null
           name?: string
           price?: number | null
-          print_area_image_url?: string | null
           product_type?: string | null
           stock?: number | null
           supplier_code?: string | null
-          supplier_color_map?: Json | null
           supplier_name?: string | null
           tiny_code?: string | null
           tiny_color_map?: Json | null
@@ -997,6 +1057,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          commission_rate: number | null
           created_at: string
           email: string
           failed_login_attempts: number | null
@@ -1008,10 +1069,12 @@ export type Database = {
           notification_preferences: Json | null
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
+          tiny_vendedor_id: number | null
           updated_at: string
         }
         Insert: {
           avatar_url?: string | null
+          commission_rate?: number | null
           created_at?: string
           email: string
           failed_login_attempts?: number | null
@@ -1023,10 +1086,12 @@ export type Database = {
           notification_preferences?: Json | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          tiny_vendedor_id?: number | null
           updated_at?: string
         }
         Update: {
           avatar_url?: string | null
+          commission_rate?: number | null
           created_at?: string
           email?: string
           failed_login_attempts?: number | null
@@ -1038,44 +1103,10 @@ export type Database = {
           notification_preferences?: Json | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          tiny_vendedor_id?: number | null
           updated_at?: string
         }
         Relationships: []
-      }
-      push_tokens: {
-        Row: {
-          created_at: string
-          id: string
-          platform: string | null
-          token: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          platform?: string | null
-          token: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          platform?: string | null
-          token?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "push_tokens_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       public_quotes: {
         Row: {
@@ -1103,8 +1134,13 @@ export type Database = {
           items: Json
           order_id: string | null
           personalization: Json | null
+          rep_id: string | null
           status: Database["public"]["Enums"]["quote_status"]
           updated_at: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
         }
         Insert: {
           assigned_to?: string | null
@@ -1131,8 +1167,13 @@ export type Database = {
           items: Json
           order_id?: string | null
           personalization?: Json | null
+          rep_id?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
           updated_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Update: {
           assigned_to?: string | null
@@ -1159,8 +1200,13 @@ export type Database = {
           items?: Json
           order_id?: string | null
           personalization?: Json | null
+          rep_id?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
           updated_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Relationships: [
           {
@@ -1182,6 +1228,515 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "public_quotes_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          platform: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          platform: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          platform?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_activity_log: {
+        Row: {
+          action: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          metadata: Json | null
+          rep_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json | null
+          rep_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json | null
+          rep_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_activity_log_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_client_links: {
+        Row: {
+          client_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          last_visit_at: string | null
+          linked_at: string
+          origin: string
+          rep_id: string
+          status: string
+          visit_deadline_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_visit_at?: string | null
+          linked_at?: string
+          origin: string
+          rep_id: string
+          status?: string
+          visit_deadline_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_visit_at?: string | null
+          linked_at?: string
+          origin?: string
+          rep_id?: string
+          status?: string
+          visit_deadline_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_client_links_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rep_client_links_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_goals: {
+        Row: {
+          created_at: string
+          id: string
+          month: string
+          notes: string | null
+          rep_id: string
+          target_orders: number | null
+          target_value: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          month: string
+          notes?: string | null
+          rep_id: string
+          target_orders?: number | null
+          target_value?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          month?: string
+          notes?: string | null
+          rep_id?: string
+          target_orders?: number | null
+          target_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_goals_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_interactions: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          direction: string
+          duration_seconds: number | null
+          id: string
+          notes: string | null
+          outcome: string | null
+          prospect_id: string | null
+          rep_id: string
+          type: string
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          direction?: string
+          duration_seconds?: number | null
+          id?: string
+          notes?: string | null
+          outcome?: string | null
+          prospect_id?: string | null
+          rep_id: string
+          type: string
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          direction?: string
+          duration_seconds?: number | null
+          id?: string
+          notes?: string | null
+          outcome?: string | null
+          prospect_id?: string | null
+          rep_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_interactions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rep_interactions_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "rep_prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rep_interactions_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_lead_rules: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          match_field: string
+          match_operator: string
+          match_value: string
+          name: string
+          route_type: string
+          target_rep_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          match_field: string
+          match_operator?: string
+          match_value: string
+          name: string
+          route_type?: string
+          target_rep_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          match_field?: string
+          match_operator?: string
+          match_value?: string
+          name?: string
+          route_type?: string
+          target_rep_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_lead_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rep_lead_rules_target_rep_id_fkey"
+            columns: ["target_rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_prospects: {
+        Row: {
+          address: string | null
+          cep: string | null
+          city: string | null
+          client_id: string | null
+          contact_count: number | null
+          created_at: string
+          document: string | null
+          email: string | null
+          id: string
+          last_contact_at: string | null
+          last_contact_type: string | null
+          name: string
+          notes: string | null
+          origin: string
+          phone: string | null
+          position: number
+          rep_id: string
+          return_date: string | null
+          scheduled_action: string | null
+          scheduled_time: string | null
+          segment: string | null
+          state: string | null
+          status: string
+          tiny_contact_id: number | null
+          updated_at: string
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          address?: string | null
+          cep?: string | null
+          city?: string | null
+          client_id?: string | null
+          contact_count?: number | null
+          created_at?: string
+          document?: string | null
+          email?: string | null
+          id?: string
+          last_contact_at?: string | null
+          last_contact_type?: string | null
+          name: string
+          notes?: string | null
+          origin?: string
+          phone?: string | null
+          position?: number
+          rep_id: string
+          return_date?: string | null
+          scheduled_action?: string | null
+          scheduled_time?: string | null
+          segment?: string | null
+          state?: string | null
+          status?: string
+          tiny_contact_id?: number | null
+          updated_at?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          address?: string | null
+          cep?: string | null
+          city?: string | null
+          client_id?: string | null
+          contact_count?: number | null
+          created_at?: string
+          document?: string | null
+          email?: string | null
+          id?: string
+          last_contact_at?: string | null
+          last_contact_type?: string | null
+          name?: string
+          notes?: string | null
+          origin?: string
+          phone?: string | null
+          position?: number
+          rep_id?: string
+          return_date?: string | null
+          scheduled_action?: string | null
+          scheduled_time?: string | null
+          segment?: string | null
+          state?: string | null
+          status?: string
+          tiny_contact_id?: number | null
+          updated_at?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_prospects_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rep_prospects_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_territories: {
+        Row: {
+          city: string
+          created_at: string
+          id: string
+          rep_id: string
+          state: string
+        }
+        Insert: {
+          city: string
+          created_at?: string
+          id?: string
+          rep_id: string
+          state?: string
+        }
+        Update: {
+          city?: string
+          created_at?: string
+          id?: string
+          rep_id?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_territories_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_visits: {
+        Row: {
+          address_detected: string | null
+          checked_in_at: string
+          checked_out_at: string | null
+          client_id: string | null
+          created_at: string
+          id: string
+          latitude: number | null
+          longitude: number | null
+          notes: string | null
+          prospect_id: string | null
+          rep_id: string
+          result: string
+          return_date: string | null
+          synced_at: string | null
+          visit_type: string
+        }
+        Insert: {
+          address_detected?: string | null
+          checked_in_at?: string
+          checked_out_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          prospect_id?: string | null
+          rep_id: string
+          result: string
+          return_date?: string | null
+          synced_at?: string | null
+          visit_type: string
+        }
+        Update: {
+          address_detected?: string | null
+          checked_in_at?: string
+          checked_out_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          prospect_id?: string | null
+          rep_id?: string
+          result?: string
+          return_date?: string | null
+          synced_at?: string | null
+          visit_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_visits_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rep_visits_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "rep_prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rep_visits_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1348,11 +1903,11 @@ export type Database = {
       suppliers: {
         Row: {
           activated_at: string | null
+          bling_access_token: string | null
           bling_api_token: string | null
           bling_base_url: string | null
           bling_client_id: string | null
           bling_client_secret: string | null
-          bling_access_token: string | null
           bling_refresh_token: string | null
           bling_token_expires_at: string | null
           contact_email: string | null
@@ -1365,16 +1920,17 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          only_mapped_products: boolean
           shared_fields: Json
           updated_at: string
         }
         Insert: {
           activated_at?: string | null
+          bling_access_token?: string | null
           bling_api_token?: string | null
           bling_base_url?: string | null
           bling_client_id?: string | null
           bling_client_secret?: string | null
-          bling_access_token?: string | null
           bling_refresh_token?: string | null
           bling_token_expires_at?: string | null
           contact_email?: string | null
@@ -1387,16 +1943,17 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          only_mapped_products?: boolean
           shared_fields?: Json
           updated_at?: string
         }
         Update: {
           activated_at?: string | null
+          bling_access_token?: string | null
           bling_api_token?: string | null
           bling_base_url?: string | null
           bling_client_id?: string | null
           bling_client_secret?: string | null
-          bling_access_token?: string | null
           bling_refresh_token?: string | null
           bling_token_expires_at?: string | null
           contact_email?: string | null
@@ -1409,6 +1966,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          only_mapped_products?: boolean
           shared_fields?: Json
           updated_at?: string
         }
@@ -1421,6 +1979,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tiny_sync_logs: {
+        Row: {
+          created_at: string
+          direction: string
+          entity_id: string | null
+          entity_type: string
+          error_message: string | null
+          id: string
+          status: string
+          tiny_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          direction: string
+          entity_id?: string | null
+          entity_type: string
+          error_message?: string | null
+          id?: string
+          status: string
+          tiny_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          direction?: string
+          entity_id?: string | null
+          entity_type?: string
+          error_message?: string | null
+          id?: string
+          status?: string
+          tiny_id?: number | null
+        }
+        Relationships: []
       }
       tiny_webhook_events: {
         Row: {
@@ -1470,44 +2061,12 @@ export type Database = {
         }
         Relationships: []
       }
-      tiny_sync_logs: {
-        Row: {
-          created_at: string
-          direction: string
-          entity_id: string | null
-          entity_type: string
-          error_message: string | null
-          id: string
-          status: string
-          tiny_id: number | null
-        }
-        Insert: {
-          created_at?: string
-          direction: string
-          entity_id?: string | null
-          entity_type: string
-          error_message?: string | null
-          id?: string
-          status: string
-          tiny_id?: number | null
-        }
-        Update: {
-          created_at?: string
-          direction?: string
-          entity_id?: string | null
-          entity_type?: string
-          error_message?: string | null
-          id?: string
-          status?: string
-          tiny_id?: number | null
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      expire_rep_links: { Args: never; Returns: number }
       find_client_by_document: {
         Args: { doc_digits: string }
         Returns: {
@@ -1541,6 +2100,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      generate_daily_rep_alerts: { Args: never; Returns: Json }
       get_dashboard_clientes_data: {
         Args: { p_from: string; p_to: string }
         Returns: Json
@@ -1549,15 +2109,41 @@ export type Database = {
         Args: { p_from: string; p_to: string }
         Returns: Json
       }
-      order_status_stamps: {
-        Args: { p_order_ids: string[] }
-        Returns: { order_id: string; entered_status_at: string }[]
-      }
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
       get_vendas_data: { Args: { p_from: string; p_to: string }; Returns: Json }
+      move_order_atomic: {
+        Args: {
+          p_new_position: number
+          p_new_status: Database["public"]["Enums"]["order_status"]
+          p_order_id: string
+        }
+        Returns: undefined
+      }
+      order_status_stamps: {
+        Args: { p_order_ids: string[] }
+        Returns: {
+          entered_status_at: string
+          order_id: string
+        }[]
+      }
+      reorder_after_remove: {
+        Args: {
+          p_removed_position: number
+          p_status: Database["public"]["Enums"]["order_status"]
+        }
+        Returns: undefined
+      }
+      reorder_before_insert: {
+        Args: {
+          p_exclude_order_id: string
+          p_insert_position: number
+          p_status: Database["public"]["Enums"]["order_status"]
+        }
+        Returns: undefined
+      }
       reorder_column: {
         Args: {
           p_order_ids: string[]
@@ -1570,19 +2156,19 @@ export type Database = {
       validate_approval_token: {
         Args: { p_token: string }
         Returns: {
+          artwork_id: string
+          artwork_label: string
+          artwork_status: string
+          artwork_url: string
+          is_bundle: boolean
           is_valid: boolean
           is_viewable: boolean
-          is_bundle: boolean
-          token_id: string
           order_id: string
-          artwork_id: string
           order_title: string
-          artwork_url: string
-          used_at: string | null
-          used_by_name: string | null
-          artwork_status: string | null
+          token_id: string
+          used_at: string
+          used_by_name: string
           variation_index: number
-          artwork_label: string | null
         }[]
       }
     }
@@ -1613,6 +2199,7 @@ export type Database = {
         | "AMOSTRAS"
         | "PAGO"
         | "ORCAMENTO_PUBLICO"
+        | "LINK_ENVIADO"
         | "ENTREGUE"
       order_priority: "NORMAL" | "ALTA"
       order_status:
@@ -1643,7 +2230,7 @@ export type Database = {
         | "CONCLUIDO"
         | "APROVADO"
         | "REJEITADO"
-      user_role: "MASTER" | "GESTOR" | "PRESTADOR"
+      user_role: "MASTER" | "GESTOR" | "PRESTADOR" | "REPRESENTANTE"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1799,6 +2386,7 @@ export const Constants = {
         "AMOSTRAS",
         "PAGO",
         "ORCAMENTO_PUBLICO",
+        "LINK_ENVIADO",
         "ENTREGUE",
       ],
       order_priority: ["NORMAL", "ALTA"],
@@ -1833,7 +2421,7 @@ export const Constants = {
         "APROVADO",
         "REJEITADO",
       ],
-      user_role: ["MASTER", "GESTOR", "PRESTADOR"],
+      user_role: ["MASTER", "GESTOR", "PRESTADOR", "REPRESENTANTE"],
     },
   },
 } as const
