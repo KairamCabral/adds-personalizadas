@@ -2,8 +2,41 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
 /**
- * O Tiny (e o Olist) usam o código 1 para "Faturado" (ver TINY_SITUACAO_MAP no tiny-complete).
- * Webhooks às vezes enviam a palavra em minúsculas ou com acento, ou omitem situação com NF.
+ * Considera o pedido pago no Tiny: situações "Aprovado" (3) ou "Faturado" (1).
+ * No fluxo Tiny, "Aprovado" já implica pagamento confirmado (NF gerada
+ * automaticamente), e "Faturado" é o estado pós-emissão da NF. Usado para
+ * decidir se aplica a label PAGO no CRM e se move CONFIRMACAO/LINK_ENVIADO
+ * para APROVADO.
+ *
+ * Webhooks às vezes enviam o rótulo em minúsculas, com/sem acento, ou apenas
+ * a NF anexada (caso "Faturado" implícito).
+ */
+export function isTinySituacaoPago(situacao: unknown): boolean {
+  if (situacao === null || situacao === undefined) return false;
+  if (typeof situacao === "number" && Number.isFinite(situacao)) {
+    return situacao === 1 || situacao === 3;
+  }
+  const s = String(situacao).trim();
+  if (s === "") return false;
+  const n = Number(s);
+  if (Number.isFinite(n) && (n === 1 || n === 3)) return true;
+  const lower = s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  return (
+    lower === "faturado" ||
+    lower === "faturada" ||
+    lower === "autorizada" ||
+    lower === "aprovado" ||
+    lower === "aprovada"
+  );
+}
+
+/**
+ * Detecta especificamente "Faturado" (código 1). Mantido para casos onde
+ * o webhook de NotaFiscal identifica o evento explícito de faturamento —
+ * para a regra de label PAGO use `isTinySituacaoPago`.
  */
 export function isTinySituacaoFaturado(situacao: unknown): boolean {
   if (situacao === null || situacao === undefined) return false;
@@ -107,13 +140,13 @@ export function notaFiscalIdFromTinyPedidoRaw(
 }
 
 /**
- * Faturado no CRM:
+ * Pago no CRM (gatilho: Tiny passa para Aprovado ou Faturado):
  * - tag PAGO (idempotente)
  * - remove etiquetas de "aguardando pagamento"
  * - de CONFIRMACAO (ou LINK_ENVIADO) → APROVADO no fim da coluna (RPC, como no kanban)
- * - não usa coluna FATURADO
+ * - não muda status quando o pedido já está numa coluna pós-APROVADO
  */
-export async function applyFaturadoCrmFromTiny(
+export async function applyPagoCrmFromTiny(
   supabase: SupabaseClient<Database>,
   orderId: string,
   orderStatus: string
