@@ -302,9 +302,19 @@ export function KanbanBoard() {
       return { previousOrders };
     },
 
-    onError: (_err, _vars, context) => {
+    onError: (err, _vars, context) => {
       if (context?.previousOrders) {
         queryClient.setQueryData(["orders"], context.previousOrders);
+      }
+      // Gate de arte: mostrar mensagem específica em vez de "Erro ao mover".
+      const code = (err as { code?: string })?.code;
+      if (code === "no_approved_artwork") {
+        toast.error("Arte não aprovada", {
+          description:
+            (err as Error).message ??
+            "Aprove a arte ou marque “Usar arte aprovada anteriormente”.",
+        });
+        return;
       }
       toast.error("Erro ao mover pedido");
     },

@@ -148,12 +148,13 @@ export async function POST(request: NextRequest) {
     });
     if (rpcError) throw rpcError;
 
+    // Reverter aprovação: remove tags LINK_ENVIADO e ARTE_APROVADA — o pedido
+    // volta ao estado pré-link, exigindo reenvio + nova aprovação do cliente.
     await supabase
       .from("order_labels")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .delete()
       .eq("order_id", orderId)
-      .eq("label", "LINK_ENVIADO" as any);
+      .in("label", ["LINK_ENVIADO", "ARTE_APROVADA"]);
 
     const { error: histError } = await supabase.from("order_history").insert({
       order_id: orderId,

@@ -453,6 +453,19 @@ export async function tryAutoAssignOnAutomativoToFazer(
   if (updateError) throw updateError;
 }
 
+/**
+ * Erro lançado quando uma transição é bloqueada por um gate de negócio
+ * (ex.: arte não aprovada). UI captura pelo `code` e mostra toast adequado.
+ */
+export class OrderTransitionBlockedError extends Error {
+  code: "no_approved_artwork";
+  constructor(message: string) {
+    super(message);
+    this.name = "OrderTransitionBlockedError";
+    this.code = "no_approved_artwork";
+  }
+}
+
 export async function moveOrder(
   orderId: string,
   newStatus: OrderStatus,
@@ -464,6 +477,22 @@ export async function moveOrder(
     .select("status, assigned_to")
     .eq("id", orderId)
     .maybeSingle();
+
+  // Gate APROVADO: pedido só sobe pra APROVADO se tiver arte aprovada OU
+  // `uses_existing_art=true`. Idem `applyPagoCrmFromTiny` — fonte única
+  // de regra em `canMoveToAprovado`. Aplicado só se a transição for *pra*
+  // APROVADO; mover de APROVADO pra outro status segue livre.
+  if (newStatus === "APROVADO" && currentOrder?.status !== "APROVADO") {
+    const { canMoveToAprovado } = await import(
+      "@/lib/orders/can-move-to-aprovado"
+    );
+    const gate = await canMoveToAprovado(orderId, supabase);
+    if (!gate.allowed) {
+      throw new OrderTransitionBlockedError(
+        "Aprove a arte ou marque “Usar arte aprovada anteriormente” na aba Arte antes de avançar para Aprovado."
+      );
+    }
+  }
 
   // Mover (RPC atômica original)
   const { error } = await (supabase.rpc as any)("move_order_atomic", {

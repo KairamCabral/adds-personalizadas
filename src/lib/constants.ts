@@ -205,6 +205,7 @@ export type LabelType =
   | "PAGO"
   | "ORCAMENTO_PUBLICO"
   | "LINK_ENVIADO"
+  | "ARTE_APROVADA"
   | "ENTREGUE";
 
 export interface LabelConfig {
@@ -270,6 +271,13 @@ export const LABELS: LabelConfig[] = [
     label: "Link enviado",
     color: "#1e40af",
     bgColor: "bg-blue-800",
+    textColor: "text-white",
+  },
+  {
+    key: "ARTE_APROVADA",
+    label: "Arte aprovada",
+    color: "#059669",
+    bgColor: "bg-emerald-600",
     textColor: "text-white",
   },
   {
