@@ -5,11 +5,18 @@ import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
 import { fetchFirstPessoaContatoForChat } from "@/lib/tiny/tiny-contact-pessoas";
 import {
   applyEntregueCrmFromTiny,
-  applyFaturadoCrmFromTiny,
+  applyPagoCrmFromTiny,
   isTinySituacaoEntregue,
-  isTinySituacaoFaturado,
+  isTinySituacaoPago,
   notaFiscalIdFromTinyPedidoRaw,
 } from "@/lib/tiny/tiny-faturado-crm";
+import {
+  computeTinyOrderHash,
+  mergeItemsPreservingPersonalization,
+} from "@/lib/tiny/tiny-order-resync";
+// `bling.service` é carregado dinamicamente — ele instancia um Supabase
+// browser client em escopo de módulo e quebra ambientes de teste sem env.
+// Em runtime (Vercel/Next), as envs estão sempre presentes.
 
 /**
  * Verifica se o pedido é de personalizadas.
@@ -88,7 +95,7 @@ const TINY_SITUACAO_STRING_TO_STATUS: Record<
   "Em andamento": "PRODUCAO",
   "Preparando envio": "EXPEDICAO",
   Cancelado: "ARQUIVADO",
-  /** Faturado: etapa = FINALIZADO; PAGO vem de applyFaturadoCrmFromTiny */
+  /** Faturado: etapa = FINALIZADO; PAGO vem de applyPagoCrmFromTiny */
   Faturado: "FINALIZADO",
 };
 
@@ -427,10 +434,18 @@ export async function buildOrderItemsFromTinyRaw(
 
 /**
  * Busca o pedido na API Tiny e cria/atualiza cliente + pedido + itens no CRM.
+ *
+ * Também é o caminho de re-sync via webhook `atualizacao_pedido`: Tiny é fonte
+ * da verdade pro pedido inteiro (cliente, itens, endereço, situação), mas a
+ * camada CRM (description, contact_name/phone, personalization.custom_color/notes)
+ * é preservada. Hash do snapshot Tiny faz short-circuit quando nada mudou.
+ *
+ * Passe `options.force` pra ignorar o hash e re-aplicar tudo (debug / manual).
  */
 export async function importTinyOrderFromApi(
   supabase: SupabaseClient<Database>,
-  tinyOrderId: number
+  tinyOrderId: number,
+  options: { force?: boolean } = {}
 ): Promise<{ ok: boolean; message: string; orderId?: string }> {
   let tinyResponse: unknown;
   try {
@@ -467,6 +482,8 @@ export async function importTinyOrderFromApi(
   if (!Number.isFinite(resolvedTinyOrderId)) {
     return { ok: false, message: "ID do pedido inválido na resposta Tiny." };
   }
+
+  const tinySyncHash = computeTinyOrderHash(raw as Record<string, unknown>);
 
   const clienteEmbed = raw.cliente as Record<string, unknown> | undefined;
   const clienteIdRaw = clienteEmbed?.id ?? raw.idCliente;
@@ -549,8 +566,11 @@ export async function importTinyOrderFromApi(
   const notaFromRaw = notaFiscalIdFromTinyPedidoRaw(
     raw as Record<string, unknown>
   );
-  const faturadoNaApi = isTinySituacaoFaturado(situacao) || notaFromRaw != null;
+  const pagoNaApi = isTinySituacaoPago(situacao) || notaFromRaw != null;
   const entregueNaApi = isTinySituacaoEntregue(situacao);
+  // Entregue implica pago: pedido entregue obrigatoriamente passou por
+  // Aprovado/Faturado em algum momento.
+  const aplicarPago = pagoNaApi || entregueNaApi;
 
   // Observações internas do Tiny → campo description do CRM (exibido como "Personalização" no pipeline)
   const obsInternas =
@@ -561,9 +581,25 @@ export async function importTinyOrderFromApi(
   // Checar se pedido já existe no CRM — se sim, preservar status via mapeamento; se não, AUTOMATICO
   const { data: existingOrder } = await supabase
     .from("orders")
-    .select("id, status, position, tiny_invoice_id")
+    .select(
+      "id, status, position, tiny_invoice_id, tiny_sync_hash, description, contact_name, contact_phone"
+    )
     .eq("tiny_order_id", resolvedTinyOrderId)
     .maybeSingle();
+
+  // Short-circuit: snapshot Tiny não mudou desde último sync. Cliente já foi
+  // upsertado acima (cheap), então saímos sem mexer em order/items.
+  if (
+    !options.force &&
+    existingOrder?.tiny_sync_hash &&
+    existingOrder.tiny_sync_hash === tinySyncHash
+  ) {
+    return {
+      ok: true,
+      message: `Pedido Tiny #${resolvedTinyOrderId} sem alterações desde último sync.`,
+      orderId: existingOrder.id,
+    };
+  }
 
   const isNewOrder = !existingOrder;
   let status: Database["public"]["Enums"]["order_status"] = isNewOrder
@@ -571,7 +607,7 @@ export async function importTinyOrderFromApi(
       ? "FINALIZADO"
       : "AUTOMATICO"
     : mapTinySituacaoToCrmStatus(situacao);
-  if (!isNewOrder && faturadoNaApi && existingOrder) {
+  if (!isNewOrder && pagoNaApi && existingOrder) {
     status = existingOrder.status;
   }
   if (!isNewOrder && entregueNaApi && existingOrder) {
@@ -580,7 +616,7 @@ export async function importTinyOrderFromApi(
   let position: number;
   if (isNewOrder) {
     position = await nextPositionForOrderStatus(supabase, status);
-  } else if (faturadoNaApi && existingOrder) {
+  } else if (pagoNaApi && existingOrder) {
     position = existingOrder.position;
   } else {
     position = await nextPositionForOrderStatus(supabase, status);
@@ -595,14 +631,22 @@ export async function importTinyOrderFromApi(
     }
   }
 
+  // Description: no primeiro import, vem do Tiny (obsInternas/valor). Em re-sync
+  // de pedido existente, mantém o que está no CRM — esse campo costuma ser
+  // editado manualmente como anotação de personalização.
+  const descriptionToSave = isNewOrder
+    ? obsInternas || (valor != null ? `Valor: R$ ${valor}` : null)
+    : (existingOrder?.description ?? null);
+
   const orderData: Database["public"]["Tables"]["orders"]["Insert"] = {
     title: `Pedido #${numeroPedido} - ${clienteNome}`,
-    description: obsInternas || (valor != null ? `Valor: R$ ${valor}` : null),
+    description: descriptionToSave,
     client_id: clientIdRow.id,
     status,
     due_date: dataPrevista ? parseTinyDate(String(dataPrevista)) : null,
     order_date: dataPedido ? parseTinyDate(String(dataPedido)) : null,
     tiny_order_id: resolvedTinyOrderId,
+    tiny_sync_hash: tinySyncHash,
     order_type: "PERSONALIZADO",
     priority: "NORMAL",
     position,
@@ -613,7 +657,16 @@ export async function importTinyOrderFromApi(
       : existingOrder?.tiny_invoice_id != null
         ? { tiny_invoice_id: existingOrder.tiny_invoice_id }
         : {}),
-    ...(contactChat ? { contact_name: contactChat.contact_name, contact_phone: contactChat.contact_phone } : {}),
+    // contact_name/phone: preencher só na criação (existingOrder.contact_* pode
+    // ter sido editado manualmente no CRM).
+    ...(contactChat
+      ? { contact_name: contactChat.contact_name, contact_phone: contactChat.contact_phone }
+      : existingOrder
+        ? {
+            contact_name: existingOrder.contact_name ?? null,
+            contact_phone: existingOrder.contact_phone ?? null,
+          }
+        : {}),
   };
 
   const { data: upsertedOrder, error: orderErr } = await supabase
@@ -632,21 +685,73 @@ export async function importTinyOrderFromApi(
   }
 
   const orderId = upsertedOrder.id;
-  const itemsToInsert = await buildOrderItemsFromTinyRaw(supabase, raw, orderId);
+  const freshItems = await buildOrderItemsFromTinyRaw(supabase, raw, orderId);
 
-  if (itemsToInsert.length > 0) {
+  if (freshItems.length > 0) {
+    // Re-sync: preserva camada CRM (personalization.custom_color, notes) dos
+    // itens que casam por (product_id, color). Quem some do Tiny é deletado.
+    const { data: existingItems } = await supabase
+      .from("order_items")
+      .select("product_id, color, personalization")
+      .eq("order_id", orderId);
+
+    const itemsToInsert = mergeItemsPreservingPersonalization(
+      freshItems,
+      (existingItems ?? []).map((row) => ({
+        product_id: row.product_id,
+        color: row.color,
+        personalization: row.personalization as Json | null,
+      }))
+    );
+
     await supabase.from("order_items").delete().eq("order_id", orderId);
     await supabase.from("order_items").insert(itemsToInsert);
   }
 
-  if (faturadoNaApi) {
+  if (aplicarPago) {
     const { data: stRow } = await supabase
       .from("orders")
       .select("status")
       .eq("id", orderId)
       .maybeSingle();
     const statusForApply = stRow?.status ?? existingOrder?.status ?? "CONFIRMACAO";
-    await applyFaturadoCrmFromTiny(supabase, orderId, statusForApply);
+    const pagoResult = await applyPagoCrmFromTiny(supabase, orderId, statusForApply);
+
+    // Auto-envio ao Bling quando o webhook move o pedido pra APROVADO —
+    // equivalente ao trigger do Kanban quando user arrasta o card.
+    // Idempotente via guard de `orders.bling_order_id` no helper.
+    if (pagoResult.statusMoved) {
+      const { sendOrderToAllActiveSuppliers } = await import(
+        "@/services/bling.service"
+      );
+      const sendOutcome = await sendOrderToAllActiveSuppliers(
+        orderId,
+        null,
+        supabase
+      ).catch((err) => {
+        console.warn(
+          `[tiny-order-import] auto-envio Bling falhou para order ${orderId}:`,
+          err
+        );
+        return null;
+      });
+      if (sendOutcome && !sendOutcome.skipped) {
+        const failed = sendOutcome.results.filter((r) => !r.success);
+        if (failed.length > 0) {
+          console.warn(
+            `[tiny-order-import] auto-envio Bling parcial para order ${orderId}: ` +
+              failed
+                .map((r) => `${r.supplierName}: ${r.error ?? "erro"}`)
+                .join(" | ")
+          );
+        } else {
+          console.info(
+            `[tiny-order-import] auto-envio Bling OK para order ${orderId} ` +
+              `(${sendOutcome.results.length} fornecedor(es))`
+          );
+        }
+      }
+    }
   }
   if (entregueNaApi) {
     await applyEntregueCrmFromTiny(supabase, orderId);

@@ -433,7 +433,16 @@ export function OrderDetailSheet() {
       }
       toast.success("Etapa alterada.");
     },
-    onError: () => {
+    onError: (err: unknown) => {
+      const code = (err as { code?: string })?.code;
+      if (code === "no_approved_artwork") {
+        toast.error("Arte não aprovada", {
+          description:
+            (err as Error).message ??
+            "Aprove a arte ou marque “Usar arte aprovada anteriormente”.",
+        });
+        return;
+      }
       toast.error("Erro ao alterar etapa.");
     },
   });

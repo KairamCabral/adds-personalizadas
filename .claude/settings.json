@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm test *)",
+      "mcp__addscrm__execute_sql",
+      "mcp__addscrm__generate_typescript_types"
+    ]
+  }
+}

@@ -12,8 +12,11 @@ import {
   groupArtworksByVersion,
   resetClientArtworkApproval,
 } from "@/services/artworks.service";
-import { moveOrder } from "@/services/orders.service";
+import { moveOrder, updateOrder, getOrderById } from "@/services/orders.service";
 import { usePermissions } from "@/hooks/use-permissions";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { CheckCircle2 } from "lucide-react";
 import { formatDateTime, formatFileSize } from "@/lib/utils";
 import { FileUpload } from "@/components/shared/file-upload";
 import { Button } from "@/components/ui/button";
@@ -75,6 +78,44 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
     queryFn: () => getArtworksByOrder(orderId),
   });
 
+  // Lê o flag `uses_existing_art` do pedido pra renderizar o switch.
+  const { data: order } = useQuery({
+    queryKey: ["order", orderId],
+    queryFn: () => getOrderById(orderId),
+  });
+  const usesExistingArt = (order as { uses_existing_art?: boolean } | null)
+    ?.uses_existing_art ?? false;
+
+  const toggleUsesExistingArtMutation = useMutation({
+    mutationFn: (next: boolean) =>
+      updateOrder(orderId, { uses_existing_art: next } as never),
+    onMutate: async (next: boolean) => {
+      await queryClient.cancelQueries({ queryKey: ["order", orderId] });
+      const previous = queryClient.getQueryData(["order", orderId]);
+      queryClient.setQueryData(["order", orderId], (old: unknown) =>
+        old && typeof old === "object"
+          ? { ...(old as Record<string, unknown>), uses_existing_art: next }
+          : old
+      );
+      return { previous };
+    },
+    onError: (_err, _next, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(["order", orderId], ctx.previous);
+      }
+      toast.error("Não foi possível atualizar o pedido.");
+    },
+    onSuccess: (_data, next) => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", orderId] });
+      toast.success(
+        next
+          ? "Pedido marcado como cliente recorrente — arte já validada."
+          : "Pedido voltou a exigir aprovação de arte."
+      );
+    },
+  });
+
   const byVersion = groupArtworksByVersion(artworks);
   const versions = Array.from(byVersion.keys()).sort((a, b) => b - a);
   const latestVersion = versions[0];
@@ -111,10 +152,53 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Painel sempre visível: toggle "Usar arte aprovada anteriormente". Quando
+  // ligado, libera o gate de avanço pra APROVADO sem precisar subir/aprovar
+  // arte (fluxo de cliente recorrente). Esconde o `Switch` durante loading
+  // pra não piscar o estado.
+  const usesExistingArtPanel = order ? (
+    <div
+      className={cn(
+        "flex items-start gap-3 rounded-lg border p-4 transition-colors",
+        usesExistingArt
+          ? "border-emerald-500/40 bg-emerald-500/5"
+          : "border-border bg-muted/30"
+      )}
+    >
+      <CheckCircle2
+        className={cn(
+          "mt-0.5 h-5 w-5 shrink-0",
+          usesExistingArt ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+        )}
+      />
+      <div className="flex-1 min-w-0">
+        <Label
+          htmlFor="uses-existing-art-toggle"
+          className="text-sm font-medium cursor-pointer"
+        >
+          Usar arte aprovada anteriormente
+        </Label>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Cliente recorrente — arte já validada offline. Permite avançar para
+          Aprovado sem precisar enviar e aprovar uma nova arte aqui.
+        </p>
+      </div>
+      <Switch
+        id="uses-existing-art-toggle"
+        checked={usesExistingArt}
+        disabled={toggleUsesExistingArtMutation.isPending}
+        onCheckedChange={(next) => toggleUsesExistingArtMutation.mutate(next)}
+      />
+    </div>
+  ) : null;
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center rounded-lg border border-dashed py-12">
-        <p className="text-sm text-muted-foreground">Carregando...</p>
+      <div className="space-y-4">
+        {usesExistingArtPanel}
+        <div className="flex items-center justify-center rounded-lg border border-dashed py-12">
+          <p className="text-sm text-muted-foreground">Carregando...</p>
+        </div>
       </div>
     );
   }
@@ -122,6 +206,7 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
   if (artworks.length === 0 && !showNewVersion) {
     return (
       <div className="space-y-4">
+        {usesExistingArtPanel}
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <Image className="h-8 w-8 text-primary" />
@@ -130,19 +215,23 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
             Nenhuma arte enviada
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Faça upload da arte para este pedido
+            {usesExistingArt
+              ? "Cliente recorrente — não é necessário enviar arte para aprovação."
+              : "Faça upload da arte para este pedido"}
           </p>
-          <div className="mt-6 w-full max-w-sm">
-            <FileUpload
-              accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
-              maxSize={20 * 1024 * 1024}
-              onUpload={(files) => files[0] && uploadMutation.mutate({ file: files[0] })}
-              disabled={uploadMutation.isPending}
-            />
-            <p className="mt-2 text-xs text-muted-foreground">
-              JPG, PNG ou PDF · Máx 20MB
-            </p>
-          </div>
+          {!usesExistingArt && (
+            <div className="mt-6 w-full max-w-sm">
+              <FileUpload
+                accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                maxSize={20 * 1024 * 1024}
+                onUpload={(files) => files[0] && uploadMutation.mutate({ file: files[0] })}
+                disabled={uploadMutation.isPending}
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                JPG, PNG ou PDF · Máx 20MB
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -150,6 +239,7 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
 
   return (
     <div className="space-y-6">
+      {usesExistingArtPanel}
       {latestVariations.length > 0 && (
         <LatestArtworkCard
           variations={latestVariations}

@@ -103,18 +103,72 @@ export async function POST(request: NextRequest) {
         await supabase.from("artworks").update({ status: "DESCARTADA" }).eq("id", a.id);
       }
 
-      const { count: confirmacaoCount } = await supabase
+      // Decide target: se já tem PAGO, vai direto pra APROVADO (o webhook
+      // PAGO ficou bloqueado pelo gate de arte e agora finalmente desbloqueia).
+      // Senão, fica em CONFIRMACAO esperando o pagamento.
+      const { data: pagoLabel } = await supabase
+        .from("order_labels")
+        .select("id")
+        .eq("order_id", tokenRow.order_id)
+        .eq("label", "PAGO")
+        .maybeSingle();
+
+      const targetStatus = pagoLabel ? "APROVADO" : "CONFIRMACAO";
+
+      const { count: targetCount } = await supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .eq("status", "CONFIRMACAO")
+        .eq("status", targetStatus)
         .is("archived_at", null);
 
-      const { error: moveConfErr } = await (supabase.rpc as any)("move_order_atomic", {
-        p_order_id: tokenRow.order_id,
-        p_new_status: "CONFIRMACAO",
-        p_new_position: confirmacaoCount ?? 0,
-      });
-      if (moveConfErr) throw moveConfErr;
+      const { error: moveTargetErr } = await (supabase.rpc as any)(
+        "move_order_atomic",
+        {
+          p_order_id: tokenRow.order_id,
+          p_new_status: targetStatus,
+          p_new_position: targetCount ?? 0,
+        }
+      );
+      if (moveTargetErr) throw moveTargetErr;
+
+      // Tag: troca LINK_ENVIADO → ARTE_APROVADA. O link já cumpriu o papel
+      // (cliente respondeu aprovando); agora o pedido carrega a tag de
+      // arte aprovada. Idempotente.
+      await supabase
+        .from("order_labels")
+        .delete()
+        .eq("order_id", tokenRow.order_id)
+        .eq("label", "LINK_ENVIADO");
+
+      const { data: existingArteAprovada } = await supabase
+        .from("order_labels")
+        .select("id")
+        .eq("order_id", tokenRow.order_id)
+        .eq("label", "ARTE_APROVADA")
+        .maybeSingle();
+      if (!existingArteAprovada) {
+        await supabase.from("order_labels").insert({
+          order_id: tokenRow.order_id,
+          label: "ARTE_APROVADA",
+        });
+      }
+
+      // Se foi direto pra APROVADO, dispara auto-envio ao Bling — mesma
+      // lógica usada quando o webhook Tiny move CONFIRMACAO/LINK_ENVIADO →
+      // APROVADO. Idempotente via guard de `orders.bling_order_id`.
+      if (targetStatus === "APROVADO") {
+        const { sendOrderToAllActiveSuppliers } = await import(
+          "@/services/bling.service"
+        );
+        await sendOrderToAllActiveSuppliers(tokenRow.order_id, null, supabase).catch(
+          (err: unknown) => {
+            console.warn(
+              `[art-approve] auto-envio Bling falhou para order ${tokenRow.order_id}:`,
+              err
+            );
+          }
+        );
+      }
 
       await supabase.from("order_history").insert({
         order_id: tokenRow.order_id,

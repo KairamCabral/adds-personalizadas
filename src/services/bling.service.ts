@@ -1526,6 +1526,99 @@ export async function sendOrderToBling(
 }
 
 // ════════════════════════════════════════════════
+// AUTO-ENVIO PARA TODOS OS FORNECEDORES ATIVOS
+// ════════════════════════════════════════════════
+
+export type SupplierSendResult = {
+  supplierId: string;
+  supplierName: string;
+  success: boolean;
+  contactSent: boolean;
+  orderSent: boolean;
+  blingOrderId?: number;
+  blingOrderNumber?: number;
+  error?: string;
+};
+
+export type SendToAllSuppliersOutcome =
+  | {
+      skipped: true;
+      reason: "already_sent" | "no_active_suppliers" | "order_not_found";
+      blingOrderId?: number;
+      results: [];
+    }
+  | { skipped: false; results: SupplierSendResult[] };
+
+/**
+ * Dispara o envio do pedido a todos os fornecedores ativos.
+ *
+ * Compartilhado entre o trigger da UI (drag pra APROVADO no Kanban /
+ * mudança de status no detalhe do pedido) e o trigger automático do webhook
+ * Tiny (`applyPagoCrmFromTiny` movendo CONFIRMACAO/LINK_ENVIADO → APROVADO).
+ *
+ * Idempotência: se `orders.bling_order_id` já está setado, retorna
+ * `skipped: "already_sent"` sem chamar o Bling. Isso evita criar pedidos
+ * duplicados quando o webhook chega 2× ou quando UI e webhook disparam em
+ * sequência. Pra forçar reenvio (retry manual de um fornecedor específico),
+ * use `/api/bling/sync` com `supplierId` — ele ignora esse guard.
+ */
+export async function sendOrderToAllActiveSuppliers(
+  orderId: string,
+  sentBy: string | null,
+  supabaseClient: SupabaseClient<Database>
+): Promise<SendToAllSuppliersOutcome> {
+  const { data: order, error: orderErr } = await supabaseClient
+    .from("orders")
+    .select("bling_order_id")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (orderErr || !order) {
+    return { skipped: true, reason: "order_not_found", results: [] };
+  }
+
+  if (order.bling_order_id != null) {
+    return {
+      skipped: true,
+      reason: "already_sent",
+      blingOrderId: order.bling_order_id,
+      results: [],
+    };
+  }
+
+  const { data: suppliers } = await supabaseClient
+    .from("suppliers")
+    .select("id, name")
+    .eq("is_active", true);
+
+  if (!suppliers || suppliers.length === 0) {
+    return { skipped: true, reason: "no_active_suppliers", results: [] };
+  }
+
+  const results: SupplierSendResult[] = [];
+  for (const supplier of suppliers) {
+    const result = await sendOrderToBling(
+      supplier.id,
+      orderId,
+      sentBy,
+      supabaseClient
+    );
+    results.push({
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      success: result.orderSent,
+      contactSent: result.contactSent,
+      orderSent: result.orderSent,
+      blingOrderId: result.blingOrderId,
+      blingOrderNumber: result.blingOrderNumber,
+      error: result.error,
+    });
+  }
+
+  return { skipped: false, results };
+}
+
+// ════════════════════════════════════════════════
 // DADOS DO BLING (vendedores e produtos)
 // ════════════════════════════════════════════════
 

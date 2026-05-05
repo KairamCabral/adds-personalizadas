@@ -6,17 +6,9 @@
 import type { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
-import {
-  importTinyOrderFromApi,
-  mapTinySituacaoToCrmStatus,
-} from "@/lib/tiny/tiny-order-import";
-import {
-  applyEntregueCrmFromTiny,
-  applyFaturadoCrmFromTiny,
-  isTinySituacaoEntregue,
-  isTinySituacaoFaturado,
-  notaFiscalIdFromTinyDados,
-} from "@/lib/tiny/tiny-faturado-crm";
+import { importTinyOrderFromApi } from "@/lib/tiny/tiny-order-import";
+import { applyPagoCrmFromTiny } from "@/lib/tiny/tiny-faturado-crm";
+// `bling.service` é carregado dinamicamente — ver justificativa em tiny-order-import.ts.
 
 export interface TinyPayload {
   tipo: string;
@@ -175,17 +167,17 @@ async function handlePedido(
   const tinyOrderId = Number(dados.id ?? dados.idPedido);
   if (!tinyOrderId) return { ok: false, message: "ID do pedido ausente." };
 
-  let { data: order } = await supabase
+  const { data: existing } = await supabase
     .from("orders")
-    .select("id, status, tiny_invoice_id")
+    .select("id")
     .eq("tiny_order_id", tinyOrderId)
     .maybeSingle();
 
-  if (!order) {
-    // PROTEÇÃO: não criar pedido antigo retroativamente via webhook.
-    // O Tiny pode enviar atualizacao_pedido para pedidos que nunca
-    // chegaram ao CRM (ex.: webhook original perdido). Se o pedido for
-    // antigo e não existir no CRM, ignoramos em vez de importá-lo agora.
+  // PROTEÇÃO: não criar pedido antigo retroativamente via webhook.
+  // O Tiny pode enviar atualizacao_pedido para pedidos que nunca
+  // chegaram ao CRM (ex.: webhook original perdido). Se o pedido for
+  // antigo e não existir no CRM, ignoramos em vez de importá-lo agora.
+  if (!existing) {
     const MAX_RETRO_DAYS = 7;
     const orderDateRaw = dados.data as string | undefined;
     if (orderDateRaw) {
@@ -219,110 +211,26 @@ async function handlePedido(
         }
       }
     }
-
-    // Pedido não existe mas é recente — importa normalmente
-    const imported = await importTinyOrderFromApi(supabase, tinyOrderId);
-    await logSync(supabase, {
-      entity_type: "order",
-      entity_id: imported.orderId ?? null,
-      tiny_id: tinyOrderId,
-      direction: "pull",
-      status: imported.ok ? "success" : "error",
-      error_message: imported.ok ? null : imported.message,
-    });
-
-    if (!imported.ok) {
-      return {
-        ok: false,
-        message: imported.message,
-      };
-    }
-
-    const refetch = await supabase
-      .from("orders")
-      .select("id, status, tiny_invoice_id")
-      .eq("tiny_order_id", tinyOrderId)
-      .maybeSingle();
-
-    order = refetch.data;
-    if (!order) {
-      return {
-        ok: false,
-        message: "Pedido importado mas não encontrado após refetch.",
-      };
-    }
   }
 
-  const updates: Database["public"]["Tables"]["orders"]["Update"] = {};
-
-  const situacaoRaw = dados.situacao;
-  const nfFromDados = notaFiscalIdFromTinyDados(dados);
-  // Código 1, texto "faturado" (Olist), NF no payload, etc.
-  const isFaturado =
-    isTinySituacaoFaturado(situacaoRaw) || nfFromDados != null;
-  const isEntregue = isTinySituacaoEntregue(situacaoRaw);
-
-  let faturadoEffectsRun = false;
-  let entregueEffectsRun = false;
-  if (isFaturado) {
-    await applyFaturadoCrmFromTiny(supabase, order.id, order.status);
-    faturadoEffectsRun = true;
-  } else if (isEntregue) {
-    await applyEntregueCrmFromTiny(supabase, order.id);
-    entregueEffectsRun = true;
-  } else if (situacaoRaw !== undefined && situacaoRaw !== null && situacaoRaw !== "") {
-    const mappedStatus = mapTinySituacaoToCrmStatus(situacaoRaw);
-    if (mappedStatus !== order.status) {
-      updates.status = mappedStatus;
-    }
-  }
-
-  const idNotaFiscal =
-    nfFromDados ?? (dados.idNotaFiscal ? Number(dados.idNotaFiscal) : undefined);
-  if (idNotaFiscal && idNotaFiscal !== order.tiny_invoice_id) {
-    updates.tiny_invoice_id = idNotaFiscal;
-    // não muda status automaticamente baseado em idNotaFiscal
-  }
-
-  if (Object.keys(updates).length === 0) {
-    await logSync(supabase, {
-      entity_type: "order",
-      entity_id: order.id,
-      tiny_id: tinyOrderId,
-      direction: "pull",
-      status: "success",
-    });
-    return {
-      ok: true,
-      message: faturadoEffectsRun
-        ? "Faturado processado: tag PAGO e etapa ajustada se aplicável."
-        : entregueEffectsRun
-          ? "Entrega registrada: tag ENTREGUE aplicada (etapa inalterada)."
-          : "Pedido já sincronizado, sem alterações.",
-    };
-  }
-
-  updates.updated_at = new Date().toISOString();
-  const { error } = await supabase
-    .from("orders")
-    .update(updates)
-    .eq("id", order.id);
-
+  // Re-sync completo: Tiny é fonte da verdade pro pedido inteiro (cliente,
+  // itens, endereço, situação). Hash em `orders.tiny_sync_hash` faz
+  // short-circuit quando o snapshot Tiny não mudou desde o último sync.
+  // `importTinyOrderFromApi` já preserva camada CRM (description,
+  // contact_name/phone, personalization.custom_color/notes) em re-sync.
+  const imported = await importTinyOrderFromApi(supabase, tinyOrderId);
   await logSync(supabase, {
     entity_type: "order",
-    entity_id: order.id,
+    entity_id: imported.orderId ?? existing?.id ?? null,
     tiny_id: tinyOrderId,
     direction: "pull",
-    status: error ? "error" : "success",
-    error_message: error?.message ?? null,
+    status: imported.ok ? "success" : "error",
+    error_message: imported.ok ? null : imported.message,
   });
 
-  return {
-    ok: !error,
-    message: error
-      ? `Erro ao atualizar pedido: ${error.message}`
-      : `Pedido ${order.id} atualizado (${Object.keys(updates).join(", ")}).`,
-  };
+  return imported.ok
+    ? { ok: true, message: imported.message }
+    : { ok: false, message: imported.message };
 }
 
 async function handleNotaFiscal(
@@ -376,7 +284,47 @@ async function handleNotaFiscal(
     }
   }
 
-  await applyFaturadoCrmFromTiny(supabase, order.id, order.status);
+  const pagoResult = await applyPagoCrmFromTiny(
+    supabase,
+    order.id,
+    order.status
+  );
+
+  // Mesma regra do importTinyOrderFromApi: quando o webhook move pra
+  // APROVADO, dispara auto-envio aos fornecedores. Idempotente via guard
+  // de `orders.bling_order_id` no helper.
+  if (pagoResult.statusMoved) {
+    const { sendOrderToAllActiveSuppliers } = await import(
+      "@/services/bling.service"
+    );
+    const sendOutcome = await sendOrderToAllActiveSuppliers(
+      order.id,
+      null,
+      supabase
+    ).catch((err) => {
+      console.warn(
+        `[Webhook Tiny] auto-envio Bling (NF) falhou para order ${order.id}:`,
+        err
+      );
+      return null;
+    });
+    if (sendOutcome && !sendOutcome.skipped) {
+      const failed = sendOutcome.results.filter((r) => !r.success);
+      if (failed.length > 0) {
+        console.warn(
+          `[Webhook Tiny] auto-envio Bling parcial (NF) order ${order.id}: ` +
+            failed
+              .map((r) => `${r.supplierName}: ${r.error ?? "erro"}`)
+              .join(" | ")
+        );
+      } else {
+        console.info(
+          `[Webhook Tiny] auto-envio Bling OK (NF) order ${order.id} ` +
+            `(${sendOutcome.results.length} fornecedor(es))`
+        );
+      }
+    }
+  }
 
   // Atualizar tiny_invoice_id (mas não alterar status para FATURADO)
   const { error } = await supabase

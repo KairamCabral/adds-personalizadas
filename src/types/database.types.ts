@@ -755,6 +755,33 @@ export type Database = {
           },
         ]
       }
+      order_items_backup_20260429120000: {
+        Row: {
+          backed_up_at: string | null
+          color: string | null
+          color_name: string | null
+          id: string | null
+          personalization: Json | null
+          product_name: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          color?: string | null
+          color_name?: string | null
+          id?: string | null
+          personalization?: Json | null
+          product_name?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          color?: string | null
+          color_name?: string | null
+          id?: string | null
+          personalization?: Json | null
+          product_name?: string | null
+        }
+        Relationships: []
+      }
       order_labels: {
         Row: {
           added_by: string | null
@@ -793,6 +820,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      order_labels_backup_20260429140000: {
+        Row: {
+          backed_up_at: string
+          label: Database["public"]["Enums"]["label_type"]
+          op: string
+          order_id: string
+          original_created_at: string | null
+          original_id: string | null
+        }
+        Insert: {
+          backed_up_at?: string
+          label: Database["public"]["Enums"]["label_type"]
+          op: string
+          order_id: string
+          original_created_at?: string | null
+          original_id?: string | null
+        }
+        Update: {
+          backed_up_at?: string
+          label?: Database["public"]["Enums"]["label_type"]
+          op?: string
+          order_id?: string
+          original_created_at?: string | null
+          original_id?: string | null
+        }
+        Relationships: []
       }
       order_watchers: {
         Row: {
@@ -861,8 +915,10 @@ export type Database = {
           status: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id: number | null
           tiny_order_id: number | null
+          tiny_sync_hash: string | null
           title: string
           updated_at: string
+          uses_existing_art: boolean
         }
         Insert: {
           archived_at?: string | null
@@ -894,8 +950,10 @@ export type Database = {
           status?: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id?: number | null
           tiny_order_id?: number | null
+          tiny_sync_hash?: string | null
           title: string
           updated_at?: string
+          uses_existing_art?: boolean
         }
         Update: {
           archived_at?: string | null
@@ -927,8 +985,10 @@ export type Database = {
           status?: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id?: number | null
           tiny_order_id?: number | null
+          tiny_sync_hash?: string | null
           title?: string
           updated_at?: string
+          uses_existing_art?: boolean
         }
         Relationships: [
           {
@@ -2201,6 +2261,7 @@ export type Database = {
         | "ORCAMENTO_PUBLICO"
         | "LINK_ENVIADO"
         | "ENTREGUE"
+        | "ARTE_APROVADA"
       order_priority: "NORMAL" | "ALTA"
       order_status:
         | "AUTOMATICO"
@@ -2388,6 +2449,7 @@ export const Constants = {
         "ORCAMENTO_PUBLICO",
         "LINK_ENVIADO",
         "ENTREGUE",
+        "ARTE_APROVADA",
       ],
       order_priority: ["NORMAL", "ALTA"],
       order_status: [

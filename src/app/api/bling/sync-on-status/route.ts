@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sendOrderToBling } from "@/services/bling.service";
+import { sendOrderToAllActiveSuppliers } from "@/services/bling.service";
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,50 +29,36 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { data: suppliers } = await supabase
-      .from("suppliers")
-      .select("id, name")
-      .eq("is_active", true);
+    // Mesmo helper usado pelo trigger automático do webhook Tiny — garante
+    // idempotência (skip se `bling_order_id` já está setado) e comportamento
+    // unificado entre UI e servidor.
+    const outcome = await sendOrderToAllActiveSuppliers(
+      orderId,
+      user.id,
+      supabase
+    );
 
-    if (!suppliers || suppliers.length === 0) {
+    if (outcome.skipped) {
+      const messageMap: Record<typeof outcome.reason, string> = {
+        already_sent: "Pedido já enviado ao Bling anteriormente.",
+        no_active_suppliers: "Nenhum fornecedor ativo.",
+        order_not_found: "Pedido não encontrado.",
+      };
       return NextResponse.json({
         success: true,
-        message: "Nenhum fornecedor ativo.",
+        skipped: true,
+        reason: outcome.reason,
+        message: messageMap[outcome.reason],
         results: [],
-      });
-    }
-
-    const results: Array<{
-      supplierId: string;
-      supplierName: string;
-      success: boolean;
-      error?: string;
-      contactSent?: boolean;
-      orderSent?: boolean;
-      blingOrderNumber?: number;
-    }> = [];
-
-    for (const supplier of suppliers) {
-      const result = await sendOrderToBling(
-        supplier.id,
-        orderId,
-        user.id,
-        supabase
-      );
-      results.push({
-        supplierId: supplier.id,
-        supplierName: supplier.name,
-        success: result.orderSent,
-        error: result.error,
-        contactSent: result.contactSent,
-        orderSent: result.orderSent,
-        blingOrderNumber: result.blingOrderNumber,
+        ...(outcome.reason === "already_sent" && outcome.blingOrderId
+          ? { blingOrderId: outcome.blingOrderId }
+          : {}),
       });
     }
 
     return NextResponse.json({
       success: true,
-      results,
+      results: outcome.results,
     });
   } catch (err) {
     const message =

@@ -121,8 +121,23 @@ export async function POST(request: NextRequest) {
       used_by_name: approverName,
     }).eq("id", tokenRow.id);
 
-    // Update order status — revision takes priority over approval
-    const newOrderStatus = hasRevision ? "AJUSTE" : "CONFIRMACAO";
+    // Update order status — revision takes priority over approval.
+    // Quando aprovado E já tem PAGO: pula CONFIRMACAO e vai direto pra
+    // APROVADO (o webhook PAGO ficou bloqueado pelo gate de arte e agora
+    // desbloqueia). Senão, fluxo normal: AJUSTE em revisão, CONFIRMACAO se
+    // aprovado e ainda não pago.
+    let newOrderStatus: "AJUSTE" | "CONFIRMACAO" | "APROVADO";
+    if (hasRevision) {
+      newOrderStatus = "AJUSTE";
+    } else {
+      const { data: pagoLabel } = await supabase
+        .from("order_labels")
+        .select("id")
+        .eq("order_id", tokenRow.order_id)
+        .eq("label", "PAGO")
+        .maybeSingle();
+      newOrderStatus = pagoLabel ? "APROVADO" : "CONFIRMACAO";
+    }
 
     const { count: statusCount } = await supabase
       .from("orders")
@@ -136,6 +151,45 @@ export async function POST(request: NextRequest) {
       p_new_position: statusCount ?? 0,
     });
     if (moveOrderErr) throw moveOrderErr;
+
+    // Tag: quando o cliente aprovou (sem revisão), troca LINK_ENVIADO →
+    // ARTE_APROVADA. Em revisão, mantém o estado de tags atual (o link
+    // pode ser reenviado depois do ajuste). Idempotente.
+    if (!hasRevision) {
+      await supabase
+        .from("order_labels")
+        .delete()
+        .eq("order_id", tokenRow.order_id)
+        .eq("label", "LINK_ENVIADO");
+
+      const { data: existingArteAprovada } = await supabase
+        .from("order_labels")
+        .select("id")
+        .eq("order_id", tokenRow.order_id)
+        .eq("label", "ARTE_APROVADA")
+        .maybeSingle();
+      if (!existingArteAprovada) {
+        await supabase.from("order_labels").insert({
+          order_id: tokenRow.order_id,
+          label: "ARTE_APROVADA",
+        });
+      }
+    }
+
+    // Se foi direto pra APROVADO, dispara auto-envio ao Bling.
+    if (newOrderStatus === "APROVADO") {
+      const { sendOrderToAllActiveSuppliers } = await import(
+        "@/services/bling.service"
+      );
+      await sendOrderToAllActiveSuppliers(tokenRow.order_id, null, supabase).catch(
+        (err: unknown) => {
+          console.warn(
+            `[art-approve-bundle] auto-envio Bling falhou para order ${tokenRow.order_id}:`,
+            err
+          );
+        }
+      );
+    }
 
     // History entry
     const approvedCount = decisions.filter((d) => d.approved).length;
