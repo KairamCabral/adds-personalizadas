@@ -14,6 +14,9 @@ import {
   computeTinyOrderHash,
   mergeItemsPreservingPersonalization,
 } from "@/lib/tiny/tiny-order-resync";
+// `bling.service` é carregado dinamicamente — ele instancia um Supabase
+// browser client em escopo de módulo e quebra ambientes de teste sem env.
+// Em runtime (Vercel/Next), as envs estão sempre presentes.
 
 /**
  * Verifica se o pedido é de personalizadas.
@@ -712,7 +715,43 @@ export async function importTinyOrderFromApi(
       .eq("id", orderId)
       .maybeSingle();
     const statusForApply = stRow?.status ?? existingOrder?.status ?? "CONFIRMACAO";
-    await applyPagoCrmFromTiny(supabase, orderId, statusForApply);
+    const pagoResult = await applyPagoCrmFromTiny(supabase, orderId, statusForApply);
+
+    // Auto-envio ao Bling quando o webhook move o pedido pra APROVADO —
+    // equivalente ao trigger do Kanban quando user arrasta o card.
+    // Idempotente via guard de `orders.bling_order_id` no helper.
+    if (pagoResult.statusMoved) {
+      const { sendOrderToAllActiveSuppliers } = await import(
+        "@/services/bling.service"
+      );
+      const sendOutcome = await sendOrderToAllActiveSuppliers(
+        orderId,
+        null,
+        supabase
+      ).catch((err) => {
+        console.warn(
+          `[tiny-order-import] auto-envio Bling falhou para order ${orderId}:`,
+          err
+        );
+        return null;
+      });
+      if (sendOutcome && !sendOutcome.skipped) {
+        const failed = sendOutcome.results.filter((r) => !r.success);
+        if (failed.length > 0) {
+          console.warn(
+            `[tiny-order-import] auto-envio Bling parcial para order ${orderId}: ` +
+              failed
+                .map((r) => `${r.supplierName}: ${r.error ?? "erro"}`)
+                .join(" | ")
+          );
+        } else {
+          console.info(
+            `[tiny-order-import] auto-envio Bling OK para order ${orderId} ` +
+              `(${sendOutcome.results.length} fornecedor(es))`
+          );
+        }
+      }
+    }
   }
   if (entregueNaApi) {
     await applyEntregueCrmFromTiny(supabase, orderId);

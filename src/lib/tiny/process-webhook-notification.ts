@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import { importTinyOrderFromApi } from "@/lib/tiny/tiny-order-import";
 import { applyPagoCrmFromTiny } from "@/lib/tiny/tiny-faturado-crm";
+// `bling.service` é carregado dinamicamente — ver justificativa em tiny-order-import.ts.
 
 export interface TinyPayload {
   tipo: string;
@@ -283,7 +284,47 @@ async function handleNotaFiscal(
     }
   }
 
-  await applyPagoCrmFromTiny(supabase, order.id, order.status);
+  const pagoResult = await applyPagoCrmFromTiny(
+    supabase,
+    order.id,
+    order.status
+  );
+
+  // Mesma regra do importTinyOrderFromApi: quando o webhook move pra
+  // APROVADO, dispara auto-envio aos fornecedores. Idempotente via guard
+  // de `orders.bling_order_id` no helper.
+  if (pagoResult.statusMoved) {
+    const { sendOrderToAllActiveSuppliers } = await import(
+      "@/services/bling.service"
+    );
+    const sendOutcome = await sendOrderToAllActiveSuppliers(
+      order.id,
+      null,
+      supabase
+    ).catch((err) => {
+      console.warn(
+        `[Webhook Tiny] auto-envio Bling (NF) falhou para order ${order.id}:`,
+        err
+      );
+      return null;
+    });
+    if (sendOutcome && !sendOutcome.skipped) {
+      const failed = sendOutcome.results.filter((r) => !r.success);
+      if (failed.length > 0) {
+        console.warn(
+          `[Webhook Tiny] auto-envio Bling parcial (NF) order ${order.id}: ` +
+            failed
+              .map((r) => `${r.supplierName}: ${r.error ?? "erro"}`)
+              .join(" | ")
+        );
+      } else {
+        console.info(
+          `[Webhook Tiny] auto-envio Bling OK (NF) order ${order.id} ` +
+            `(${sendOutcome.results.length} fornecedor(es))`
+        );
+      }
+    }
+  }
 
   // Atualizar tiny_invoice_id (mas não alterar status para FATURADO)
   const { error } = await supabase
