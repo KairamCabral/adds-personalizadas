@@ -84,11 +84,8 @@ function mapDeposito(raw: unknown): TinyDeposito | null {
  * Usar tiny_id DE VARIANTE (cor) em vez do produto pai evita pegar `variacoes`
  * por engano. Produto pai retorna variacoes+depositos; variante retorna só depositos.
  */
-/**
- * Extrai depósitos do payload de listagem de pedidos.
- * Cada pedido v3 traz `deposito: { id, nome }` no root.
- */
-function extractDepositosFromPedidos(payload: unknown): TinyDeposito[] {
+/** Extrai IDs de pedido do payload de listagem (resumida). */
+function extractPedidoIds(payload: unknown): number[] {
   if (!payload || typeof payload !== "object") return [];
   const obj = payload as Record<string, unknown>;
   const list =
@@ -98,17 +95,48 @@ function extractDepositosFromPedidos(payload: unknown): TinyDeposito[] {
     [];
   if (!Array.isArray(list)) return [];
 
-  const seen = new Map<number, TinyDeposito>();
+  const ids: number[] = [];
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
     const pedido =
       ((item as Record<string, unknown>).pedido as Record<string, unknown>) ??
       (item as Record<string, unknown>);
-    const deposito = pedido?.deposito;
-    const mapped = mapDeposito(deposito);
-    if (mapped && !seen.has(mapped.id)) seen.set(mapped.id, mapped);
+    const id = asNum(pedido.id);
+    if (id) ids.push(id);
   }
-  return Array.from(seen.values());
+  return ids;
+}
+
+/**
+ * Busca o detalhe de até N pedidos em paralelo e extrai depósitos únicos.
+ * Para evitar custo: para assim que achar pelo menos 4 depósitos distintos.
+ */
+async function fetchDepositosFromOrderDetails(
+  pedidoIds: number[],
+  maxOrders = 15
+): Promise<{ depositos: TinyDeposito[]; calls: number }> {
+  const seen = new Map<number, TinyDeposito>();
+  let calls = 0;
+  // Processa em lotes paralelos de 5 para acelerar
+  const BATCH = 5;
+  const ids = pedidoIds.slice(0, maxOrders);
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = ids.slice(i, i + BATCH);
+    const results = await Promise.allSettled(
+      batch.map((id) => tinyApiGet<unknown>(`/pedidos/${id}`))
+    );
+    for (const r of results) {
+      calls++;
+      if (r.status !== "fulfilled") continue;
+      const obj = r.value as Record<string, unknown> | undefined;
+      const data = (obj?.data as Record<string, unknown>) ?? obj ?? {};
+      const deposito = data?.deposito;
+      const mapped = mapDeposito(deposito);
+      if (mapped && !seen.has(mapped.id)) seen.set(mapped.id, mapped);
+    }
+    if (seen.size >= 4) break; // 4 depósitos costuma ser o suficiente
+  }
+  return { depositos: Array.from(seen.values()), calls };
 }
 
 /**
@@ -177,21 +205,31 @@ async function autoDiscoverDepositos(
     if (err instanceof TinyTokenExpiredError) throw err;
   }
 
-  // 2) Extrai dos últimos pedidos (cada pedido traz deposito: {id, nome})
+  // 2) Lista pedidos recentes → busca detalhe (deposito está só no /pedidos/{id})
   if (seen.size === 0) {
     try {
-      const raw = await tinyApiGet<unknown>("/pedidos?limit=100&offset=0");
-      const fromOrders = extractDepositosFromPedidos(raw);
-      attempts.push({
-        endpoint: "/pedidos (extração via campo deposito)",
-        ok: true,
-        hint:
-          fromOrders.length > 0
-            ? `${fromOrders.length} depósito(s) extraído(s) de pedidos`
-            : "nenhum depósito visível nos últimos pedidos",
-      });
-      for (const d of fromOrders) {
-        if (!seen.has(d.id)) seen.set(d.id, d);
+      const listRaw = await tinyApiGet<unknown>("/pedidos?limit=50&offset=0");
+      const pedidoIds = extractPedidoIds(listRaw);
+      if (pedidoIds.length === 0) {
+        attempts.push({
+          endpoint: "/pedidos (lista)",
+          ok: true,
+          hint: "nenhum pedido retornado",
+        });
+      } else {
+        const { depositos: fromOrders, calls } =
+          await fetchDepositosFromOrderDetails(pedidoIds);
+        attempts.push({
+          endpoint: `/pedidos/{id} (detalhe de ${calls} pedido(s))`,
+          ok: true,
+          hint:
+            fromOrders.length > 0
+              ? `${fromOrders.length} depósito(s) extraído(s)`
+              : `nenhum pedido dos ${calls} consultados traz campo deposito`,
+        });
+        for (const d of fromOrders) {
+          if (!seen.has(d.id)) seen.set(d.id, d);
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
