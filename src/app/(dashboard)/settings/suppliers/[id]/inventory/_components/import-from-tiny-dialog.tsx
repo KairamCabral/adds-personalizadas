@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Search, Download, CheckCircle2, Package } from "lucide-react";
 import { toast } from "sonner";
+import { TinyDepositoSelect } from "@/components/inventory/tiny-deposito-select";
 
 type Pool = "PERSONALIZADO" | "MARKETPLACE";
 
@@ -51,8 +52,8 @@ export function ImportFromTinyDialog({
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pools, setPools] = useState<Pool[]>(["PERSONALIZADO", "MARKETPLACE"]);
-  const [personalDeposito, setPersonalDeposito] = useState("");
-  const [marketDeposito, setMarketDeposito] = useState("");
+  const [personalDeposito, setPersonalDeposito] = useState<number | null>(null);
+  const [marketDeposito, setMarketDeposito] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -60,8 +61,8 @@ export function ImportFromTinyDialog({
       setResults([]);
       setSelectedIds(new Set());
       setPools(["PERSONALIZADO", "MARKETPLACE"]);
-      setPersonalDeposito("");
-      setMarketDeposito("");
+      setPersonalDeposito(null);
+      setMarketDeposito(null);
     }
   }, [open]);
 
@@ -113,12 +114,8 @@ export function ImportFromTinyDialog({
       const body = {
         tiny_ids: Array.from(selectedIds),
         pools,
-        tiny_deposito_personalizado_id: personalDeposito.trim()
-          ? parseInt(personalDeposito, 10)
-          : null,
-        tiny_deposito_marketplace_id: marketDeposito.trim()
-          ? parseInt(marketDeposito, 10)
-          : null,
+        tiny_deposito_personalizado_id: personalDeposito,
+        tiny_deposito_marketplace_id: marketDeposito,
       };
       const res = await fetch(`/api/suppliers/${supplierId}/import-products-from-tiny`, {
         method: "POST",
@@ -229,36 +226,28 @@ export function ImportFromTinyDialog({
                 </label>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               {pools.includes("PERSONALIZADO") && (
                 <div className="space-y-1">
-                  <Label htmlFor="dep-pers" className="text-xs text-muted-foreground">
-                    ID depósito Personalizado
+                  <Label className="text-xs text-muted-foreground">
+                    Depósito Tiny — Personalizado
                   </Label>
-                  <Input
-                    id="dep-pers"
-                    type="number"
-                    inputMode="numeric"
+                  <TinyDepositoSelect
                     value={personalDeposito}
-                    onChange={(e) => setPersonalDeposito(e.target.value)}
-                    placeholder="opcional"
-                    className="h-8"
+                    onChange={setPersonalDeposito}
+                    hint="personaliz"
                   />
                 </div>
               )}
               {pools.includes("MARKETPLACE") && (
                 <div className="space-y-1">
-                  <Label htmlFor="dep-mkt" className="text-xs text-muted-foreground">
-                    ID depósito Marketplace
+                  <Label className="text-xs text-muted-foreground">
+                    Depósito Tiny — Marketplace
                   </Label>
-                  <Input
-                    id="dep-mkt"
-                    type="number"
-                    inputMode="numeric"
+                  <TinyDepositoSelect
                     value={marketDeposito}
-                    onChange={(e) => setMarketDeposito(e.target.value)}
-                    placeholder="opcional"
-                    className="h-8"
+                    onChange={setMarketDeposito}
+                    hint="marketpl"
                   />
                 </div>
               )}
