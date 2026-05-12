@@ -70,6 +70,13 @@ export const PERMISSIONS = {
   "suppliers.send_data": ["MASTER", "GESTOR"],
   "suppliers.revoke": ["MASTER"],
 
+  // Inventário de fornecedor
+  "supplier_inventory.view": ["MASTER", "GESTOR"],
+  "supplier_inventory.edit_internal": ["MASTER"],
+  "supplier_inventory.approve": ["MASTER"],
+  "supplier_inventory.config": ["MASTER"],
+  "supplier_inventory.sync_tiny": ["MASTER", "GESTOR"],
+
   // Notificações
   "notifications.manage": ["MASTER", "GESTOR"],
 

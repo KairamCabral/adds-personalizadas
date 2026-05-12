@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus, MoreHorizontal, Pencil, Trash2, Settings2 } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, Settings2, Boxes } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {
 } from "@/services/products.service";
 import { ProductFormDialog } from "./_components/product-form-dialog";
 import { ProductIntegrationsDialog } from "./_components/product-integrations-dialog";
+import { ProductInventoryDialog } from "./_components/product-inventory-dialog";
 import type { Product } from "@/types/database.types";
 import type { Json } from "@/types/database.types";
 import { toast } from "sonner";
@@ -107,6 +108,7 @@ export default function SettingsProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [integrationsProduct, setIntegrationsProduct] = useState<Product | null>(null);
+  const [inventoryProduct, setInventoryProduct] = useState<Product | null>(null);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["products"],
@@ -279,6 +281,12 @@ export default function SettingsProductsPage() {
                   <Settings2 className="mr-2 h-4 w-4" />
                   Integrações
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setInventoryProduct(product)}
+                >
+                  <Boxes className="mr-2 h-4 w-4" />
+                  Inventário
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
@@ -374,6 +382,12 @@ export default function SettingsProductsPage() {
           }}
         />
       )}
+
+      <ProductInventoryDialog
+        product={inventoryProduct}
+        onClose={() => setInventoryProduct(null)}
+      />
+
 
       <ConfirmDialog
         open={!!deleteTargetId}
