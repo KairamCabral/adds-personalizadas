@@ -1035,6 +1035,8 @@ export type Database = {
           description: string | null
           id: string
           image_url: string | null
+          inventory_pools: Database["public"]["Enums"]["supplier_inventory_pool"][]
+          inventory_supplier_id: string | null
           is_active: boolean
           last_stock_sync: string | null
           lead_time_days: number | null
@@ -1047,6 +1049,8 @@ export type Database = {
           supplier_name: string | null
           tiny_code: string | null
           tiny_color_map: Json | null
+          tiny_deposito_marketplace_id: number | null
+          tiny_deposito_personalizado_id: number | null
           tiny_id: number | null
           tiny_stock: number | null
           tiny_synced_at: string | null
@@ -1065,6 +1069,8 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          inventory_pools?: Database["public"]["Enums"]["supplier_inventory_pool"][]
+          inventory_supplier_id?: string | null
           is_active?: boolean
           last_stock_sync?: string | null
           lead_time_days?: number | null
@@ -1077,6 +1083,8 @@ export type Database = {
           supplier_name?: string | null
           tiny_code?: string | null
           tiny_color_map?: Json | null
+          tiny_deposito_marketplace_id?: number | null
+          tiny_deposito_personalizado_id?: number | null
           tiny_id?: number | null
           tiny_stock?: number | null
           tiny_synced_at?: string | null
@@ -1095,6 +1103,8 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          inventory_pools?: Database["public"]["Enums"]["supplier_inventory_pool"][]
+          inventory_supplier_id?: string | null
           is_active?: boolean
           last_stock_sync?: string | null
           lead_time_days?: number | null
@@ -1107,12 +1117,22 @@ export type Database = {
           supplier_name?: string | null
           tiny_code?: string | null
           tiny_color_map?: Json | null
+          tiny_deposito_marketplace_id?: number | null
+          tiny_deposito_personalizado_id?: number | null
           tiny_id?: number | null
           tiny_stock?: number | null
           tiny_synced_at?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_inventory_supplier_id_fkey"
+            columns: ["inventory_supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -1960,6 +1980,152 @@ export type Database = {
           },
         ]
       }
+      supplier_inventories: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          reference_month: string
+          rejected_reason: string | null
+          source: string
+          status: Database["public"]["Enums"]["supplier_inventory_status"]
+          submitted_at: string | null
+          submitted_by: string | null
+          supplier_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          reference_month: string
+          rejected_reason?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["supplier_inventory_status"]
+          submitted_at?: string | null
+          submitted_by?: string | null
+          supplier_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          reference_month?: string
+          rejected_reason?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["supplier_inventory_status"]
+          submitted_at?: string | null
+          submitted_by?: string | null
+          supplier_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_inventories_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_inventories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_inventories_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_inventories_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_inventory_items: {
+        Row: {
+          color_key: string | null
+          created_at: string
+          divergence_status: string | null
+          id: string
+          inventory_id: string
+          notes: string | null
+          pool: Database["public"]["Enums"]["supplier_inventory_pool"]
+          product_id: string
+          quantity_balance: number | null
+          quantity_committed: number
+          quantity_declared: number
+          tiny_quantity: number | null
+          tiny_synced_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          color_key?: string | null
+          created_at?: string
+          divergence_status?: string | null
+          id?: string
+          inventory_id: string
+          notes?: string | null
+          pool: Database["public"]["Enums"]["supplier_inventory_pool"]
+          product_id: string
+          quantity_balance?: number | null
+          quantity_committed?: number
+          quantity_declared?: number
+          tiny_quantity?: number | null
+          tiny_synced_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color_key?: string | null
+          created_at?: string
+          divergence_status?: string | null
+          id?: string
+          inventory_id?: string
+          notes?: string | null
+          pool?: Database["public"]["Enums"]["supplier_inventory_pool"]
+          product_id?: string
+          quantity_balance?: number | null
+          quantity_committed?: number
+          quantity_declared?: number
+          tiny_quantity?: number | null
+          tiny_synced_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_inventory_items_inventory_id_fkey"
+            columns: ["inventory_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_inventories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_inventory_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           activated_at: string | null
@@ -1978,6 +2144,7 @@ export type Database = {
           deactivated_at: string | null
           deactivation_reason: string | null
           id: string
+          inventory_config: Json
           is_active: boolean
           name: string
           only_mapped_products: boolean
@@ -2001,6 +2168,7 @@ export type Database = {
           deactivated_at?: string | null
           deactivation_reason?: string | null
           id?: string
+          inventory_config?: Json
           is_active?: boolean
           name: string
           only_mapped_products?: boolean
@@ -2024,6 +2192,7 @@ export type Database = {
           deactivated_at?: string | null
           deactivation_reason?: string | null
           id?: string
+          inventory_config?: Json
           is_active?: boolean
           name?: string
           only_mapped_products?: boolean
@@ -2126,6 +2295,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      classify_inventory_divergence: {
+        Args: {
+          p_committed: number
+          p_declared: number
+          p_threshold_pct: number
+          p_tiny: number
+        }
+        Returns: string
+      }
+      compute_supplier_committed: {
+        Args: { p_supplier_id: string }
+        Returns: {
+          color_key: string
+          committed: number
+          product_id: string
+        }[]
+      }
       expire_rep_links: { Args: never; Returns: number }
       find_client_by_document: {
         Args: { doc_digits: string }
@@ -2188,6 +2374,10 @@ export type Database = {
           entered_status_at: string
           order_id: string
         }[]
+      }
+      recompute_supplier_inventory: {
+        Args: { p_inventory_id: string }
+        Returns: undefined
       }
       reorder_after_remove: {
         Args: {
@@ -2291,6 +2481,8 @@ export type Database = {
         | "CONCLUIDO"
         | "APROVADO"
         | "REJEITADO"
+      supplier_inventory_pool: "PERSONALIZADO" | "MARKETPLACE"
+      supplier_inventory_status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED"
       user_role: "MASTER" | "GESTOR" | "PRESTADOR" | "REPRESENTANTE"
     }
     CompositeTypes: {
@@ -2483,6 +2675,8 @@ export const Constants = {
         "APROVADO",
         "REJEITADO",
       ],
+      supplier_inventory_pool: ["PERSONALIZADO", "MARKETPLACE"],
+      supplier_inventory_status: ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"],
       user_role: ["MASTER", "GESTOR", "PRESTADOR", "REPRESENTANTE"],
     },
   },
