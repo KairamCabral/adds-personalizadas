@@ -91,52 +91,110 @@ function getServiceClient() {
  * extrai a lista de depósitos lendo `depositos[]` retornado em /produtos/{id}.
  * Basta UM produto pra ter todos os depósitos cadastrados na conta.
  */
-async function fetchDepositosViaProducts(): Promise<{
-  depositos: TinyDepositoResult[];
-  source: string;
-}> {
+/**
+ * Procura recursivamente arrays cujos itens parecem depósitos
+ * (objetos com `id` numérico e `nome`/`descricao`) em qualquer profundidade.
+ */
+function findDepositosDeep(value: unknown, depth = 0): unknown[] {
+  if (depth > 6) return [];
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value)) {
+    const looksLikeDeposito = value.some(
+      (item) =>
+        item != null &&
+        typeof item === "object" &&
+        ("nome" in item || "descricao" in item) &&
+        ("id" in item || "idDeposito" in item || "id_deposito" in item)
+    );
+    if (looksLikeDeposito) return value;
+    return value.flatMap((v) => findDepositosDeep(v, depth + 1));
+  }
+  return Object.values(value as Record<string, unknown>).flatMap((v) =>
+    findDepositosDeep(v, depth + 1)
+  );
+}
+
+function describeShape(value: unknown, depth = 0): string {
+  if (depth > 2) return "…";
+  if (Array.isArray(value)) {
+    return `Array(${value.length})${
+      value[0] !== undefined ? `<${describeShape(value[0], depth + 1)}>` : ""
+    }`;
+  }
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).slice(0, 12);
+    return `{${keys.join(",")}}`;
+  }
+  return typeof value;
+}
+
+const PRODUCT_FALLBACK_PATHS = [
+  "/produtos/{id}/estoque",
+  "/produtos/{id}",
+];
+
+async function fetchDepositosViaProducts(
+  attempts: Array<{ endpoint: string; ok: boolean; hint?: string }>
+): Promise<{ depositos: TinyDepositoResult[]; source: string }> {
   const admin = getServiceClient();
   const { data: products } = await admin
     .from("products")
     .select("id, name, tiny_id")
     .not("tiny_id", "is", null)
     .eq("is_active", true)
-    .limit(5);
+    .limit(3);
 
   if (!products || products.length === 0) {
     return { depositos: [], source: "no_products_with_tiny_id" };
   }
 
   const seen = new Map<number, TinyDepositoResult>();
-  let usedProductName: string | null = null;
+  let usedSource: string | null = null;
 
   for (const p of products) {
     if (!p.tiny_id) continue;
-    try {
-      const raw = await tinyApiGet<Record<string, unknown>>(
-        `/produtos/${p.tiny_id}`
-      );
-      const data = (raw?.data ?? raw) as Record<string, unknown>;
-      const depositos = data?.depositos;
-      if (!Array.isArray(depositos)) continue;
-      for (const d of depositos) {
-        const mapped = mapDeposito(d);
-        if (mapped && !seen.has(mapped.id)) {
-          seen.set(mapped.id, mapped);
+
+    for (const pathTemplate of PRODUCT_FALLBACK_PATHS) {
+      const endpoint = pathTemplate.replace("{id}", String(p.tiny_id));
+      try {
+        const raw = await tinyApiGet<unknown>(endpoint);
+        const found = findDepositosDeep(raw);
+        const mappedHere: TinyDepositoResult[] = [];
+        for (const d of found) {
+          const mapped = mapDeposito(d);
+          if (mapped && !seen.has(mapped.id)) {
+            seen.set(mapped.id, mapped);
+            mappedHere.push(mapped);
+          }
         }
+        attempts.push({
+          endpoint: `${endpoint} (${p.name})`,
+          ok: true,
+          hint:
+            mappedHere.length > 0
+              ? `${mappedHere.length} depósito(s) encontrado(s)`
+              : `shape=${describeShape(raw)}`,
+        });
+        if (mappedHere.length > 0 && !usedSource) {
+          usedSource = `via:${p.name}`;
+        }
+        if (seen.size > 0) break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        attempts.push({
+          endpoint: `${endpoint} (${p.name})`,
+          ok: false,
+          hint: msg.slice(0, 160),
+        });
+        if (err instanceof TinyTokenExpiredError) throw err;
       }
-      if (seen.size > 0 && !usedProductName) {
-        usedProductName = p.name;
-      }
-      if (seen.size >= 1 && products.length === 1) break;
-    } catch {
-      // tenta o próximo produto
     }
+    if (seen.size > 0) break;
   }
 
   return {
     depositos: Array.from(seen.values()),
-    source: usedProductName ? `via:${usedProductName}` : "no_depositos_in_products",
+    source: usedSource ?? "no_depositos_in_products",
   };
 }
 
@@ -186,33 +244,16 @@ export async function GET(_request: NextRequest) {
     }
 
     // Fallback: se nenhum endpoint direto funcionou (típico de 403 sem
-    // escopo OAuth p/ depósitos), extrai a lista lendo /produtos/{id}.
+    // escopo OAuth p/ depósitos), extrai a lista de produtos sincronizados.
     let fallbackSource: string | null = null;
     if (depositos.length === 0) {
       try {
-        const fb = await fetchDepositosViaProducts();
+        const fb = await fetchDepositosViaProducts(attempts);
         if (fb.depositos.length > 0) {
           depositos = fb.depositos;
           fallbackSource = fb.source;
-          attempts.push({
-            endpoint: "fallback:/produtos/{id}.depositos",
-            ok: true,
-            hint: `${fb.depositos.length} depósito(s) extraídos ${fb.source}`,
-          });
-        } else {
-          attempts.push({
-            endpoint: "fallback:/produtos/{id}.depositos",
-            ok: true,
-            hint: `nenhum depósito retornado (${fb.source})`,
-          });
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        attempts.push({
-          endpoint: "fallback:/produtos/{id}.depositos",
-          ok: false,
-          hint: msg.slice(0, 200),
-        });
         if (err instanceof TinyTokenExpiredError) throw err;
       }
     }
