@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Warehouse, Trash2 } from "lucide-react";
+import { Loader2, Plus, Warehouse, Trash2, RefreshCw } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -31,14 +31,18 @@ export interface TinyDeposito {
   is_active: boolean;
 }
 
+type DepositosResponse = {
+  depositos: TinyDeposito[];
+  source: string;
+  attempts?: Array<{ endpoint: string; ok: boolean; hint?: string }>;
+};
+
 interface TinyDepositoSelectProps {
   value: number | null;
   onChange: (value: number | null) => void;
   placeholder?: string;
-  /** Destaca opções cujo nome contenha esse texto. */
   hint?: string;
   disabled?: boolean;
-  /** Quando MASTER, permite adicionar/remover do cadastro inline. */
   canManage?: boolean;
 }
 
@@ -54,21 +58,42 @@ export function TinyDepositoSelect({
   const [addOpen, setAddOpen] = useState(false);
   const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
-  const [newNotes, setNewNotes] = useState("");
 
   const query = useQuery({
-    queryKey: ["tiny-depositos-cadastro"],
-    queryFn: async (): Promise<TinyDeposito[]> => {
+    queryKey: ["tiny-depositos"],
+    queryFn: async (): Promise<DepositosResponse> => {
       const res = await fetch("/api/tiny/depositos");
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Falha ao carregar.");
-      return (json.depositos ?? []) as TinyDeposito[];
+      return json as DepositosResponse;
     },
     staleTime: 5 * 60 * 1000,
   });
 
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/tiny/depositos?refresh=1");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Falha ao sincronizar.");
+      return json as DepositosResponse;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["tiny-depositos"], data);
+      if (data.source.startsWith("auto")) {
+        toast.success(
+          `${data.depositos.length} depósito(s) sincronizado(s) do Tiny.`
+        );
+      } else if (data.depositos.length > 0) {
+        toast.info("Cache atualizado. Tiny não retornou novos depósitos.");
+      } else {
+        toast.warning("Nenhum depósito retornado pelo Tiny.");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const createMutation = useMutation({
-    mutationFn: async (input: { id: number; name: string; notes?: string }) => {
+    mutationFn: async (input: { id: number; name: string }) => {
       const res = await fetch("/api/tiny/depositos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -80,12 +105,11 @@ export function TinyDepositoSelect({
     },
     onSuccess: (d) => {
       toast.success(`Depósito "${d.name}" cadastrado.`);
-      qc.invalidateQueries({ queryKey: ["tiny-depositos-cadastro"] });
+      qc.invalidateQueries({ queryKey: ["tiny-depositos"] });
       onChange(d.id);
       setAddOpen(false);
       setNewId("");
       setNewName("");
-      setNewNotes("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -98,14 +122,14 @@ export function TinyDepositoSelect({
     },
     onSuccess: () => {
       toast.success("Depósito removido.");
-      qc.invalidateQueries({ queryKey: ["tiny-depositos-cadastro"] });
+      qc.invalidateQueries({ queryKey: ["tiny-depositos"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const depositos = query.data ?? [];
+  const depositos = query.data?.depositos ?? [];
+  const attempts = query.data?.attempts;
 
-  // Ordena: sugeridos primeiro
   const sorted = [...depositos].sort((a, b) => {
     if (!hint) return a.name.localeCompare(b.name, "pt-BR");
     const hintLc = hint.toLowerCase();
@@ -117,90 +141,138 @@ export function TinyDepositoSelect({
 
   const NONE = "__none__";
   const ADD = "__add__";
+  const SYNC = "__sync__";
 
   return (
     <>
-      <Select
-        value={value != null ? String(value) : NONE}
-        onValueChange={(v) => {
-          if (v === ADD) {
-            setAddOpen(true);
-            return;
-          }
-          onChange(v === NONE ? null : parseInt(v, 10));
-        }}
-        disabled={disabled || query.isLoading}
-      >
-        <SelectTrigger>
-          {query.isLoading ? (
-            <span className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Carregando…
-            </span>
-          ) : (
-            <SelectValue placeholder={placeholder} />
-          )}
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE}>
-            <span className="text-muted-foreground">Nenhum</span>
-          </SelectItem>
+      <div className="flex gap-1.5">
+        <Select
+          value={value != null ? String(value) : NONE}
+          onValueChange={(v) => {
+            if (v === ADD) {
+              setAddOpen(true);
+              return;
+            }
+            if (v === SYNC) {
+              refreshMutation.mutate();
+              return;
+            }
+            onChange(v === NONE ? null : parseInt(v, 10));
+          }}
+          disabled={disabled || query.isLoading}
+        >
+          <SelectTrigger className="flex-1">
+            {query.isLoading ? (
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Carregando…
+              </span>
+            ) : (
+              <SelectValue placeholder={placeholder} />
+            )}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NONE}>
+              <span className="text-muted-foreground">Nenhum</span>
+            </SelectItem>
 
-          {sorted.length === 0 && !query.isLoading && (
-            <div className="px-2 py-3 text-xs text-muted-foreground">
-              Nenhum depósito cadastrado ainda.
-            </div>
-          )}
+            {sorted.length === 0 && !query.isLoading && (
+              <div className="space-y-1.5 px-2 py-3 text-xs text-muted-foreground">
+                <p>Nenhum depósito ainda. Sincronize do Tiny abaixo.</p>
+                {attempts && attempts.length > 0 && (
+                  <details className="rounded border border-border bg-muted/40 p-2">
+                    <summary className="cursor-pointer text-[10px] font-medium">
+                      Ver diagnóstico ({attempts.length})
+                    </summary>
+                    <ul className="mt-1.5 space-y-1 text-[10px]">
+                      {attempts.map((a, idx) => (
+                        <li key={idx} className="break-all">
+                          <span
+                            className={
+                              a.ok
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-destructive"
+                            }
+                          >
+                            {a.ok ? "✓" : "✗"}
+                          </span>{" "}
+                          <code>{a.endpoint}</code>{" "}
+                          <span>{a.hint}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
 
-          {sorted.map((d) => {
-            const isSuggested =
-              hint && d.name.toLowerCase().includes(hint.toLowerCase());
-            return (
-              <SelectItem key={d.id} value={String(d.id)}>
-                <div className="flex items-center gap-2">
-                  <Warehouse
-                    className={`h-3.5 w-3.5 ${
-                      isSuggested ? "text-[--adds-blue]" : "text-muted-foreground"
-                    }`}
-                  />
-                  <span>{d.name}</span>
-                  <span className="text-[10px] text-muted-foreground">#{d.id}</span>
-                  {isSuggested && (
-                    <span className="text-[10px] font-medium text-[--adds-blue]">
-                      sugerido
-                    </span>
-                  )}
-                </div>
-              </SelectItem>
-            );
-          })}
+            {sorted.map((d) => {
+              const isSuggested =
+                hint && d.name.toLowerCase().includes(hint.toLowerCase());
+              return (
+                <SelectItem key={d.id} value={String(d.id)}>
+                  <div className="flex items-center gap-2">
+                    <Warehouse
+                      className={`h-3.5 w-3.5 ${
+                        isSuggested ? "text-[--adds-blue]" : "text-muted-foreground"
+                      }`}
+                    />
+                    <span>{d.name}</span>
+                    <span className="text-[10px] text-muted-foreground">#{d.id}</span>
+                    {isSuggested && (
+                      <span className="text-[10px] font-medium text-[--adds-blue]">
+                        sugerido
+                      </span>
+                    )}
+                  </div>
+                </SelectItem>
+              );
+            })}
 
-          {canManage && (
-            <>
-              <SelectSeparator />
-              <SelectItem value={ADD} className="text-[--adds-blue]">
-                <div className="flex items-center gap-2">
+            <SelectSeparator />
+            <SelectItem value={SYNC} className="text-[--adds-blue]">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="h-3.5 w-3.5" />
+                Sincronizar do Tiny
+              </div>
+            </SelectItem>
+            {canManage && (
+              <SelectItem value={ADD}>
+                <div className="flex items-center gap-2 text-muted-foreground">
                   <Plus className="h-3.5 w-3.5" />
-                  Cadastrar depósito do Tiny
+                  <span className="text-xs">Cadastrar manualmente</span>
                 </div>
               </SelectItem>
-            </>
-          )}
-        </SelectContent>
-      </Select>
+            )}
+          </SelectContent>
+        </Select>
+
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={() => refreshMutation.mutate()}
+          disabled={refreshMutation.isPending}
+          title="Sincronizar do Tiny"
+          className="h-9 w-9 shrink-0"
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${refreshMutation.isPending ? "animate-spin" : ""}`}
+          />
+        </Button>
+      </div>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Warehouse className="h-5 w-5 text-[--adds-blue]" />
-              Cadastrar depósito do Tiny
+              Cadastrar depósito manualmente
             </DialogTitle>
             <DialogDescription>
-              No Olist, abra <strong>Suprimentos › Configurações › Depósitos
-              de estoque</strong>, clique no depósito e copie o ID da URL
-              (último número). Informe abaixo o ID + nome para usar em todos
-              os produtos.
+              Use só se a sincronização automática não encontrar seu depósito.
+              No Olist, abra Suprimentos › Configurações › Depósitos e copie
+              o ID e o nome.
             </DialogDescription>
           </DialogHeader>
 
@@ -218,7 +290,7 @@ export function TinyDepositoSelect({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="dep-name">Nome (como aparece no Olist)</Label>
+              <Label htmlFor="dep-name">Nome</Label>
               <Input
                 id="dep-name"
                 value={newName}
@@ -226,22 +298,11 @@ export function TinyDepositoSelect({
                 placeholder="ex: SP – WS Serviços – Personaliz"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="dep-notes" className="text-xs text-muted-foreground">
-                Notas (opcional)
-              </Label>
-              <Input
-                id="dep-notes"
-                value={newNotes}
-                onChange={(e) => setNewNotes(e.target.value)}
-                placeholder="ex: depósito de personalizados WS"
-              />
-            </div>
 
             {depositos.length > 0 && (
               <details className="rounded border border-border bg-muted/30 p-2">
                 <summary className="cursor-pointer text-xs font-medium">
-                  Depósitos já cadastrados ({depositos.length})
+                  Depósitos atuais ({depositos.length})
                 </summary>
                 <ul className="mt-2 space-y-1">
                   {depositos.map((d) => (
@@ -289,11 +350,7 @@ export function TinyDepositoSelect({
                   toast.error("Informe o nome.");
                   return;
                 }
-                createMutation.mutate({
-                  id,
-                  name: newName.trim(),
-                  notes: newNotes.trim() || undefined,
-                });
+                createMutation.mutate({ id, name: newName.trim() });
               }}
               disabled={createMutation.isPending}
               className="bg-[--adds-blue] hover:bg-[--adds-blue]/90"
