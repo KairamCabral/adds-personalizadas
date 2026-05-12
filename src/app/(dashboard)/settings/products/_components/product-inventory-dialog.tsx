@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { getSuppliers } from "@/services/suppliers.service";
 import { updateProduct } from "@/services/products.service";
 import { TinyDepositoSelect } from "@/components/inventory/tiny-deposito-select";
+import { StockPreview } from "@/components/inventory/stock-preview";
 import type { Product } from "@/types/database.types";
 
 type Pool = "PERSONALIZADO" | "MARKETPLACE";
@@ -89,7 +90,7 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
 
   return (
     <Dialog open={!!product} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Inventário no fornecedor</DialogTitle>
           <DialogDescription>
@@ -148,6 +149,11 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
                 hint="personaliz"
                 placeholder="Escolha o depósito do Tiny"
               />
+              <StockPreview
+                productId={product?.id ?? null}
+                depositoId={personalDeposito}
+                accent="blue"
+              />
             </div>
           )}
 
@@ -159,6 +165,11 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
                 onChange={setMarketDeposito}
                 hint="marketpl"
                 placeholder="Escolha o depósito do Tiny"
+              />
+              <StockPreview
+                productId={product?.id ?? null}
+                depositoId={marketDeposito}
+                accent="orange"
               />
             </div>
           )}
