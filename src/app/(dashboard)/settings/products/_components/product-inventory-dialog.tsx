@@ -25,6 +25,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getSuppliers } from "@/services/suppliers.service";
 import { updateProduct } from "@/services/products.service";
+import { TinyDepositoSelect } from "@/components/inventory/tiny-deposito-select";
 import type { Product } from "@/types/database.types";
 
 type Pool = "PERSONALIZADO" | "MARKETPLACE";
@@ -38,8 +39,8 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [pools, setPools] = useState<Pool[]>([]);
-  const [personalDeposito, setPersonalDeposito] = useState<string>("");
-  const [marketDeposito, setMarketDeposito] = useState<string>("");
+  const [personalDeposito, setPersonalDeposito] = useState<number | null>(null);
+  const [marketDeposito, setMarketDeposito] = useState<number | null>(null);
 
   const suppliersQuery = useQuery({
     queryKey: ["suppliers"],
@@ -57,28 +58,18 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
     };
     setSupplierId(p.inventory_supplier_id ?? null);
     setPools(p.inventory_pools ?? []);
-    setPersonalDeposito(
-      p.tiny_deposito_personalizado_id != null
-        ? String(p.tiny_deposito_personalizado_id)
-        : ""
-    );
-    setMarketDeposito(
-      p.tiny_deposito_marketplace_id != null
-        ? String(p.tiny_deposito_marketplace_id)
-        : ""
-    );
+    setPersonalDeposito(p.tiny_deposito_personalizado_id ?? null);
+    setMarketDeposito(p.tiny_deposito_marketplace_id ?? null);
   }, [product]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!product) throw new Error("Sem produto.");
-      const personalDepInt = personalDeposito.trim() ? parseInt(personalDeposito, 10) : null;
-      const marketDepInt = marketDeposito.trim() ? parseInt(marketDeposito, 10) : null;
       await updateProduct(product.id, {
         inventory_supplier_id: supplierId,
         inventory_pools: pools,
-        tiny_deposito_personalizado_id: personalDepInt,
-        tiny_deposito_marketplace_id: marketDepInt,
+        tiny_deposito_personalizado_id: personalDeposito,
+        tiny_deposito_marketplace_id: marketDeposito,
       } as never);
     },
     onSuccess: () => {
@@ -150,28 +141,24 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
 
           {pools.includes("PERSONALIZADO") && (
             <div className="space-y-2">
-              <Label htmlFor="dep-pers">ID depósito Tiny — Personalizado</Label>
-              <Input
-                id="dep-pers"
-                type="number"
-                inputMode="numeric"
+              <Label>Depósito Tiny — Personalizado</Label>
+              <TinyDepositoSelect
                 value={personalDeposito}
-                onChange={(e) => setPersonalDeposito(e.target.value)}
-                placeholder="ex: 12345"
+                onChange={setPersonalDeposito}
+                hint="personaliz"
+                placeholder="Escolha o depósito do Tiny"
               />
             </div>
           )}
 
           {pools.includes("MARKETPLACE") && (
             <div className="space-y-2">
-              <Label htmlFor="dep-mkt">ID depósito Tiny — Marketplace</Label>
-              <Input
-                id="dep-mkt"
-                type="number"
-                inputMode="numeric"
+              <Label>Depósito Tiny — Marketplace</Label>
+              <TinyDepositoSelect
                 value={marketDeposito}
-                onChange={(e) => setMarketDeposito(e.target.value)}
-                placeholder="ex: 67890"
+                onChange={setMarketDeposito}
+                hint="marketpl"
+                placeholder="Escolha o depósito do Tiny"
               />
             </div>
           )}
