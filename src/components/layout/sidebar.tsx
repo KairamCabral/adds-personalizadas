@@ -381,7 +381,7 @@ export function Sidebar() {
         )}
       >
         <p className="text-[10px] font-medium tracking-wide text-muted-foreground/45">
-          ADDS CRM v1.0.0
+          ADDS CRM v{process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0.0"}
         </p>
       </div>
     </aside>
