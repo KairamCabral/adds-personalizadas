@@ -229,14 +229,35 @@ export default function SettingsProductsPage() {
         },
       },
       {
-        id: "supplier",
-        header: "Fornecedor",
+        id: "inventory",
+        header: "Inventário",
         cell: ({ row }) => {
-          const name = row.original.supplier_name;
+          const p = row.original as Product & {
+            inventory_supplier_id?: string | null;
+            inventory_pools?: Array<"PERSONALIZADO" | "MARKETPLACE"> | null;
+          };
+          const configured =
+            !!p.inventory_supplier_id && (p.inventory_pools?.length ?? 0) > 0;
+          const poolCount = p.inventory_pools?.length ?? 0;
           return (
-            <span className="text-sm text-muted-foreground">
-              {name ?? "—"}
-            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setInventoryProduct(p)}
+              className="h-8 gap-1.5 px-2"
+              title="Configurar inventário no fornecedor"
+            >
+              <Boxes className="h-3.5 w-3.5 text-muted-foreground" />
+              {configured ? (
+                <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  {poolCount} pool{poolCount > 1 ? "s" : ""}
+                </Badge>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  Configurar
+                </span>
+              )}
+            </Button>
           );
         },
       },

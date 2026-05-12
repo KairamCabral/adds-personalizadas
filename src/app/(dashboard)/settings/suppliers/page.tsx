@@ -222,12 +222,26 @@ export default function SettingsSuppliersPage() {
                       {lastSync ? formatDate(lastSync) : "—"}
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          href={`/settings/suppliers/${supplier.id}/inventory`}
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5"
+                            title="Inventário do fornecedor"
+                          >
+                            <Boxes className="h-3.5 w-3.5" />
+                            Inventário
                           </Button>
-                        </DropdownMenuTrigger>
+                        </Link>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             onClick={() => setDetailSupplierId(supplier.id)}
@@ -264,7 +278,8 @@ export default function SettingsSuppliersPage() {
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
