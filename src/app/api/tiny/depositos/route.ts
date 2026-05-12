@@ -84,100 +84,149 @@ function mapDeposito(raw: unknown): TinyDeposito | null {
  * Usar tiny_id DE VARIANTE (cor) em vez do produto pai evita pegar `variacoes`
  * por engano. Produto pai retorna variacoes+depositos; variante retorna só depositos.
  */
+/**
+ * Extrai depósitos do payload de listagem de pedidos.
+ * Cada pedido v3 traz `deposito: { id, nome }` no root.
+ */
+function extractDepositosFromPedidos(payload: unknown): TinyDeposito[] {
+  if (!payload || typeof payload !== "object") return [];
+  const obj = payload as Record<string, unknown>;
+  const list =
+    (obj.itens as unknown[]) ??
+    ((obj.data as Record<string, unknown> | undefined)?.itens as unknown[]) ??
+    (obj.pedidos as unknown[]) ??
+    [];
+  if (!Array.isArray(list)) return [];
+
+  const seen = new Map<number, TinyDeposito>();
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const pedido =
+      ((item as Record<string, unknown>).pedido as Record<string, unknown>) ??
+      (item as Record<string, unknown>);
+    const deposito = pedido?.deposito;
+    const mapped = mapDeposito(deposito);
+    if (mapped && !seen.has(mapped.id)) seen.set(mapped.id, mapped);
+  }
+  return Array.from(seen.values());
+}
+
+/**
+ * Extrai depósitos dos webhook events já salvos no banco.
+ * Útil quando não há pedidos recentes no Tiny mas houve eventos passados.
+ */
+async function extractDepositosFromWebhookEvents(): Promise<TinyDeposito[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = createAdminClient() as any;
+  const { data } = await admin
+    .from("tiny_webhook_events")
+    .select("payload")
+    .limit(200)
+    .order("created_at", { ascending: false });
+
+  const seen = new Map<number, TinyDeposito>();
+  for (const row of (data ?? []) as Array<{ payload: unknown }>) {
+    // Procura objetos { deposito: { id, nome } } no payload (profundidade limitada)
+    const queue: unknown[] = [row.payload];
+    let depth = 0;
+    while (queue.length > 0 && depth < 5000) {
+      depth++;
+      const cur = queue.shift();
+      if (!cur || typeof cur !== "object") continue;
+      const obj = cur as Record<string, unknown>;
+      if (obj.deposito && typeof obj.deposito === "object") {
+        const m = mapDeposito(obj.deposito);
+        if (m && !seen.has(m.id)) seen.set(m.id, m);
+      }
+      for (const v of Object.values(obj)) {
+        if (v && typeof v === "object") queue.push(v);
+      }
+    }
+  }
+  return Array.from(seen.values());
+}
+
 async function autoDiscoverDepositos(
   attempts: AttemptLog[]
 ): Promise<TinyDeposito[]> {
-  const admin = createAdminClient();
-  type ProductLite = {
-    id: string;
-    name: string;
-    tiny_id: number | null;
-    tiny_color_map: Record<string, { tiny_id?: number | null }> | null;
-  };
-  const { data } = await admin
-    .from("products")
-    .select("id, name, tiny_id, tiny_color_map")
-    .not("tiny_id", "is", null)
-    .eq("is_active", true)
-    .limit(10);
-  const products = (data ?? []) as unknown as ProductLite[];
-
-  // Coleta tiny_ids: prioriza variantes (cores)
-  type Candidate = { tinyId: number; productName: string; isVariant: boolean };
-  const candidates: Candidate[] = [];
-  for (const p of products) {
-    const colorMap = p.tiny_color_map ?? {};
-    let hasVariant = false;
-    for (const colorKey of Object.keys(colorMap)) {
-      const variantId = colorMap[colorKey]?.tiny_id;
-      if (variantId) {
-        candidates.push({
-          tinyId: variantId,
-          productName: `${p.name} (${colorKey})`,
-          isVariant: true,
-        });
-        hasVariant = true;
-      }
-    }
-    // se não tem variante, tenta o produto pai
-    if (!hasVariant && p.tiny_id) {
-      candidates.push({
-        tinyId: p.tiny_id,
-        productName: p.name,
-        isVariant: false,
-      });
-    }
-  }
-
-  if (candidates.length === 0) {
-    attempts.push({
-      endpoint: "(auto-discover)",
-      ok: false,
-      hint: "nenhum produto com tiny_id no CRM",
-    });
-    return [];
-  }
-
   const seen = new Map<number, TinyDeposito>();
 
-  // Tenta até 3 candidatos diferentes
-  for (const c of candidates.slice(0, 3)) {
-    for (const path of [`/produtos/${c.tinyId}/estoque`, `/produtos/${c.tinyId}`]) {
-      try {
-        const raw = await tinyApiGet<unknown>(path);
-        const list = findDepositosArray(raw);
-        const mapped = list
-          .map(mapDeposito)
-          .filter((d): d is TinyDeposito => d !== null);
+  // 1) Tenta /depositos diretamente (caso o app OAuth tenha permissão)
+  try {
+    const raw = await tinyApiGet<unknown>("/depositos");
+    const list = findDepositosArray(raw);
+    const mapped = list
+      .map(mapDeposito)
+      .filter((d): d is TinyDeposito => d !== null);
+    attempts.push({
+      endpoint: "/depositos",
+      ok: true,
+      hint:
+        mapped.length > 0
+          ? `${mapped.length} depósito(s)`
+          : `vazio (keys: ${
+              raw && typeof raw === "object"
+                ? Object.keys(raw).slice(0, 6).join(",")
+                : typeof raw
+            })`,
+    });
+    for (const d of mapped) seen.set(d.id, d);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    attempts.push({ endpoint: "/depositos", ok: false, hint: msg.slice(0, 120) });
+    if (err instanceof TinyTokenExpiredError) throw err;
+  }
 
-        attempts.push({
-          endpoint: `${path} via ${c.productName}`,
-          ok: true,
-          hint:
-            mapped.length > 0
-              ? `${mapped.length} depósito(s) encontrado(s)`
-              : `array depositos vazio ou inexistente (keys: ${
-                  raw && typeof raw === "object"
-                    ? Object.keys(raw).slice(0, 8).join(",")
-                    : typeof raw
-                })`,
-        });
-
-        for (const d of mapped) {
-          if (!seen.has(d.id)) seen.set(d.id, d);
-        }
-        if (mapped.length > 0) break; // achou neste endpoint, parte para próximo candidato
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        attempts.push({
-          endpoint: `${path} via ${c.productName}`,
-          ok: false,
-          hint: msg.slice(0, 160),
-        });
-        if (err instanceof TinyTokenExpiredError) throw err;
+  // 2) Extrai dos últimos pedidos (cada pedido traz deposito: {id, nome})
+  if (seen.size === 0) {
+    try {
+      const raw = await tinyApiGet<unknown>("/pedidos?limit=100&offset=0");
+      const fromOrders = extractDepositosFromPedidos(raw);
+      attempts.push({
+        endpoint: "/pedidos (extração via campo deposito)",
+        ok: true,
+        hint:
+          fromOrders.length > 0
+            ? `${fromOrders.length} depósito(s) extraído(s) de pedidos`
+            : "nenhum depósito visível nos últimos pedidos",
+      });
+      for (const d of fromOrders) {
+        if (!seen.has(d.id)) seen.set(d.id, d);
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      attempts.push({
+        endpoint: "/pedidos",
+        ok: false,
+        hint: msg.slice(0, 120),
+      });
+      if (err instanceof TinyTokenExpiredError) throw err;
     }
-    if (seen.size > 0) break;
+  }
+
+  // 3) Extrai dos webhook events já capturados no banco
+  if (seen.size === 0) {
+    try {
+      const fromEvents = await extractDepositosFromWebhookEvents();
+      attempts.push({
+        endpoint: "tiny_webhook_events (local)",
+        ok: true,
+        hint:
+          fromEvents.length > 0
+            ? `${fromEvents.length} depósito(s) extraído(s) de eventos passados`
+            : "nenhum depósito nos eventos locais",
+      });
+      for (const d of fromEvents) {
+        if (!seen.has(d.id)) seen.set(d.id, d);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      attempts.push({
+        endpoint: "tiny_webhook_events",
+        ok: false,
+        hint: msg.slice(0, 120),
+      });
+    }
   }
 
   return Array.from(seen.values());
