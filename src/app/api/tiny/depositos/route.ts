@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { tinyApiGet, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
+import type { Database } from "@/types/database.types";
 
 interface TinyDepositoRaw {
   id?: number;
@@ -77,6 +79,67 @@ function normalizeItems(list: unknown[]): TinyDepositoResult[] {
 // Endpoints Tiny v3 conhecidos para depósitos (tentamos em ordem)
 const ENDPOINTS = ["/depositos", "/depositos/pesquisa", "/empresa/depositos"];
 
+function getServiceClient() {
+  return createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+/**
+ * Fallback: quando /depositos retorna 403 (escopo OAuth não permitido),
+ * extrai a lista de depósitos lendo `depositos[]` retornado em /produtos/{id}.
+ * Basta UM produto pra ter todos os depósitos cadastrados na conta.
+ */
+async function fetchDepositosViaProducts(): Promise<{
+  depositos: TinyDepositoResult[];
+  source: string;
+}> {
+  const admin = getServiceClient();
+  const { data: products } = await admin
+    .from("products")
+    .select("id, name, tiny_id")
+    .not("tiny_id", "is", null)
+    .eq("is_active", true)
+    .limit(5);
+
+  if (!products || products.length === 0) {
+    return { depositos: [], source: "no_products_with_tiny_id" };
+  }
+
+  const seen = new Map<number, TinyDepositoResult>();
+  let usedProductName: string | null = null;
+
+  for (const p of products) {
+    if (!p.tiny_id) continue;
+    try {
+      const raw = await tinyApiGet<Record<string, unknown>>(
+        `/produtos/${p.tiny_id}`
+      );
+      const data = (raw?.data ?? raw) as Record<string, unknown>;
+      const depositos = data?.depositos;
+      if (!Array.isArray(depositos)) continue;
+      for (const d of depositos) {
+        const mapped = mapDeposito(d);
+        if (mapped && !seen.has(mapped.id)) {
+          seen.set(mapped.id, mapped);
+        }
+      }
+      if (seen.size > 0 && !usedProductName) {
+        usedProductName = p.name;
+      }
+      if (seen.size >= 1 && products.length === 1) break;
+    } catch {
+      // tenta o próximo produto
+    }
+  }
+
+  return {
+    depositos: Array.from(seen.values()),
+    source: usedProductName ? `via:${usedProductName}` : "no_depositos_in_products",
+  };
+}
+
 export async function GET(_request: NextRequest) {
   try {
     const connected = await isTinyConnected();
@@ -122,15 +185,45 @@ export async function GET(_request: NextRequest) {
       }
     }
 
+    // Fallback: se nenhum endpoint direto funcionou (típico de 403 sem
+    // escopo OAuth p/ depósitos), extrai a lista lendo /produtos/{id}.
+    let fallbackSource: string | null = null;
     if (depositos.length === 0) {
-      console.warn("[tiny/depositos] nenhum depósito encontrado", {
-        attempts,
-      });
+      try {
+        const fb = await fetchDepositosViaProducts();
+        if (fb.depositos.length > 0) {
+          depositos = fb.depositos;
+          fallbackSource = fb.source;
+          attempts.push({
+            endpoint: "fallback:/produtos/{id}.depositos",
+            ok: true,
+            hint: `${fb.depositos.length} depósito(s) extraídos ${fb.source}`,
+          });
+        } else {
+          attempts.push({
+            endpoint: "fallback:/produtos/{id}.depositos",
+            ok: true,
+            hint: `nenhum depósito retornado (${fb.source})`,
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        attempts.push({
+          endpoint: "fallback:/produtos/{id}.depositos",
+          ok: false,
+          hint: msg.slice(0, 200),
+        });
+        if (err instanceof TinyTokenExpiredError) throw err;
+      }
+    }
+
+    if (depositos.length === 0) {
+      console.warn("[tiny/depositos] nenhum depósito encontrado", { attempts });
     }
 
     return NextResponse.json({
-      depositos,
-      used_endpoint: usedEndpoint,
+      depositos: depositos.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+      used_endpoint: usedEndpoint ?? fallbackSource,
       attempts: depositos.length === 0 ? attempts : undefined,
     });
   } catch (error) {
