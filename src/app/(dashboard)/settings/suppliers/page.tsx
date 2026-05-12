@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, MoreHorizontal, Pencil, Eye, Truck } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Eye, Truck, Boxes } from "lucide-react";
+import Link from "next/link";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -233,6 +234,12 @@ export default function SettingsSuppliersPage() {
                           >
                             <Eye className="mr-2 h-4 w-4" />
                             Ver
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link href={`/settings/suppliers/${supplier.id}/inventory`}>
+                              <Boxes className="mr-2 h-4 w-4" />
+                              Inventário
+                            </Link>
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => {

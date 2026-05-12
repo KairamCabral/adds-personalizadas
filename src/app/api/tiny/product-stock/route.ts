@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { tinyApiGet, isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
+import { isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
+import {
+  fetchTinyStockForProduct,
+  type ProductColorMap,
+} from "@/lib/tiny/supplier-stock-sync";
 import type { Database } from "@/types/database.types";
 
 function getServiceClient() {
@@ -8,32 +12,6 @@ function getServiceClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-}
-
-interface TinyProductDetail {
-  id?: number;
-  nome?: string;
-  codigo?: string;
-  estoque?: number | string;
-  saldo?: number | string;
-  // V3 pode retornar dentro de "data"
-  data?: {
-    id?: number;
-    nome?: string;
-    codigo?: string;
-    estoque?: number | string;
-    saldo?: number | string;
-  };
-}
-
-function extractStock(raw: TinyProductDetail): number {
-  const value =
-    raw?.data?.estoque ??
-    raw?.data?.saldo ??
-    raw?.estoque ??
-    raw?.saldo ??
-    0;
-  return typeof value === "string" ? parseFloat(value) || 0 : Number(value) || 0;
 }
 
 export async function POST(request: NextRequest) {
@@ -47,7 +25,6 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceClient();
 
-    // Buscar produto no CRM
     const { data: product, error: fetchError } = await supabase
       .from("products")
       .select("id, tiny_id, tiny_color_map")
@@ -66,75 +43,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const colorMap = (product.tiny_color_map as Record<string, {
-      tiny_id?: number | null;
-      sku?: string | null;
-      tiny_stock?: number | null;
-    }>) ?? {};
+    const colorMap = (product.tiny_color_map as ProductColorMap | null) ?? {};
 
-    // Coletar todos os tiny_ids únicos para buscar (cores + produto pai)
-    const tinyIdsToFetch = new Map<number, string[]>(); // tiny_id → [colorKeys]
+    const { results, errors } = await fetchTinyStockForProduct({
+      tinyId: product.tiny_id,
+      tinyColorMap: colorMap,
+    });
 
-    for (const [colorKey, mapping] of Object.entries(colorMap)) {
-      if (mapping?.tiny_id) {
-        const existing = tinyIdsToFetch.get(mapping.tiny_id) ?? [];
-        existing.push(colorKey);
-        tinyIdsToFetch.set(mapping.tiny_id, existing);
-      }
-    }
-
-    // Se produto pai tem tiny_id mas não tem cores mapeadas, buscar o pai
-    const hasMappedColors = tinyIdsToFetch.size > 0;
-    const productTinyId = product.tiny_id;
-
-    const results: { tinyId: number; stock: number; colorKeys: string[] }[] = [];
-    const errors: string[] = [];
-
-    // Buscar estoque de cada variante
-    for (const [tinyId, colorKeys] of tinyIdsToFetch) {
-      try {
-        const raw = await tinyApiGet<TinyProductDetail>(`/produtos/${tinyId}`);
-        const stock = extractStock(raw);
-        results.push({ tinyId, stock, colorKeys });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        errors.push(`ID ${tinyId}: ${msg}`);
-        console.error(`[product-stock] Erro ao buscar estoque para tiny_id=${tinyId}:`, msg);
-      }
-    }
-
-    // Se não tem variantes mapeadas mas tem tiny_id no produto pai
-    if (!hasMappedColors && productTinyId) {
-      try {
-        const raw = await tinyApiGet<TinyProductDetail>(`/produtos/${productTinyId}`);
-        const stock = extractStock(raw);
-        results.push({ tinyId: productTinyId, stock, colorKeys: [] });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        errors.push(`Produto pai ${productTinyId}: ${msg}`);
-      }
-    }
-
-    // Atualizar colorMap com os estoques buscados
-    const updatedColorMap = { ...colorMap };
+    // Atualiza tiny_color_map com tiny_stock por cor + total geral
+    const updatedColorMap: ProductColorMap = { ...colorMap };
     let totalStock = 0;
+    let hasColorResult = false;
 
-    for (const { stock, colorKeys } of results) {
-      totalStock += stock;
-      for (const colorKey of colorKeys) {
-        updatedColorMap[colorKey] = {
-          ...updatedColorMap[colorKey],
-          tiny_stock: stock,
+    for (const r of results) {
+      if (r.colorKey) {
+        hasColorResult = true;
+        updatedColorMap[r.colorKey] = {
+          ...updatedColorMap[r.colorKey],
+          tiny_stock: r.stock,
         };
+        totalStock += r.stock;
+      } else {
+        totalStock = r.stock; // produto pai sem variantes
       }
     }
 
-    // Se apenas produto pai (sem variantes), total = seu estoque
-    if (!hasMappedColors && results.length > 0) {
-      totalStock = results[0].stock;
+    if (!hasColorResult && results.length === 0) {
+      totalStock = 0;
     }
 
-    // Salvar no banco
     const { error: updateError } = await supabase
       .from("products")
       .update({
