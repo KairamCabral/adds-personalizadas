@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isTinySituacaoAberto,
   isTinySituacaoEntregue,
   isTinySituacaoFaturado,
   isTinySituacaoPago,
@@ -51,6 +52,36 @@ describe("isTinySituacaoFaturado", () => {
     expect(isTinySituacaoFaturado("Aprovado")).toBe(false);
     expect(isTinySituacaoFaturado("Em aberto")).toBe(false);
     expect(isTinySituacaoFaturado(3)).toBe(false);
+  });
+});
+
+describe("isTinySituacaoAberto", () => {
+  it("aceita códigos 0 e 8 (Em aberto)", () => {
+    expect(isTinySituacaoAberto(0)).toBe(true);
+    expect(isTinySituacaoAberto("0")).toBe(true);
+    expect(isTinySituacaoAberto(8)).toBe(true);
+    expect(isTinySituacaoAberto("8")).toBe(true);
+  });
+
+  it("aceita rótulo 'Em aberto' (case/acento-insensitive)", () => {
+    expect(isTinySituacaoAberto("Em aberto")).toBe(true);
+    expect(isTinySituacaoAberto("em aberto")).toBe(true);
+    expect(isTinySituacaoAberto("EM ABERTO")).toBe(true);
+    expect(isTinySituacaoAberto("Aberto")).toBe(true);
+  });
+
+  it("não trata Aprovado/Faturado/Cancelado/Entregue como aberto", () => {
+    expect(isTinySituacaoAberto(1)).toBe(false);
+    expect(isTinySituacaoAberto(3)).toBe(false);
+    expect(isTinySituacaoAberto(6)).toBe(false);
+    expect(isTinySituacaoAberto(2)).toBe(false);
+    expect(isTinySituacaoAberto("Aprovado")).toBe(false);
+  });
+
+  it("trata null/undefined/'' como não-aberto", () => {
+    expect(isTinySituacaoAberto(null)).toBe(false);
+    expect(isTinySituacaoAberto(undefined)).toBe(false);
+    expect(isTinySituacaoAberto("")).toBe(false);
   });
 });
 

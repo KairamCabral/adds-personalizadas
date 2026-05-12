@@ -1554,7 +1554,7 @@ export type SendToAllSuppliersOutcome =
  *
  * Compartilhado entre o trigger da UI (drag pra APROVADO no Kanban /
  * mudança de status no detalhe do pedido) e o trigger automático do webhook
- * Tiny (`applyPagoCrmFromTiny` movendo CONFIRMACAO/LINK_ENVIADO → APROVADO).
+ * Tiny (`applyPagoCrmFromTiny` movendo CONFIRMACAO → APROVADO).
  *
  * Idempotência: se `orders.bling_order_id` já está setado, retorna
  * `skipped: "already_sent"` sem chamar o Bling. Isso evita criar pedidos
