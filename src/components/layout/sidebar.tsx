@@ -24,6 +24,7 @@ import {
   Route,
   Percent,
   Activity,
+  Warehouse,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Logo } from "@/components/brand/logo";
@@ -50,6 +51,12 @@ const NAV_SECTIONS = [
         href: "/dashboard",
         icon: LayoutDashboard,
         permission: "dashboard.view_ops" as const,
+      },
+      {
+        label: "Estoque",
+        href: "/estoque",
+        icon: Warehouse,
+        permission: "supplier_inventory.view" as const,
       },
       {
         label: "Contatos",
