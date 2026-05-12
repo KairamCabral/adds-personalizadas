@@ -38,7 +38,10 @@ export function TinyDepositoSelect({
   const router = useRouter();
   const query = useQuery({
     queryKey: ["tiny-depositos"],
-    queryFn: async (): Promise<TinyDeposito[]> => {
+    queryFn: async (): Promise<{
+      depositos: TinyDeposito[];
+      attempts?: Array<{ endpoint: string; ok: boolean; hint?: string }>;
+    }> => {
       const res = await fetch("/api/tiny/depositos");
       const json = await res.json();
       if (res.status === 401 && json.code === "TINY_RECONNECT") {
@@ -51,16 +54,20 @@ export function TinyDepositoSelect({
         throw new Error("TINY_RECONNECT");
       }
       if (res.status === 422 && json.code === "TINY_NOT_CONNECTED") {
-        return [];
+        return { depositos: [] };
       }
       if (!res.ok) throw new Error(json.error ?? "Falha ao carregar depósitos.");
-      return (json.depositos ?? []) as TinyDeposito[];
+      return {
+        depositos: (json.depositos ?? []) as TinyDeposito[],
+        attempts: json.attempts,
+      };
     },
-    staleTime: 5 * 60 * 1000, // 5 min — depósitos mudam raramente
+    staleTime: 5 * 60 * 1000,
     retry: false,
   });
 
-  const depositos = query.data ?? [];
+  const depositos = query.data?.depositos ?? [];
+  const attempts = query.data?.attempts;
 
   // Ordena: sugeridos (que batem com o hint) primeiro
   const sorted = [...depositos].sort((a, b) => {
@@ -96,8 +103,33 @@ export function TinyDepositoSelect({
             <span className="text-muted-foreground">Nenhum</span>
           </SelectItem>
           {sorted.length === 0 && !query.isLoading && (
-            <div className="px-2 py-3 text-xs text-muted-foreground">
-              Nenhum depósito encontrado no Tiny.
+            <div className="space-y-2 px-2 py-3 text-xs text-muted-foreground">
+              <p className="font-medium">Nenhum depósito encontrado no Tiny.</p>
+              {attempts && attempts.length > 0 && (
+                <details className="rounded border border-border bg-muted/40 p-2">
+                  <summary className="cursor-pointer text-[10px] font-medium">
+                    Ver diagnóstico ({attempts.length} tentativa
+                    {attempts.length > 1 ? "s" : ""})
+                  </summary>
+                  <ul className="mt-1.5 space-y-1 text-[10px]">
+                    {attempts.map((a, idx) => (
+                      <li key={idx} className="break-all">
+                        <span
+                          className={
+                            a.ok
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-destructive"
+                          }
+                        >
+                          {a.ok ? "✓" : "✗"}
+                        </span>{" "}
+                        <code className="text-[10px]">{a.endpoint}</code>{" "}
+                        <span className="text-muted-foreground">{a.hint}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
           {sorted.map((d) => {
