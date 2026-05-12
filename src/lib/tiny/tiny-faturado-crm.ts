@@ -6,8 +6,7 @@ import { canMoveToAprovado } from "@/lib/orders/can-move-to-aprovado";
  * Considera o pedido pago no Tiny: situações "Aprovado" (3) ou "Faturado" (1).
  * No fluxo Tiny, "Aprovado" já implica pagamento confirmado (NF gerada
  * automaticamente), e "Faturado" é o estado pós-emissão da NF. Usado para
- * decidir se aplica a label PAGO no CRM e se move CONFIRMACAO/LINK_ENVIADO
- * para APROVADO.
+ * decidir se aplica a label PAGO no CRM e se move CONFIRMACAO → APROVADO.
  *
  * Webhooks às vezes enviam o rótulo em minúsculas, com/sem acento, ou apenas
  * a NF anexada (caso "Faturado" implícito).
@@ -55,6 +54,29 @@ export function isTinySituacaoFaturado(situacao: unknown): boolean {
   if (lower === "faturado" || lower === "faturada" || lower === "autorizada")
     return true;
   return false;
+}
+
+/**
+ * Situação Tiny "Em aberto" (código 0 / 8). É o estado inicial do pedido no
+ * Tiny — sem informação de pagamento, sem avanço de produção. O CRM tem
+ * etapas internas (AUTOMATICO, AJUSTE, APROVACAO, AGUARDANDO_APROVACAO,
+ * ARTE_APROVADA, CONFIRMACAO) que não existem no Tiny, então quando o Tiny
+ * ainda está "Em aberto" o re-sync NÃO deve mover a etapa do CRM.
+ */
+export function isTinySituacaoAberto(situacao: unknown): boolean {
+  if (situacao === null || situacao === undefined) return false;
+  if (typeof situacao === "number" && Number.isFinite(situacao)) {
+    return situacao === 0 || situacao === 8;
+  }
+  const s = String(situacao).trim();
+  if (s === "") return false;
+  const n = Number(s);
+  if (Number.isFinite(n) && (n === 0 || n === 8)) return true;
+  const lower = s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  return lower === "em aberto" || lower === "aberto";
 }
 
 /**
@@ -144,15 +166,16 @@ export function notaFiscalIdFromTinyPedidoRaw(
  * Pago no CRM (gatilho: Tiny passa para Aprovado ou Faturado):
  * - tag PAGO (idempotente)
  * - remove etiquetas de "aguardando pagamento"
- * - de CONFIRMACAO/LINK_ENVIADO → APROVADO **somente se o gate de arte
- *   permitir** (ver `canMoveToAprovado`). Se o gate bloquear, mantém o
- *   status atual e só aplica o PAGO — o pedido espera o cliente aprovar
- *   a arte (ou alguém marcar `uses_existing_art`).
- * - não muda status quando o pedido já está numa coluna pós-APROVADO
+ * - de CONFIRMACAO → APROVADO **somente se o gate de arte permitir** (ver
+ *   `canMoveToAprovado`). Se o gate bloquear, mantém o status atual e só
+ *   aplica o PAGO — o pedido espera o cliente aprovar a arte (ou alguém
+ *   marcar `uses_existing_art`).
+ * - em qualquer outra etapa (incl. LINK_ENVIADO, AGUARDANDO_APROVACAO,
+ *   ARTE_APROVADA, PRODUCAO, etc.), só aplica a tag PAGO — NÃO movimenta.
  *
- * Retorna `gateBlocked` quando estava em CONFIRMACAO/LINK_ENVIADO mas o
- * gate de arte bloqueou a transição — útil pra logs e pra que o caller
- * não dispare auto-envio ao Bling (sem arte aprovada não há o que produzir).
+ * Retorna `gateBlocked` quando estava em CONFIRMACAO mas o gate de arte
+ * bloqueou a transição — útil pra logs e pra que o caller não dispare
+ * auto-envio ao Bling (sem arte aprovada não há o que produzir).
  */
 export async function applyPagoCrmFromTiny(
   supabase: SupabaseClient<Database>,
@@ -187,7 +210,7 @@ export async function applyPagoCrmFromTiny(
 
   let statusMoved = false;
   let gateBlocked = false;
-  if (orderStatus === "CONFIRMACAO" || orderStatus === "LINK_ENVIADO") {
+  if (orderStatus === "CONFIRMACAO") {
     const gate = await canMoveToAprovado(orderId, supabase);
     if (!gate.allowed) {
       gateBlocked = true;

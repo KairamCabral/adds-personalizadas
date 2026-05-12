@@ -6,6 +6,7 @@ import { fetchFirstPessoaContatoForChat } from "@/lib/tiny/tiny-contact-pessoas"
 import {
   applyEntregueCrmFromTiny,
   applyPagoCrmFromTiny,
+  isTinySituacaoAberto,
   isTinySituacaoEntregue,
   isTinySituacaoPago,
   notaFiscalIdFromTinyPedidoRaw,
@@ -607,6 +608,13 @@ export async function importTinyOrderFromApi(
       ? "FINALIZADO"
       : "AUTOMATICO"
     : mapTinySituacaoToCrmStatus(situacao);
+  // Re-sync: Tiny "Em aberto" NÃO movimenta etapa do CRM. O CRM tem etapas
+  // internas (AUTOMATICO, AJUSTE, APROVACAO, AGUARDANDO_APROVACAO,
+  // ARTE_APROVADA, CONFIRMACAO) que não existem no Tiny — sem essa guarda,
+  // o mapeamento "Em aberto" → FAZER atropelaria essas etapas.
+  if (!isNewOrder && existingOrder && isTinySituacaoAberto(situacao)) {
+    status = existingOrder.status;
+  }
   if (!isNewOrder && pagoNaApi && existingOrder) {
     status = existingOrder.status;
   }
