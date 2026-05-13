@@ -104,6 +104,21 @@ export function StockPreview({ productId, enabled = true }: StockPreviewProps) {
         </ul>
       )}
 
+      {query.data && "errors" in query.data && query.data.errors && query.data.errors.length > 0 && (
+        <details className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 dark:border-amber-900 dark:bg-amber-950/40">
+          <summary className="cursor-pointer text-[10px] font-medium text-amber-700 dark:text-amber-400">
+            ⚠ Diagnóstico ({query.data.errors.length})
+          </summary>
+          <ul className="mt-1 space-y-1 text-[10px] text-amber-700/80 dark:text-amber-400/80">
+            {query.data.errors.map((e, i) => (
+              <li key={i} className="break-all">
+                {e}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       <p className="mt-2 border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
         No inventário mensal, você divide cada total entre os pools selecionados.
       </p>
