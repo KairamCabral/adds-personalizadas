@@ -45,6 +45,7 @@ type Overview = {
     matches: number;
     missing: number;
     items_count: number;
+    colors_count: number;
     coverage_pct: number;
   };
   suppliers: Array<{
@@ -53,6 +54,7 @@ type Overview = {
     inventory_id: string | null;
     inventory_status: Status | null;
     items_count: number;
+    colors_count: number;
     declared: number;
     committed: number;
     balance: number;
@@ -226,7 +228,7 @@ export function EstoqueOverview({ role }: EstoqueOverviewProps) {
               <KpiHero
                 label="Cobertura Tiny"
                 value={`${overview.totals.coverage_pct}%`}
-                hint={`${overview.totals.items_count - overview.totals.missing} de ${overview.totals.items_count} variantes`}
+                hint={`${overview.totals.colors_count - overview.totals.missing} de ${overview.totals.colors_count} cor(es)`}
                 icon={<TrendingUp className="h-4 w-4" />}
                 tone={
                   overview.totals.coverage_pct === 100
@@ -615,7 +617,7 @@ function SupplierCard({
               <span className="tabular-nums">{supplier.coverage_pct}%</span>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              {supplier.items_count} variante(s)
+              {supplier.colors_count} cor(es) · {supplier.items_count} linha(s)
             </p>
           </>
         ) : (

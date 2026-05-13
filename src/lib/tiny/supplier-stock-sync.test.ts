@@ -31,37 +31,6 @@ describe("extractStock", () => {
     expect(extractStock({} as TinyProductDetail)).toBe(0);
     expect(extractStock({ estoque: null as unknown as number } as TinyProductDetail)).toBe(0);
   });
-
-  it("filtra por depósito quando depositoId é informado", () => {
-    const raw: TinyProductDetail = {
-      estoque: 999,
-      depositos: [
-        { idDeposito: 1, saldo: 100 },
-        { idDeposito: 2, saldo: 250 },
-      ],
-    };
-    expect(extractStock(raw, 1)).toBe(100);
-    expect(extractStock(raw, 2)).toBe(250);
-  });
-
-  it("aceita campo `id` no depósito (formato alternativo Tiny)", () => {
-    const raw: TinyProductDetail = {
-      depositos: [
-        { id: 7, estoque: 33 },
-        { id: 8, estoque: 44 },
-      ],
-    };
-    expect(extractStock(raw, 7)).toBe(33);
-    expect(extractStock(raw, 8)).toBe(44);
-  });
-
-  it("cai no root quando depósito informado não está no array", () => {
-    const raw: TinyProductDetail = {
-      estoque: 500,
-      depositos: [{ idDeposito: 1, saldo: 100 }],
-    };
-    expect(extractStock(raw, 999)).toBe(500);
-  });
 });
 
 describe("fetchTinyStockForProduct", () => {
@@ -99,9 +68,7 @@ describe("fetchTinyStockForProduct", () => {
     });
 
     expect(errors).toEqual([]);
-    expect(results).toEqual([
-      { tinyId: 555, stock: 196, colorKey: null, depositoId: null },
-    ]);
+    expect(results).toEqual([{ tinyId: 555, stock: 196, colorKey: null }]);
   });
 
   it("ignora produto pai quando há variantes mapeadas", async () => {
@@ -137,25 +104,6 @@ describe("fetchTinyStockForProduct", () => {
     expect(results[0].colorKey).toBe("ok");
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain("200");
-  });
-
-  it("encaminha depositoId para extractStock por depósito", async () => {
-    vi.mocked(tinyApiGet).mockResolvedValue({
-      estoque: 999,
-      depositos: [
-        { idDeposito: 7, saldo: 88 },
-        { idDeposito: 9, saldo: 1 },
-      ],
-    });
-
-    const { results } = await fetchTinyStockForProduct({
-      tinyId: 555,
-      tinyColorMap: null,
-      depositoId: 7,
-    });
-
-    expect(results[0].stock).toBe(88);
-    expect(results[0].depositoId).toBe(7);
   });
 
   it("retorna vazio quando não há tiny_id nem variantes", async () => {

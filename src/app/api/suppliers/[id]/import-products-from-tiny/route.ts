@@ -21,8 +21,6 @@ interface TinyProductDetail {
 interface ImportBody {
   tiny_ids: number[];
   pools: Pool[];
-  tiny_deposito_personalizado_id?: number | null;
-  tiny_deposito_marketplace_id?: number | null;
 }
 
 function parseNum(value: number | string | undefined | null): number | null {
@@ -114,8 +112,6 @@ export async function POST(
             .update({
               inventory_supplier_id: supplierId,
               inventory_pools: body.pools,
-              tiny_deposito_personalizado_id: body.tiny_deposito_personalizado_id ?? null,
-              tiny_deposito_marketplace_id: body.tiny_deposito_marketplace_id ?? null,
             } as never)
             .eq("id", p.id);
           if (upErr) {
@@ -148,8 +144,6 @@ export async function POST(
             is_active: true,
             inventory_supplier_id: supplierId,
             inventory_pools: body.pools,
-            tiny_deposito_personalizado_id: body.tiny_deposito_personalizado_id ?? null,
-            tiny_deposito_marketplace_id: body.tiny_deposito_marketplace_id ?? null,
             available_colors: [],
           } as never)
           .select("id, name")

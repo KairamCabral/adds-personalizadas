@@ -16,9 +16,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Download, CheckCircle2, Package } from "lucide-react";
+import {
+  Loader2,
+  Search,
+  Download,
+  CheckCircle2,
+  Package,
+  Sparkles,
+  ShoppingBag,
+} from "lucide-react";
 import { toast } from "sonner";
-import { TinyDepositoSelect } from "@/components/inventory/tiny-deposito-select";
 
 type Pool = "PERSONALIZADO" | "MARKETPLACE";
 
@@ -52,8 +59,6 @@ export function ImportFromTinyDialog({
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pools, setPools] = useState<Pool[]>(["PERSONALIZADO", "MARKETPLACE"]);
-  const [personalDeposito, setPersonalDeposito] = useState<number | null>(null);
-  const [marketDeposito, setMarketDeposito] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -61,8 +66,6 @@ export function ImportFromTinyDialog({
       setResults([]);
       setSelectedIds(new Set());
       setPools(["PERSONALIZADO", "MARKETPLACE"]);
-      setPersonalDeposito(null);
-      setMarketDeposito(null);
     }
   }, [open]);
 
@@ -114,8 +117,6 @@ export function ImportFromTinyDialog({
       const body = {
         tiny_ids: Array.from(selectedIds),
         pools,
-        tiny_deposito_personalizado_id: personalDeposito,
-        tiny_deposito_marketplace_id: marketDeposito,
       };
       const res = await fetch(`/api/suppliers/${supplierId}/import-products-from-tiny`, {
         method: "POST",
@@ -191,7 +192,6 @@ export function ImportFromTinyDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Search */}
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -203,58 +203,30 @@ export function ImportFromTinyDialog({
             />
           </div>
 
-          {/* Pools + depósitos */}
-          <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Pools de estoque
-              </Label>
-              <div className="flex gap-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={pools.includes("PERSONALIZADO")}
-                    onCheckedChange={(c) => togglePool("PERSONALIZADO", c === true)}
-                  />
-                  Personalizados
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={pools.includes("MARKETPLACE")}
-                    onCheckedChange={(c) => togglePool("MARKETPLACE", c === true)}
-                  />
-                  Marketplace
-                </label>
-              </div>
-            </div>
-            <div className="space-y-3">
-              {pools.includes("PERSONALIZADO") && (
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">
-                    Depósito Tiny — Personalizado
-                  </Label>
-                  <TinyDepositoSelect
-                    value={personalDeposito}
-                    onChange={setPersonalDeposito}
-                    hint="personaliz"
-                  />
-                </div>
-              )}
-              {pools.includes("MARKETPLACE") && (
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">
-                    Depósito Tiny — Marketplace
-                  </Label>
-                  <TinyDepositoSelect
-                    value={marketDeposito}
-                    onChange={setMarketDeposito}
-                    hint="marketpl"
-                  />
-                </div>
-              )}
+          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Pools de estoque
+            </Label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={pools.includes("PERSONALIZADO")}
+                  onCheckedChange={(c) => togglePool("PERSONALIZADO", c === true)}
+                />
+                <Sparkles className="h-3.5 w-3.5 text-[--adds-blue]" />
+                Personalizados
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={pools.includes("MARKETPLACE")}
+                  onCheckedChange={(c) => togglePool("MARKETPLACE", c === true)}
+                />
+                <ShoppingBag className="h-3.5 w-3.5 text-[--adds-orange]" />
+                Marketplace
+              </label>
             </div>
           </div>
 
-          {/* Results */}
           <div className="rounded-lg border border-border">
             <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2">
               <p className="text-xs text-muted-foreground">
