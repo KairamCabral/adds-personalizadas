@@ -26,6 +26,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
+import { TinyDepositoSelect } from "@/components/inventory/tiny-deposito-select";
 
 type Pool = "PERSONALIZADO" | "MARKETPLACE";
 
@@ -59,6 +60,8 @@ export function ImportFromTinyDialog({
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pools, setPools] = useState<Pool[]>(["PERSONALIZADO", "MARKETPLACE"]);
+  const [personalDeposito, setPersonalDeposito] = useState<number | null>(null);
+  const [marketDeposito, setMarketDeposito] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -66,6 +69,8 @@ export function ImportFromTinyDialog({
       setResults([]);
       setSelectedIds(new Set());
       setPools(["PERSONALIZADO", "MARKETPLACE"]);
+      setPersonalDeposito(null);
+      setMarketDeposito(null);
     }
   }, [open]);
 
@@ -117,6 +122,12 @@ export function ImportFromTinyDialog({
       const body = {
         tiny_ids: Array.from(selectedIds),
         pools,
+        tiny_deposito_personalizado_id: pools.includes("PERSONALIZADO")
+          ? personalDeposito
+          : null,
+        tiny_deposito_marketplace_id: pools.includes("MARKETPLACE")
+          ? marketDeposito
+          : null,
       };
       const res = await fetch(`/api/suppliers/${supplierId}/import-products-from-tiny`, {
         method: "POST",
@@ -203,11 +214,11 @@ export function ImportFromTinyDialog({
             />
           </div>
 
-          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+          <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-              Pools de estoque
+              Pools + depósitos Tiny
             </Label>
-            <div className="flex gap-4">
+            <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={pools.includes("PERSONALIZADO")}
@@ -216,6 +227,16 @@ export function ImportFromTinyDialog({
                 <Sparkles className="h-3.5 w-3.5 text-[--adds-blue]" />
                 Personalizados
               </label>
+              {pools.includes("PERSONALIZADO") && (
+                <div className="ml-6">
+                  <TinyDepositoSelect
+                    value={personalDeposito}
+                    onChange={setPersonalDeposito}
+                    hint="personaliz"
+                    autoSelectByHint
+                  />
+                </div>
+              )}
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={pools.includes("MARKETPLACE")}
@@ -224,6 +245,16 @@ export function ImportFromTinyDialog({
                 <ShoppingBag className="h-3.5 w-3.5 text-[--adds-orange]" />
                 Marketplace
               </label>
+              {pools.includes("MARKETPLACE") && (
+                <div className="ml-6">
+                  <TinyDepositoSelect
+                    value={marketDeposito}
+                    onChange={setMarketDeposito}
+                    hint="marketpl"
+                    autoSelectByHint
+                  />
+                </div>
+              )}
             </div>
           </div>
 

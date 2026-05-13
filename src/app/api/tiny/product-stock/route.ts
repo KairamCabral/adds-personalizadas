@@ -60,11 +60,11 @@ export async function POST(request: NextRequest) {
         hasColorResult = true;
         updatedColorMap[r.colorKey] = {
           ...updatedColorMap[r.colorKey],
-          tiny_stock: r.stock,
+          tiny_stock: r.totalSaldo,
         };
-        totalStock += r.stock;
+        totalStock += r.totalSaldo;
       } else {
-        totalStock = r.stock; // produto pai sem variantes
+        totalStock = r.totalSaldo; // produto pai sem variantes
       }
     }
 

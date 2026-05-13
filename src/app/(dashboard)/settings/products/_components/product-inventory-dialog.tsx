@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { getSuppliers } from "@/services/suppliers.service";
 import { updateProduct } from "@/services/products.service";
 import { StockPreview } from "@/components/inventory/stock-preview";
+import { TinyDepositoSelect } from "@/components/inventory/tiny-deposito-select";
 import type { Product } from "@/types/database.types";
 
 type Pool = "PERSONALIZADO" | "MARKETPLACE";
@@ -38,6 +39,8 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [pools, setPools] = useState<Pool[]>([]);
+  const [personalDeposito, setPersonalDeposito] = useState<number | null>(null);
+  const [marketDeposito, setMarketDeposito] = useState<number | null>(null);
 
   const suppliersQuery = useQuery({
     queryKey: ["suppliers"],
@@ -50,9 +53,13 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
     const p = product as Product & {
       inventory_supplier_id?: string | null;
       inventory_pools?: Pool[] | null;
+      tiny_deposito_personalizado_id?: number | null;
+      tiny_deposito_marketplace_id?: number | null;
     };
     setSupplierId(p.inventory_supplier_id ?? null);
     setPools(p.inventory_pools ?? []);
+    setPersonalDeposito(p.tiny_deposito_personalizado_id ?? null);
+    setMarketDeposito(p.tiny_deposito_marketplace_id ?? null);
   }, [product]);
 
   const saveMutation = useMutation({
@@ -61,6 +68,12 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
       await updateProduct(product.id, {
         inventory_supplier_id: supplierId,
         inventory_pools: pools,
+        tiny_deposito_personalizado_id: pools.includes("PERSONALIZADO")
+          ? personalDeposito
+          : null,
+        tiny_deposito_marketplace_id: pools.includes("MARKETPLACE")
+          ? marketDeposito
+          : null,
       } as never);
     },
     onSuccess: () => {
@@ -80,16 +93,16 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
 
   return (
     <Dialog open={!!product} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Inventário no fornecedor</DialogTitle>
           <DialogDescription>
-            {product?.name} — vincule o fornecedor e escolha em quais pools de
-            estoque esse produto entra.
+            {product?.name} — vincule fornecedor, pools e depósitos Tiny. O
+            sistema cruza Declarado × Tiny × Carteira CRM automaticamente.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 max-h-[70vh] overflow-y-auto">
           <div className="space-y-2">
             <Label>Fornecedor</Label>
             <Select
@@ -111,42 +124,75 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
           </div>
 
           <div className="space-y-2">
-            <Label>Pools de estoque</Label>
-            <div className="space-y-2 rounded-md border border-border p-3">
-              <label className="flex items-start gap-2 text-sm">
-                <Checkbox
-                  checked={pools.includes("PERSONALIZADO")}
-                  onCheckedChange={(c) => togglePool("PERSONALIZADO", c === true)}
-                  className="mt-0.5"
-                />
-                <span className="space-y-0.5">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <Sparkles className="h-3.5 w-3.5 text-[--adds-blue]" />
-                    Personalizados
+            <Label>Pools de estoque + depósitos Tiny</Label>
+            <div className="space-y-3 rounded-md border border-border p-3">
+              {/* Personalizado */}
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 text-sm">
+                  <Checkbox
+                    checked={pools.includes("PERSONALIZADO")}
+                    onCheckedChange={(c) => togglePool("PERSONALIZADO", c === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Sparkles className="h-3.5 w-3.5 text-[--adds-blue]" />
+                      Personalizados
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Consome carteira do CRM. Cruza com o depósito Tiny escolhido.
+                    </span>
                   </span>
-                  <span className="block text-xs text-muted-foreground">
-                    Consome carteira do CRM. Pedidos em APROVADO/PRODUCAO/EXPEDICAO
-                    reservam estoque automaticamente.
+                </label>
+                {pools.includes("PERSONALIZADO") && (
+                  <div className="ml-6 space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Depósito Tiny
+                    </Label>
+                    <TinyDepositoSelect
+                      value={personalDeposito}
+                      onChange={setPersonalDeposito}
+                      hint="personaliz"
+                      autoSelectByHint
+                      placeholder="Auto: contém 'personaliz' no nome"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Marketplace */}
+              <div className="space-y-2 border-t border-border pt-3">
+                <label className="flex items-start gap-2 text-sm">
+                  <Checkbox
+                    checked={pools.includes("MARKETPLACE")}
+                    onCheckedChange={(c) => togglePool("MARKETPLACE", c === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <ShoppingBag className="h-3.5 w-3.5 text-[--adds-orange]" />
+                      Marketplace
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Sem carteira no CRM (ML, e-commerce). Cruza com depósito Tiny.
+                    </span>
                   </span>
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <Checkbox
-                  checked={pools.includes("MARKETPLACE")}
-                  onCheckedChange={(c) => togglePool("MARKETPLACE", c === true)}
-                  className="mt-0.5"
-                />
-                <span className="space-y-0.5">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <ShoppingBag className="h-3.5 w-3.5 text-[--adds-orange]" />
-                    Marketplace
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    Sem carteira no CRM (vendas em ML, e-commerce, etc).
-                    Apenas cruzamento com Tiny.
-                  </span>
-                </span>
-              </label>
+                </label>
+                {pools.includes("MARKETPLACE") && (
+                  <div className="ml-6 space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Depósito Tiny
+                    </Label>
+                    <TinyDepositoSelect
+                      value={marketDeposito}
+                      onChange={setMarketDeposito}
+                      hint="marketpl"
+                      autoSelectByHint
+                      placeholder="Auto: contém 'marketpl' no nome"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -155,7 +201,11 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
               Sem pools selecionados, o produto não aparece em nenhum inventário.
             </p>
           ) : (
-            <StockPreview productId={product?.id ?? null} />
+            <StockPreview
+              productId={product?.id ?? null}
+              personalizadoDepositoId={personalDeposito}
+              marketplaceDepositoId={marketDeposito}
+            />
           )}
         </div>
 

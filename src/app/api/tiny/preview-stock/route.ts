@@ -5,13 +5,21 @@ import { isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
 import {
   fetchTinyStockForProduct,
   type ProductColorMap,
+  type TinyDepositoSaldo,
 } from "@/lib/tiny/supplier-stock-sync";
 
 interface PreviewVariant {
   color_key: string | null;
   color_label: string | null;
   tiny_id: number | null;
-  stock: number | null;
+  /** Saldo total agregado (todos os depósitos) */
+  total_saldo: number | null;
+  /** Reservado total agregado */
+  total_reservado: number | null;
+  /** Disponível total agregado */
+  total_disponivel: number | null;
+  /** Saldo por depósito (apenas depósitos com desconsiderar=false) */
+  depositos: TinyDepositoSaldo[];
 }
 
 type AvailableColor = { key: string; label?: string };
@@ -28,9 +36,8 @@ function parseAvailableColors(value: unknown): AvailableColor[] {
 }
 
 /**
- * Retorna o estoque total no Tiny de cada variante (cor) do produto.
- * Não filtra por depósito — a API Tiny v3 com escopo OAuth padrão não suporta
- * isso. Mostra o total agregado por SKU/variante.
+ * Retorna o estoque por depósito de cada variante (cor) do produto.
+ * Usa o endpoint /estoque/{tiny_id} da Tiny v3 que expõe saldo por depósito.
  */
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -77,7 +84,6 @@ export async function GET(request: NextRequest) {
     const { results, errors } = await fetchTinyStockForProduct({
       tinyId: product.tiny_id,
       tinyColorMap: colorMap,
-      productName: product.name,
     });
 
     const variants: PreviewVariant[] = [];
@@ -88,7 +94,10 @@ export async function GET(request: NextRequest) {
         color_key: null,
         color_label: null,
         tiny_id: product.tiny_id,
-        stock: r?.stock ?? null,
+        total_saldo: r?.totalSaldo ?? null,
+        total_reservado: r?.totalReservado ?? null,
+        total_disponivel: r?.totalDisponivel ?? null,
+        depositos: r?.depositos.filter((d) => !d.desconsiderar) ?? [],
       });
     } else {
       for (const [colorKey, mapping] of Object.entries(colorMap)) {
@@ -98,7 +107,10 @@ export async function GET(request: NextRequest) {
           color_key: colorKey,
           color_label: colorMeta?.label ?? colorKey,
           tiny_id: mapping?.tiny_id ?? null,
-          stock: result?.stock ?? null,
+          total_saldo: result?.totalSaldo ?? null,
+          total_reservado: result?.totalReservado ?? null,
+          total_disponivel: result?.totalDisponivel ?? null,
+          depositos: result?.depositos.filter((d) => !d.desconsiderar) ?? [],
         });
       }
     }

@@ -82,6 +82,8 @@ type InventoryItem = {
     image_url: string | null;
     available_colors: unknown;
     tiny_id: number | null;
+    tiny_deposito_personalizado_id?: number | null;
+    tiny_deposito_marketplace_id?: number | null;
   } | null;
 };
 
@@ -270,40 +272,16 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
       .filter((i) => i.pool === "PERSONALIZADO")
       .reduce((acc, i) => acc + i.quantity_committed, 0);
     const balance = declared - committed;
-    // Rupturas por LINHA (PERSONALIZADO com committed > declared)
+    // Cada linha (pool) tem seu próprio Tiny agora (depósito específico)
     const breaks = items.filter(
       (i) => i.divergence_status === "BREAK" || i.divergence_status === "COMMITTED_GT_DECLARED"
     ).length;
-    // Divergências por COR (uma cor com Δ% > threshold conta uma vez)
-    const colorStatuses = new Map<string, DivergenceStatus | null>();
-    for (const i of items) {
-      const key = `${i.product_id}|${i.color_key ?? ""}`;
-      const cur = colorStatuses.get(key);
-      // status da cor é o "pior": BREAK > DIVERGE > MISSING > MATCH
-      const priority = (s: DivergenceStatus | null) =>
-        s === "BREAK" || s === "COMMITTED_GT_DECLARED"
-          ? 3
-          : s === "DIVERGE"
-            ? 2
-            : s === "MISSING_TINY"
-              ? 1
-              : 0;
-      if (cur === undefined || priority(i.divergence_status) > priority(cur)) {
-        colorStatuses.set(key, i.divergence_status);
-      }
-    }
-    let diverges = 0;
-    let missing = 0;
-    let matches = 0;
-    for (const s of colorStatuses.values()) {
-      if (s === "DIVERGE") diverges++;
-      else if (s === "MISSING_TINY") missing++;
-      else if (s === "MATCH") matches++;
-    }
-    const totalColors = colorStatuses.size;
-    const coverage =
-      totalColors > 0 ? Math.round(((totalColors - missing) / totalColors) * 100) : 0;
-    return { declared, committed, balance, breaks, diverges, matches, missing, coverage, totalColors };
+    const diverges = items.filter((i) => i.divergence_status === "DIVERGE").length;
+    const matches = items.filter((i) => i.divergence_status === "MATCH").length;
+    const missing = items.filter((i) => i.divergence_status === "MISSING_TINY").length;
+    const synced = items.filter((i) => i.tiny_quantity != null).length;
+    const coverage = items.length > 0 ? Math.round((synced / items.length) * 100) : 0;
+    return { declared, committed, balance, breaks, diverges, matches, missing, coverage, totalLines: items.length };
   }, [items, draftEdits]);
 
   const monthOptions = useMemo(() => {
@@ -453,7 +431,7 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
               <KpiHero
                 label="Cobertura Tiny"
                 value={`${totals.coverage}%`}
-                hint={`${totals.totalColors - totals.missing} de ${totals.totalColors} cores`}
+                hint={`${totals.totalLines - totals.missing} de ${totals.totalLines} linhas`}
                 icon={<TrendingUp className="h-4 w-4" />}
                 tone={totals.coverage === 100 ? "success" : totals.coverage > 60 ? "default" : "warning"}
                 progress={totals.coverage}
@@ -764,10 +742,13 @@ function ProductCard({
           hasBreak = true;
         if (it.divergence_status === "DIVERGE") hasDiverge = true;
       }
-      const colorTiny = c.items.find((i) => i.tiny_quantity != null)?.tiny_quantity;
-      if (colorTiny != null) {
-        tiny += colorTiny;
-        hasTiny = true;
+      // Cada pool tem seu próprio tiny_quantity (depósito específico).
+      // Soma todos os tiny das linhas que têm valor.
+      for (const it of c.items) {
+        if (it.tiny_quantity != null) {
+          tiny += it.tiny_quantity;
+          hasTiny = true;
+        }
       }
     }
     return {
@@ -906,41 +887,14 @@ function ColorBlock({
   draftEdits: Record<string, number>;
   setDraftEdits: (v: Record<string, number>) => void;
 }) {
-  const totals = useMemo(() => {
-    let declared = 0;
-    let committed = 0;
-    for (const it of color.items) {
-      const d = draftEdits[it.id] ?? it.quantity_declared;
-      declared += d;
-      if (it.pool === "PERSONALIZADO") committed += it.quantity_committed;
-    }
-    const tiny =
-      color.items.find((i) => i.tiny_quantity != null)?.tiny_quantity ?? null;
-    const delta = tiny != null && declared > 0 ? ((tiny - declared) / declared) * 100 : null;
-    // pega o status da cor (será o mesmo em todas as linhas pós-recompute)
-    const status: DivergenceStatus | null =
-      color.items.find((i) => i.divergence_status === "DIVERGE")?.divergence_status ??
-      color.items.find((i) => i.divergence_status === "MATCH")?.divergence_status ??
-      color.items.find((i) => i.divergence_status === "MISSING_TINY")?.divergence_status ??
-      null;
-    return {
-      declared,
-      committed,
-      tiny,
-      delta,
-      colorStatus: status,
-    };
-  }, [color.items, draftEdits]);
-
-  // Garante ordem: PERSONALIZADO primeiro
+  // PERSONALIZADO primeiro
   const sortedItems = [...color.items].sort((a, b) =>
     a.pool === "PERSONALIZADO" ? -1 : b.pool === "PERSONALIZADO" ? 1 : 0
   );
 
   return (
     <div className="border-b border-border last:border-b-0">
-      {/* Color header */}
-      <div className="flex items-center gap-3 px-4 py-2.5">
+      <div className="flex items-center gap-3 px-4 pb-1 pt-3">
         {color.colorKey && (
           <div
             className="h-6 w-6 shrink-0 rounded-full border border-border shadow-sm"
@@ -948,44 +902,10 @@ function ColorBlock({
             title={color.colorLabel}
           />
         )}
-        <h4 className="flex-1 text-sm font-medium">{color.colorLabel}</h4>
-
-        {/* Resumo agregado da cor */}
-        <div className="flex items-center gap-4 text-xs">
-          <div className="text-right">
-            <p className="text-[10px] text-muted-foreground">Total declarado</p>
-            <p className="font-semibold tabular-nums">
-              {totals.declared.toLocaleString("pt-BR")}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-muted-foreground">Tiny</p>
-            <p className="font-semibold tabular-nums text-muted-foreground">
-              {totals.tiny == null ? "—" : totals.tiny.toLocaleString("pt-BR")}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-muted-foreground">Δ%</p>
-            <p
-              className={`font-semibold tabular-nums ${
-                totals.delta == null
-                  ? "text-muted-foreground"
-                  : Math.abs(totals.delta) > 10
-                    ? "text-amber-600 dark:text-amber-400"
-                    : "text-emerald-600 dark:text-emerald-400"
-              }`}
-            >
-              {totals.delta == null
-                ? "—"
-                : `${totals.delta > 0 ? "+" : ""}${totals.delta.toFixed(1)}%`}
-            </p>
-          </div>
-          <ColorDivergenceBadge status={totals.colorStatus} />
-        </div>
+        <h4 className="text-sm font-medium">{color.colorLabel}</h4>
       </div>
 
-      {/* Linhas por pool */}
-      <div className="border-t border-border/60 bg-background/50">
+      <div className="bg-background/50">
         {sortedItems.map((item) => (
           <PoolRow
             key={item.id}
@@ -1000,7 +920,15 @@ function ColorBlock({
   );
 }
 
-function ColorDivergenceBadge({ status }: { status: DivergenceStatus | null }) {
+function LineDivergenceBadge({ status }: { status: DivergenceStatus | null }) {
+  if (status === "BREAK" || status === "COMMITTED_GT_DECLARED") {
+    return (
+      <Badge className="gap-1 bg-destructive/15 text-destructive">
+        <AlertTriangle className="h-3 w-3" />
+        Ruptura
+      </Badge>
+    );
+  }
   if (status === "DIVERGE") {
     return (
       <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
@@ -1023,7 +951,7 @@ function ColorDivergenceBadge({ status }: { status: DivergenceStatus | null }) {
       </Badge>
     );
   }
-  return <span className="text-muted-foreground text-sm">—</span>;
+  return null;
 }
 
 // ─── Pool row (Personalizado ou Marketplace de uma cor) ────────────────
@@ -1046,6 +974,9 @@ function PoolRow({
     item.divergence_status === "BREAK" ||
     item.divergence_status === "COMMITTED_GT_DECLARED";
   const balance = declared - item.quantity_committed;
+  const tiny = item.tiny_quantity;
+  const deltaPct =
+    tiny != null && declared > 0 ? ((tiny - declared) / declared) * 100 : null;
 
   const Icon = item.pool === "PERSONALIZADO" ? Sparkles : ShoppingBag;
   const iconCls =
@@ -1054,7 +985,7 @@ function PoolRow({
 
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-2.5 text-sm ${
+      className={`flex items-center gap-3 px-4 py-2 text-sm ${
         isBreak ? "bg-destructive/5" : ""
       }`}
     >
@@ -1063,7 +994,7 @@ function PoolRow({
         {label}
       </span>
 
-      <div className="flex flex-1 items-center justify-end gap-5">
+      <div className="flex flex-1 items-center justify-end gap-4">
         <Metric
           label="Declarado"
           value={
@@ -1108,12 +1039,31 @@ function PoolRow({
           </>
         )}
 
-        {isBreak && (
-          <Badge className="gap-1 bg-destructive/15 text-destructive">
-            <AlertTriangle className="h-3 w-3" />
-            Ruptura
-          </Badge>
-        )}
+        <Metric
+          label="Tiny"
+          value={tiny == null ? "—" : tiny.toLocaleString("pt-BR")}
+          muted
+        />
+
+        <Metric
+          label="Δ%"
+          value={
+            deltaPct == null
+              ? "—"
+              : `${deltaPct > 0 ? "+" : ""}${deltaPct.toFixed(1)}%`
+          }
+          accent={
+            deltaPct == null
+              ? "default"
+              : Math.abs(deltaPct) > 10
+                ? "warning"
+                : "default"
+          }
+        />
+
+        <div className="min-w-[88px] text-right">
+          <LineDivergenceBadge status={item.divergence_status} />
+        </div>
       </div>
     </div>
   );
@@ -1130,13 +1080,14 @@ function Metric({
   value: React.ReactNode;
   muted?: boolean;
   bold?: boolean;
-  accent?: "default" | "danger";
+  accent?: "default" | "danger" | "warning";
 }) {
   const cls = [
     "tabular-nums text-sm",
     muted ? "text-muted-foreground" : "",
     bold ? "font-semibold" : "",
     accent === "danger" ? "text-destructive" : "",
+    accent === "warning" ? "text-amber-600 dark:text-amber-400" : "",
   ]
     .filter(Boolean)
     .join(" ");

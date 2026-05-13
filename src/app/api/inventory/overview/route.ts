@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
     itemsBySupplier.set(supId, arr);
   }
 
-  // 4) Agregação por fornecedor (status por COR, não por linha)
+  // 4) Agregação por fornecedor — status por LINHA (cada pool tem Tiny específico)
   const supplierOverviews = (suppliers ?? []).map((s) => {
     const sItems = itemsBySupplier.get(s.id as string) ?? [];
     const inv = invBySupplier.get(s.id as string);
@@ -113,41 +113,20 @@ export async function GET(request: NextRequest) {
     const committed = sItems
       .filter((i) => i.pool === "PERSONALIZADO")
       .reduce((a, i) => a + i.quantity_committed, 0);
-    // Rupturas por LINHA (PERSONALIZADO com committed > declared)
     const breaks = sItems.filter(
       (i) =>
         i.divergence_status === "BREAK" ||
         i.divergence_status === "COMMITTED_GT_DECLARED"
     ).length;
-
-    // Status por (produto, cor) — não duplica entre pools
-    const colorStatuses = new Map<string, string | null>();
-    const priority = (st: string | null) =>
-      st === "BREAK" || st === "COMMITTED_GT_DECLARED"
-        ? 3
-        : st === "DIVERGE"
-          ? 2
-          : st === "MISSING_TINY"
-            ? 1
-            : 0;
-    for (const i of sItems) {
-      const k = `${i.product_id}|${i.color_key ?? ""}`;
-      const cur = colorStatuses.get(k);
-      if (cur === undefined || priority(i.divergence_status) > priority(cur)) {
-        colorStatuses.set(k, i.divergence_status);
-      }
-    }
-    let diverges = 0;
-    let matches = 0;
-    let missing = 0;
-    for (const st of colorStatuses.values()) {
-      if (st === "DIVERGE") diverges++;
-      else if (st === "MATCH") matches++;
-      else if (st === "MISSING_TINY") missing++;
-    }
-    const totalColors = colorStatuses.size;
+    const diverges = sItems.filter((i) => i.divergence_status === "DIVERGE").length;
+    const matches = sItems.filter((i) => i.divergence_status === "MATCH").length;
+    const missing = sItems.filter((i) => i.divergence_status === "MISSING_TINY").length;
+    const synced = sItems.filter((i) => i.tiny_quantity != null).length;
     const coverage =
-      totalColors > 0 ? Math.round(((totalColors - missing) / totalColors) * 100) : 0;
+      sItems.length > 0 ? Math.round((synced / sItems.length) * 100) : 0;
+    const distinctColors = new Set(
+      sItems.map((i) => `${i.product_id}|${i.color_key ?? ""}`)
+    );
 
     return {
       id: s.id as string,
@@ -157,7 +136,7 @@ export async function GET(request: NextRequest) {
       submitted_at: inv?.submitted_at ?? null,
       approved_at: inv?.approved_at ?? null,
       items_count: sItems.length,
-      colors_count: totalColors,
+      colors_count: distinctColors.size,
       declared,
       committed,
       balance: declared - committed,
@@ -196,8 +175,8 @@ export async function GET(request: NextRequest) {
     }
   );
   const coverage_pct =
-    totals.colors_count > 0
-      ? Math.round(((totals.colors_count - totals.missing) / totals.colors_count) * 100)
+    totals.items_count > 0
+      ? Math.round(((totals.items_count - totals.missing) / totals.items_count) * 100)
       : 0;
 
   // 6) Produtos críticos: BREAK ou saldo<0 ou (declared>0 e balance < 10% de declared)
@@ -232,10 +211,6 @@ export async function GET(request: NextRequest) {
         it.divergence_status === "COMMITTED_GT_DECLARED";
       const isLow = declared > 0 && ratio < 0.1; // saldo < 10% do declarado
       if (!isBreak && balance >= 0 && !isLow) return null;
-      const supplierId =
-        invBySupplier.get(
-          [...invToSupplier.entries()].find(([invId]) => invId === it.inventory_id)?.[0]!
-        )?.id ?? null;
       return {
         item_id: it.id,
         product_id: it.product_id,

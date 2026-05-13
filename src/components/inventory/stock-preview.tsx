@@ -1,28 +1,42 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Package, AlertCircle } from "lucide-react";
+import { Loader2, Package, AlertCircle, Warehouse } from "lucide-react";
+
+type Deposito = {
+  id: number;
+  nome: string;
+  desconsiderar: boolean;
+  saldo: number;
+  reservado: number;
+  disponivel: number;
+};
 
 type Variant = {
   color_key: string | null;
   color_label: string | null;
   tiny_id: number | null;
-  stock: number | null;
+  total_saldo: number | null;
+  total_reservado: number | null;
+  total_disponivel: number | null;
+  depositos: Deposito[];
 };
 
 interface StockPreviewProps {
   productId: string | null;
-  /** Mostra o componente só após produto ter ID válido. */
+  /** ID do depósito a destacar como "Personalizado" */
+  personalizadoDepositoId?: number | null;
+  /** ID do depósito a destacar como "Marketplace" */
+  marketplaceDepositoId?: number | null;
   enabled?: boolean;
 }
 
-/**
- * Mostra o estoque total no Tiny de cada variante (cor) do produto.
- * Não filtra por depósito — o saldo é o agregado de todos os depósitos
- * daquela variante. A divisão entre pools é feita pelo usuário no
- * inventário mensal.
- */
-export function StockPreview({ productId, enabled = true }: StockPreviewProps) {
+export function StockPreview({
+  productId,
+  personalizadoDepositoId,
+  marketplaceDepositoId,
+  enabled = true,
+}: StockPreviewProps) {
   const query = useQuery({
     queryKey: ["preview-stock", productId],
     queryFn: async () => {
@@ -51,7 +65,7 @@ export function StockPreview({ productId, enabled = true }: StockPreviewProps) {
         <Package className="h-3 w-3" />
         Estoque atual no Tiny
         <span className="ml-1 normal-case tracking-normal text-[10px] text-muted-foreground/70">
-          (total agregado por variante)
+          (por depósito)
         </span>
       </p>
 
@@ -76,32 +90,16 @@ export function StockPreview({ productId, enabled = true }: StockPreviewProps) {
       )}
 
       {query.data && "variants" in query.data && query.data.variants.length > 0 && (
-        <ul className="space-y-1">
+        <div className="space-y-3">
           {query.data.variants.map((v) => (
-            <li
+            <VariantStock
               key={v.color_key ?? "__none__"}
-              className="flex items-center justify-between gap-2 text-sm"
-            >
-              <span className="flex items-center gap-2">
-                <span className="font-medium">{v.color_label ?? "—"}</span>
-                {v.tiny_id != null ? (
-                  <span className="text-[10px] text-muted-foreground">
-                    #{v.tiny_id}
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-amber-600">sem tiny_id</span>
-                )}
-              </span>
-              <span
-                className={`tabular-nums font-semibold ${
-                  v.stock == null ? "text-muted-foreground" : "text-foreground"
-                }`}
-              >
-                {v.stock == null ? "—" : v.stock.toLocaleString("pt-BR")}
-              </span>
-            </li>
+              variant={v}
+              personalizadoDepositoId={personalizadoDepositoId}
+              marketplaceDepositoId={marketplaceDepositoId}
+            />
           ))}
-        </ul>
+        </div>
       )}
 
       {query.data && "errors" in query.data && query.data.errors && query.data.errors.length > 0 && (
@@ -111,17 +109,116 @@ export function StockPreview({ productId, enabled = true }: StockPreviewProps) {
           </summary>
           <ul className="mt-1 space-y-1 text-[10px] text-amber-700/80 dark:text-amber-400/80">
             {query.data.errors.map((e, i) => (
-              <li key={i} className="break-all">
-                {e}
-              </li>
+              <li key={i} className="break-all">{e}</li>
             ))}
           </ul>
         </details>
       )}
+    </div>
+  );
+}
 
-      <p className="mt-2 border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
-        No inventário mensal, você divide cada total entre os pools selecionados.
-      </p>
+function VariantStock({
+  variant,
+  personalizadoDepositoId,
+  marketplaceDepositoId,
+}: {
+  variant: Variant;
+  personalizadoDepositoId?: number | null;
+  marketplaceDepositoId?: number | null;
+}) {
+  const hasAnyPool = personalizadoDepositoId != null || marketplaceDepositoId != null;
+
+  return (
+    <div className="rounded-md border border-border/50 bg-background/60 p-2">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm">
+          <span className="font-medium">{variant.color_label ?? "—"}</span>
+          {variant.tiny_id != null && (
+            <span className="text-[10px] text-muted-foreground">
+              #{variant.tiny_id}
+            </span>
+          )}
+        </span>
+        <span className="flex items-baseline gap-1 text-xs">
+          <span className="text-muted-foreground">total</span>
+          <span className="font-semibold tabular-nums">
+            {variant.total_saldo?.toLocaleString("pt-BR") ?? "—"}
+          </span>
+          {variant.total_reservado != null && variant.total_reservado > 0 && (
+            <span className="ml-1 text-[10px] text-muted-foreground">
+              ({variant.total_reservado} reservado)
+            </span>
+          )}
+        </span>
+      </div>
+
+      {variant.depositos.length === 0 ? (
+        <p className="text-[10px] text-muted-foreground">
+          Sem depósitos retornados pelo Tiny.
+        </p>
+      ) : (
+        <ul className="space-y-0.5">
+          {variant.depositos.map((d) => {
+            const isPers = personalizadoDepositoId != null && d.id === personalizadoDepositoId;
+            const isMkt = marketplaceDepositoId != null && d.id === marketplaceDepositoId;
+            const isLinked = isPers || isMkt;
+            return (
+              <li
+                key={d.id}
+                className={`flex items-center justify-between gap-2 rounded px-1.5 py-0.5 text-[11px] ${
+                  isPers
+                    ? "bg-[--adds-blue]/10"
+                    : isMkt
+                      ? "bg-[--adds-orange]/10"
+                      : ""
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Warehouse
+                    className={`h-3 w-3 ${
+                      isPers
+                        ? "text-[--adds-blue]"
+                        : isMkt
+                          ? "text-[--adds-orange]"
+                          : "text-muted-foreground"
+                    }`}
+                  />
+                  <span className={isLinked ? "font-medium" : "text-muted-foreground"}>
+                    {d.nome}
+                  </span>
+                  {isPers && (
+                    <span className="text-[9px] font-semibold uppercase text-[--adds-blue]">
+                      Personalizado
+                    </span>
+                  )}
+                  {isMkt && (
+                    <span className="text-[9px] font-semibold uppercase text-[--adds-orange]">
+                      Marketplace
+                    </span>
+                  )}
+                </span>
+                <span className="flex items-baseline gap-1 tabular-nums">
+                  <span className={isLinked ? "font-semibold" : "text-muted-foreground"}>
+                    {d.saldo.toLocaleString("pt-BR")}
+                  </span>
+                  {d.reservado > 0 && (
+                    <span className="text-[9px] text-muted-foreground">
+                      ({d.reservado} res.)
+                    </span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {!hasAnyPool && (
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          Configure os depósitos abaixo para marcar quais alimentam cada pool.
+        </p>
+      )}
     </div>
   );
 }

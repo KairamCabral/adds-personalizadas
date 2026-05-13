@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  extractStock,
-  fetchTinyStockForProduct,
-} from "./supplier-stock-sync";
+import { fetchTinyStockForProduct, pickDepositoSaldo } from "./supplier-stock-sync";
 
 vi.mock("@/lib/tiny-api", () => ({
   tinyApiGet: vi.fn(),
@@ -10,127 +7,99 @@ vi.mock("@/lib/tiny-api", () => ({
 
 import { tinyApiGet } from "@/lib/tiny-api";
 
-describe("extractStock", () => {
-  it("lê estoque do root", () => {
-    expect(extractStock({ estoque: 100 } as never)).toBe(100);
-    expect(extractStock({ saldo: 50 } as never)).toBe(50);
-  });
-
-  it("lê estoque de data.* quando wrapper v3", () => {
-    expect(extractStock({ data: { estoque: 200 } } as never)).toBe(200);
-  });
-
-  it("retorna 0 quando campo ausente", () => {
-    expect(extractStock({} as never)).toBe(0);
-  });
-});
+const lilasPayload = {
+  id: 809742525,
+  nome: "Implant - Lilás",
+  codigo: "ESC-ADDS-IMPLANT-EM-1",
+  saldo: 5512,
+  reservado: 2637,
+  disponivel: 2875,
+  depositos: [
+    { id: 917790637, nome: "Full Mercado Livre", desconsiderar: true, saldo: 0, reservado: 0, disponivel: 0, empresa: "adds" },
+    { id: 798872182, nome: "SC - Sede ADDS", desconsiderar: false, saldo: 3315, reservado: 1019, disponivel: 2296, empresa: "adds" },
+    { id: 809766089, nome: "SP - WS Servições - MarketPlac", desconsiderar: false, saldo: 922, reservado: 393, disponivel: 529, empresa: "adds" },
+    { id: 809509624, nome: "SP - WS Servições - Personaliz", desconsiderar: false, saldo: 1275, reservado: 1225, disponivel: 50, empresa: "adds" },
+  ],
+};
 
 describe("fetchTinyStockForProduct", () => {
   beforeEach(() => {
     vi.mocked(tinyApiGet).mockReset();
   });
 
-  it("busca estoque por SKU (listagem) para cada cor mapeada", async () => {
+  it("retorna saldos por depósito para variantes mapeadas", async () => {
     vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
-      if (endpoint.includes("codigo=SKU-LIL"))
-        return { itens: [{ id: 100, codigo: "SKU-LIL", estoque: 50 }] };
-      if (endpoint.includes("codigo=SKU-AMA"))
-        return { itens: [{ id: 200, codigo: "SKU-AMA", estoque: 75 }] };
+      if (endpoint === "/estoque/809742525") return lilasPayload;
       throw new Error("unexpected " + endpoint);
     });
 
     const { results, errors } = await fetchTinyStockForProduct({
-      tinyId: 999,
-      tinyColorMap: {
-        lilas: { tiny_id: 100, sku: "SKU-LIL" },
-        amarela: { tiny_id: 200, sku: "SKU-AMA" },
-      },
+      tinyId: 803889813,
+      tinyColorMap: { lilas: { tiny_id: 809742525, sku: "ESC-ADDS-IMPLANT-EM-1" } },
     });
 
     expect(errors).toEqual([]);
-    expect(results).toHaveLength(2);
-    expect(results.find((r) => r.colorKey === "lilas")?.stock).toBe(50);
-    expect(results.find((r) => r.colorKey === "amarela")?.stock).toBe(75);
+    expect(results).toHaveLength(1);
+    expect(results[0].tinyId).toBe(809742525);
+    expect(results[0].colorKey).toBe("lilas");
+    expect(results[0].totalSaldo).toBe(5512);
+    expect(results[0].totalReservado).toBe(2637);
+    expect(results[0].totalDisponivel).toBe(2875);
+    expect(results[0].depositos).toHaveLength(4);
   });
 
-  it("aceita estoque vindo dentro de data.itens", async () => {
-    vi.mocked(tinyApiGet).mockResolvedValue({
-      data: { itens: [{ id: 100, codigo: "SKU-LIL", saldo: 88 }] },
-    });
-
+  it("aceita payload envelopado em { data: ... }", async () => {
+    vi.mocked(tinyApiGet).mockResolvedValue({ data: lilasPayload });
     const { results } = await fetchTinyStockForProduct({
-      tinyId: 999,
-      tinyColorMap: { lilas: { tiny_id: 100, sku: "SKU-LIL" } },
+      tinyId: null,
+      tinyColorMap: { lilas: { tiny_id: 809742525 } },
     });
-
-    expect(results[0].stock).toBe(88);
+    expect(results[0].totalSaldo).toBe(5512);
   });
 
-  it("usa fallback /produtos?nome quando ?codigo não retorna estoque", async () => {
-    vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
-      if (endpoint.includes("codigo=SKU-LIL")) return { itens: [] };
-      if (endpoint.includes("nome="))
-        return { itens: [{ id: 100, codigo: "SKU-LIL", estoque: 42 }] };
-      throw new Error("unexpected " + endpoint);
-    });
-
+  it("marca desconsiderar=true para Full Mercado Livre", async () => {
+    vi.mocked(tinyApiGet).mockResolvedValue(lilasPayload);
     const { results } = await fetchTinyStockForProduct({
-      tinyId: 999,
-      tinyColorMap: { lilas: { tiny_id: 100, sku: "SKU-LIL" } },
-      productName: "ADDS Implant",
+      tinyId: null,
+      tinyColorMap: { lilas: { tiny_id: 809742525 } },
     });
-
-    expect(results[0].stock).toBe(42);
-    expect(results[0].source).toBe("list_by_nome");
+    const fullMl = results[0].depositos.find((d) => d.id === 917790637);
+    expect(fullMl?.desconsiderar).toBe(true);
+    const wsPers = results[0].depositos.find((d) => d.id === 809509624);
+    expect(wsPers?.desconsiderar).toBe(false);
   });
 
-  it("último fallback: /produtos/{id} (detalhe) se nem ?codigo nem ?nome trazem estoque", async () => {
+  it("trata 404 (produto inexistente) sem quebrar lote", async () => {
     vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
-      if (endpoint.includes("codigo=")) return { itens: [] };
-      if (endpoint.includes("nome=")) return { itens: [] };
-      if (endpoint === "/produtos/100") return { estoque: 99 };
-      throw new Error("unexpected " + endpoint);
-    });
-
-    const { results } = await fetchTinyStockForProduct({
-      tinyId: 999,
-      tinyColorMap: { lilas: { tiny_id: 100, sku: "SKU-LIL" } },
-      productName: "ADDS Implant",
-    });
-
-    expect(results[0].stock).toBe(99);
-    expect(results[0].source).toBe("detail");
-  });
-
-  it("registra erro quando não encontra estoque em nenhum caminho", async () => {
-    vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
-      if (endpoint.includes("codigo=")) return { itens: [] };
-      if (endpoint.includes("nome=")) return { itens: [] };
-      if (endpoint === "/produtos/300") return { id: 300, nome: "..." }; // sem estoque
-      throw new Error("unexpected " + endpoint);
+      if (endpoint === "/estoque/100") return lilasPayload;
+      if (endpoint === "/estoque/999")
+        throw new Error("Tiny API GET /estoque/999 failed: 404 not found");
+      throw new Error("unexpected");
     });
 
     const { results, errors } = await fetchTinyStockForProduct({
       tinyId: null,
-      tinyColorMap: { broken: { tiny_id: 300, sku: "SKU-XYZ" } },
-      productName: "Produto X",
+      tinyColorMap: {
+        ok: { tiny_id: 100 },
+        gone: { tiny_id: 999 },
+      },
     });
 
-    expect(results).toEqual([]);
+    expect(results).toHaveLength(1);
+    expect(results[0].colorKey).toBe("ok");
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("broken");
+    expect(errors[0]).toContain("gone");
   });
 
   it("busca pelo tiny_id pai quando não há cores mapeadas", async () => {
-    vi.mocked(tinyApiGet).mockResolvedValue({ estoque: 196 });
-
-    const { results, errors } = await fetchTinyStockForProduct({
+    vi.mocked(tinyApiGet).mockResolvedValue(lilasPayload);
+    const { results } = await fetchTinyStockForProduct({
       tinyId: 555,
       tinyColorMap: null,
     });
-
-    expect(errors).toEqual([]);
-    expect(results).toMatchObject([{ tinyId: 555, stock: 196, colorKey: null }]);
+    expect(results).toHaveLength(1);
+    expect(results[0].colorKey).toBeNull();
+    expect(results[0].tinyId).toBe(555);
   });
 
   it("retorna vazio quando não há tiny_id nem variantes", async () => {
@@ -141,5 +110,33 @@ describe("fetchTinyStockForProduct", () => {
     expect(results).toEqual([]);
     expect(errors).toEqual([]);
     expect(tinyApiGet).not.toHaveBeenCalled();
+  });
+});
+
+describe("pickDepositoSaldo", () => {
+  const result = {
+    tinyId: 1,
+    colorKey: "lilas",
+    totalSaldo: 0,
+    totalReservado: 0,
+    totalDisponivel: 0,
+    depositos: [
+      { id: 100, nome: "A", desconsiderar: false, saldo: 50, reservado: 10, disponivel: 40, empresa: "x" },
+      { id: 200, nome: "B", desconsiderar: false, saldo: 30, reservado: 5, disponivel: 25, empresa: "x" },
+    ],
+  };
+
+  it("retorna o depósito específico", () => {
+    expect(pickDepositoSaldo(result, 100)?.saldo).toBe(50);
+    expect(pickDepositoSaldo(result, 200)?.saldo).toBe(30);
+  });
+
+  it("retorna null quando depositoId não está na lista", () => {
+    expect(pickDepositoSaldo(result, 999)).toBeNull();
+  });
+
+  it("retorna null quando depositoId é null", () => {
+    expect(pickDepositoSaldo(result, null)).toBeNull();
+    expect(pickDepositoSaldo(result, undefined)).toBeNull();
   });
 });
