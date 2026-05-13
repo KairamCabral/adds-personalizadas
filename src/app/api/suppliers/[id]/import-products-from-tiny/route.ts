@@ -21,6 +21,8 @@ interface TinyProductDetail {
 interface ImportBody {
   tiny_ids: number[];
   pools: Pool[];
+  tiny_deposito_personalizado_id?: number | null;
+  tiny_deposito_marketplace_id?: number | null;
 }
 
 function parseNum(value: number | string | undefined | null): number | null {
@@ -107,12 +109,19 @@ export async function POST(
         if (existingByTinyId.has(tinyId)) {
           // Apenas atualiza vínculo + pools (preserva resto)
           const p = existingByTinyId.get(tinyId)!;
+          const updates: Record<string, unknown> = {
+            inventory_supplier_id: supplierId,
+            inventory_pools: body.pools,
+          };
+          if (body.tiny_deposito_personalizado_id !== undefined) {
+            updates.tiny_deposito_personalizado_id = body.tiny_deposito_personalizado_id;
+          }
+          if (body.tiny_deposito_marketplace_id !== undefined) {
+            updates.tiny_deposito_marketplace_id = body.tiny_deposito_marketplace_id;
+          }
           const { error: upErr } = await admin
             .from("products")
-            .update({
-              inventory_supplier_id: supplierId,
-              inventory_pools: body.pools,
-            } as never)
+            .update(updates as never)
             .eq("id", p.id);
           if (upErr) {
             errors.push(`tiny_id=${tinyId} (já existe '${p.name}'): ${upErr.message}`);
@@ -144,6 +153,8 @@ export async function POST(
             is_active: true,
             inventory_supplier_id: supplierId,
             inventory_pools: body.pools,
+            tiny_deposito_personalizado_id: body.tiny_deposito_personalizado_id ?? null,
+            tiny_deposito_marketplace_id: body.tiny_deposito_marketplace_id ?? null,
             available_colors: [],
           } as never)
           .select("id, name")

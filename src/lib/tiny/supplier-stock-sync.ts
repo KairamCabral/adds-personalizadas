@@ -8,39 +8,54 @@ type ColorMapEntry = {
 
 export type ProductColorMap = Record<string, ColorMapEntry>;
 
-interface TinyListItem {
+/**
+ * Resposta do endpoint Tiny v3 `/estoque/{idProduto}`.
+ * Contém saldo, reservado, disponível agregados + lista de depósitos.
+ */
+interface TinyEstoqueResponse {
   id?: number;
   nome?: string;
-  descricao?: string;
   codigo?: string;
-  sku?: string;
-  estoque?: number | string;
+  unidade?: string;
   saldo?: number | string;
+  reservado?: number | string;
+  disponivel?: number | string;
+  localizacao?: string;
+  depositos?: Array<TinyDepositoSaldoRaw>;
+  data?: TinyEstoqueResponse;
 }
 
-interface TinyListPayload {
-  itens?: TinyListItem[];
-  data?: { itens?: TinyListItem[] };
-  produtos?: TinyListItem[];
-}
-
-interface TinyProductDetailV3 {
+interface TinyDepositoSaldoRaw {
   id?: number;
   nome?: string;
-  descricao?: string;
-  codigo?: string;
-  sku?: string;
-  estoque?: number | string;
+  desconsiderar?: boolean;
   saldo?: number | string;
-  data?: TinyProductDetailV3;
+  reservado?: number | string;
+  disponivel?: number | string;
+  empresa?: string;
+}
+
+export interface TinyDepositoSaldo {
+  id: number;
+  nome: string;
+  desconsiderar: boolean;
+  saldo: number;
+  reservado: number;
+  disponivel: number;
+  empresa: string | null;
 }
 
 export interface TinyStockResult {
   tinyId: number;
-  stock: number;
   colorKey: string | null;
-  /** Fonte: 'list_by_sku', 'list_by_nome', 'list_general', 'detail' */
-  source?: string;
+  /** Saldo total agregado (todos os depósitos exceto desconsiderar=true) */
+  totalSaldo: number;
+  /** Reservado total agregado */
+  totalReservado: number;
+  /** Disponível total agregado (saldo - reservado) */
+  totalDisponivel: number;
+  /** Lista completa de depósitos com saldo de cada */
+  depositos: TinyDepositoSaldo[];
 }
 
 function toNumber(value: number | string | undefined | null): number {
@@ -48,159 +63,127 @@ function toNumber(value: number | string | undefined | null): number {
   return typeof value === "string" ? parseFloat(value) || 0 : Number(value) || 0;
 }
 
-function extractListItems(payload: TinyListPayload): TinyListItem[] {
-  return payload.itens ?? payload.data?.itens ?? payload.produtos ?? [];
-}
-
-function hasStock(item: TinyListItem): boolean {
-  return item.estoque !== undefined || item.saldo !== undefined;
-}
-
-export function extractStock(raw: TinyProductDetailV3): number {
-  const root = raw?.data ?? raw;
-  return toNumber(root.estoque ?? root.saldo);
+function mapDeposito(raw: TinyDepositoSaldoRaw): TinyDepositoSaldo | null {
+  if (!raw?.id) return null;
+  return {
+    id: raw.id,
+    nome: raw.nome ?? `Depósito ${raw.id}`,
+    desconsiderar: raw.desconsiderar === true,
+    saldo: toNumber(raw.saldo),
+    reservado: toNumber(raw.reservado),
+    disponivel: toNumber(raw.disponivel),
+    empresa: typeof raw.empresa === "string" ? raw.empresa : null,
+  };
 }
 
 /**
- * Estratégia de busca de estoque na Tiny v3 (em ordem):
- *
- * 1. /produtos?codigo=SKU&limit=5 → pode trazer estoque (varia por versão)
- * 2. /produtos?nome=NomeProduto&limit=20 → SEMPRE traz estoque na listagem
- *    (caminho que /api/tiny/products usa em produção)
- * 3. /produtos/{tiny_id} (detalhe) → fallback, geralmente sem estoque na v3
+ * Busca o estoque completo (todos os depósitos) de uma variante via /estoque/{tiny_id}.
+ * Esse é o ÚNICO endpoint da Tiny v3 (escopo OAuth padrão) que expõe saldo por depósito.
  */
-async function fetchStockForVariant(args: {
-  tinyId: number | null | undefined;
-  sku: string | null | undefined;
-  productName?: string | null;
-}): Promise<{ stock: number | null; source: string; debug: string[] }> {
-  const { tinyId, sku, productName } = args;
-  const debug: string[] = [];
+async function fetchEstoqueByTinyId(
+  tinyId: number
+): Promise<{
+  totalSaldo: number;
+  totalReservado: number;
+  totalDisponivel: number;
+  depositos: TinyDepositoSaldo[];
+} | null> {
+  try {
+    const raw = await tinyApiGet<TinyEstoqueResponse>(`/estoque/${tinyId}`);
+    const root = raw?.data ?? raw;
+    const depositos: TinyDepositoSaldo[] = (root.depositos ?? [])
+      .map(mapDeposito)
+      .filter((d): d is TinyDepositoSaldo => d !== null);
 
-  // 1) Busca por SKU
-  if (sku) {
-    try {
-      const list = await tinyApiGet<TinyListPayload>(
-        `/produtos?codigo=${encodeURIComponent(sku)}&limit=5`
-      );
-      const items = extractListItems(list);
-      const match =
-        items.find(
-          (it) =>
-            (it.codigo ?? "").toUpperCase() === sku.toUpperCase() ||
-            (it.sku ?? "").toUpperCase() === sku.toUpperCase() ||
-            it.id === tinyId
-        ) ?? (items.length === 1 ? items[0] : null);
-      debug.push(
-        `?codigo=${sku} → ${items.length} item(s), match=${match ? `id ${match.id}` : "—"}, hasStock=${match ? hasStock(match) : false}`
-      );
-      if (match && hasStock(match)) {
-        return {
-          stock: toNumber(match.estoque ?? match.saldo),
-          source: "list_by_sku",
-          debug,
-        };
-      }
-    } catch (err) {
-      debug.push(`?codigo=${sku} → ${err instanceof Error ? err.message : "err"}`);
+    // Usa os totais que o próprio Tiny envia (já agregados)
+    const totalSaldo = toNumber(root.saldo);
+    const totalReservado = toNumber(root.reservado);
+    const totalDisponivel = toNumber(root.disponivel);
+
+    return { totalSaldo, totalReservado, totalDisponivel, depositos };
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("404")) {
+      // Produto não existe no Tiny
+      return null;
     }
+    throw err;
   }
-
-  // 2) Busca pelo nome do produto (Tiny match by nome retorna estoque)
-  if (productName) {
-    try {
-      const q = productName.slice(0, 40); // limite seguro
-      const list = await tinyApiGet<TinyListPayload>(
-        `/produtos?nome=${encodeURIComponent(q)}&limit=30`
-      );
-      const items = extractListItems(list);
-      const match =
-        (tinyId ? items.find((it) => it.id === tinyId) : null) ??
-        (sku
-          ? items.find(
-              (it) =>
-                (it.codigo ?? "").toUpperCase() === sku.toUpperCase() ||
-                (it.sku ?? "").toUpperCase() === sku.toUpperCase()
-            )
-          : null);
-      debug.push(
-        `?nome=${q} → ${items.length} item(s), match=${match ? `id ${match.id}` : "—"}, hasStock=${match ? hasStock(match) : false}`
-      );
-      if (match && hasStock(match)) {
-        return {
-          stock: toNumber(match.estoque ?? match.saldo),
-          source: "list_by_nome",
-          debug,
-        };
-      }
-    } catch (err) {
-      debug.push(`?nome=… → ${err instanceof Error ? err.message : "err"}`);
-    }
-  }
-
-  // 3) Detalhe (raramente preenchido na v3)
-  if (tinyId) {
-    try {
-      const raw = await tinyApiGet<TinyProductDetailV3>(`/produtos/${tinyId}`);
-      const root = raw?.data ?? raw;
-      const has = root.estoque !== undefined || root.saldo !== undefined;
-      debug.push(
-        `/produtos/${tinyId} → keys=${Object.keys(root).join(",")} hasStock=${has}`
-      );
-      if (has) {
-        return { stock: extractStock(raw), source: "detail", debug };
-      }
-    } catch (err) {
-      debug.push(`/produtos/${tinyId} → ${err instanceof Error ? err.message : "err"}`);
-    }
-  }
-
-  return { stock: null, source: "none", debug };
 }
 
+/**
+ * Busca o estoque no Tiny de todas as variantes mapeadas em `tiny_color_map`.
+ * Quando não há cores, busca pelo `tiny_id` do produto pai.
+ *
+ * Retorna saldo COMPLETO por depósito de cada variante. O caller filtra
+ * pelo depósito de interesse via `pickDepositoSaldo`.
+ */
 export async function fetchTinyStockForProduct(args: {
   tinyId: number | null | undefined;
   tinyColorMap: ProductColorMap | null | undefined;
-  /** Nome do produto pai (ex: "ADDS Implant") — usado em fallback de busca por nome. */
-  productName?: string | null;
-}): Promise<{
-  results: TinyStockResult[];
-  errors: string[];
-}> {
-  const { tinyId, tinyColorMap, productName } = args;
+}): Promise<{ results: TinyStockResult[]; errors: string[] }> {
+  const { tinyId, tinyColorMap } = args;
   const colorMap = tinyColorMap ?? {};
   const results: TinyStockResult[] = [];
   const errors: string[] = [];
 
   const colorEntries = Object.entries(colorMap).filter(
-    ([, m]) => m?.tiny_id || m?.sku
+    ([, m]) => m?.tiny_id
   );
 
   if (colorEntries.length > 0) {
     for (const [colorKey, mapping] of colorEntries) {
-      const { stock, source, debug } = await fetchStockForVariant({
-        tinyId: mapping.tiny_id,
-        sku: mapping.sku,
-        productName,
-      });
-      if (stock != null && mapping.tiny_id) {
-        results.push({ tinyId: mapping.tiny_id, stock, colorKey, source });
-      } else {
-        errors.push(`cor "${colorKey}": ${debug.join(" | ")}`);
+      const variantTinyId = mapping.tiny_id!;
+      try {
+        const data = await fetchEstoqueByTinyId(variantTinyId);
+        if (!data) {
+          errors.push(`cor "${colorKey}": produto tiny_id=${variantTinyId} não encontrado`);
+          continue;
+        }
+        results.push({
+          tinyId: variantTinyId,
+          colorKey,
+          totalSaldo: data.totalSaldo,
+          totalReservado: data.totalReservado,
+          totalDisponivel: data.totalDisponivel,
+          depositos: data.depositos,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`cor "${colorKey}" (tiny_id=${variantTinyId}): ${msg}`);
       }
     }
   } else if (tinyId) {
-    const { stock, source, debug } = await fetchStockForVariant({
-      tinyId,
-      sku: null,
-      productName,
-    });
-    if (stock != null) {
-      results.push({ tinyId, stock, colorKey: null, source });
-    } else {
-      errors.push(`tiny_id=${tinyId}: ${debug.join(" | ")}`);
+    try {
+      const data = await fetchEstoqueByTinyId(tinyId);
+      if (!data) {
+        errors.push(`tiny_id=${tinyId}: produto não encontrado`);
+      } else {
+        results.push({
+          tinyId,
+          colorKey: null,
+          totalSaldo: data.totalSaldo,
+          totalReservado: data.totalReservado,
+          totalDisponivel: data.totalDisponivel,
+          depositos: data.depositos,
+        });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`tiny_id=${tinyId}: ${msg}`);
     }
   }
 
   return { results, errors };
+}
+
+/**
+ * Retorna o saldo de uma variante no depósito específico, ou null se o depósito
+ * não está na lista. Usado quando o pool tem `tiny_deposito_*_id` configurado.
+ */
+export function pickDepositoSaldo(
+  result: TinyStockResult,
+  depositoId: number | null | undefined
+): TinyDepositoSaldo | null {
+  if (depositoId == null) return null;
+  return result.depositos.find((d) => d.id === depositoId) ?? null;
 }

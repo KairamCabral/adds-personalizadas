@@ -4,16 +4,20 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isTinyConnected, TinyTokenExpiredError } from "@/lib/tiny-api";
 import {
   fetchTinyStockForProduct,
+  pickDepositoSaldo,
   type ProductColorMap,
 } from "@/lib/tiny/supplier-stock-sync";
 
+type Pool = "PERSONALIZADO" | "MARKETPLACE";
+
 /**
- * Sincroniza o saldo Tiny de cada produto do inventário.
+ * Sincroniza o saldo Tiny de cada linha do inventário.
  *
- * Para cada produto único (não por pool — o estoque Tiny é o total agregado
- * da cor, não por depósito). Aplica o mesmo `tiny_quantity` em TODAS as
- * linhas (produto, cor, pool=*) da mesma variante. A classificação de
- * divergência é depois agregada por (produto, cor) pelo recompute_supplier_inventory.
+ * Para cada produto: chama UMA vez /estoque/{tiny_id} de cada variante e
+ * extrai o saldo do depósito Tiny específico de cada pool (configurado em
+ * products.tiny_deposito_personalizado_id / _marketplace_id).
+ *
+ * Cada linha (produto, cor, pool) recebe o saldo do SEU depósito.
  */
 export async function POST(
   _request: NextRequest,
@@ -44,12 +48,15 @@ export async function POST(
 
   const admin = createAdminClient();
 
-  // Carrega items com produto + valida que pertencem ao supplier
   const { data: items, error: itemsErr } = await admin
     .from("supplier_inventory_items")
     .select(`
       id, product_id, color_key, pool,
-      product:products(id, name, tiny_id, tiny_color_map),
+      product:products(
+        id, name, tiny_id, tiny_color_map,
+        tiny_deposito_personalizado_id,
+        tiny_deposito_marketplace_id
+      ),
       inventory:supplier_inventories!inner(id, supplier_id)
     `)
     .eq("inventory_id", invId);
@@ -71,7 +78,7 @@ export async function POST(
   }
 
   try {
-    // Agrupa por product_id (todas as cores e pools do mesmo produto na MESMA chamada)
+    // Agrupa por product_id — 1 chamada Tiny por produto
     const byProduct = new Map<string, typeof ownItems>();
     for (const it of ownItems) {
       const arr = byProduct.get(it.product_id) ?? [];
@@ -84,7 +91,6 @@ export async function POST(
     const CONCURRENCY = 5;
     const entries = Array.from(byProduct.entries());
     let cursor = 0;
-    let synced = 0;
 
     const processNext = async (): Promise<number> => {
       let localSynced = 0;
@@ -94,8 +100,11 @@ export async function POST(
         const head = productItems[0];
         const product = head.product as {
           id: string;
+          name: string;
           tiny_id: number | null;
           tiny_color_map: ProductColorMap | null;
+          tiny_deposito_personalizado_id: number | null;
+          tiny_deposito_marketplace_id: number | null;
         } | null;
         if (!product) continue;
 
@@ -104,32 +113,54 @@ export async function POST(
           continue;
         }
 
-        const productName = (product as { name?: string }).name ?? null;
         const { results, errors: fetchErrors } = await fetchTinyStockForProduct({
           tinyId: product.tiny_id,
           tinyColorMap: product.tiny_color_map,
-          productName,
         });
         if (fetchErrors.length > 0)
           errors.push(...fetchErrors.map((e) => `${productId}: ${e}`));
 
-        // Indexa stock por color_key — o mesmo valor vale para todos os pools
-        const stockByColor = new Map<string, number>();
+        // Indexa resultados por color_key (cada cor traz lista completa de depósitos)
+        const resultsByColor = new Map<string, (typeof results)[number]>();
         for (const r of results) {
-          stockByColor.set(r.colorKey ?? "", r.stock);
+          resultsByColor.set(r.colorKey ?? "", r);
         }
 
         for (const it of productItems) {
-          const stock = stockByColor.get(it.color_key ?? "");
-          if (stock == null) continue;
+          const result = resultsByColor.get(it.color_key ?? "");
+          if (!result) continue;
+
+          const pool = it.pool as Pool;
+          const depositoId =
+            pool === "PERSONALIZADO"
+              ? product.tiny_deposito_personalizado_id
+              : product.tiny_deposito_marketplace_id;
+
+          const dep = pickDepositoSaldo(result, depositoId);
+
+          let saldo: number;
+          if (dep) {
+            // Depósito configurado e encontrado: usa saldo desse depósito
+            saldo = dep.saldo;
+          } else if (depositoId == null) {
+            // Sem depósito configurado: usa saldo total agregado
+            saldo = result.totalSaldo;
+          } else {
+            // Depósito configurado mas não retornou: registra erro
+            errors.push(
+              `item ${it.id} (${pool}): depósito #${depositoId} não retornado pelo Tiny para essa variante`
+            );
+            continue;
+          }
+
           const { error: updErr } = await admin
             .from("supplier_inventory_items")
-            .update({ tiny_quantity: stock, tiny_synced_at: now })
+            .update({ tiny_quantity: saldo, tiny_synced_at: now })
             .eq("id", it.id);
           if (updErr) {
             errors.push(`item ${it.id}: ${updErr.message}`);
           } else {
-            localSynced++;
+            localSynced += 1;
           }
         }
       }
@@ -141,9 +172,8 @@ export async function POST(
       () => processNext()
     );
     const counts = await Promise.all(workers);
-    synced = counts.reduce((a, b) => a + b, 0);
+    const synced = counts.reduce((a, b) => a + b, 0);
 
-    // Recompute classifica divergência agregada por (produto, cor)
     await admin.rpc("recompute_supplier_inventory", { p_inventory_id: invId });
 
     return NextResponse.json({

@@ -228,7 +228,7 @@ export function EstoqueOverview({ role }: EstoqueOverviewProps) {
               <KpiHero
                 label="Cobertura Tiny"
                 value={`${overview.totals.coverage_pct}%`}
-                hint={`${overview.totals.colors_count - overview.totals.missing} de ${overview.totals.colors_count} cor(es)`}
+                hint={`${overview.totals.items_count - overview.totals.missing} de ${overview.totals.items_count} linha(s)`}
                 icon={<TrendingUp className="h-4 w-4" />}
                 tone={
                   overview.totals.coverage_pct === 100
