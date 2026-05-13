@@ -66,24 +66,46 @@ describe("fetchTinyStockForProduct", () => {
     expect(results[0].stock).toBe(88);
   });
 
-  it("usa fallback /produtos/{id} se a listagem por SKU não retorna estoque", async () => {
+  it("usa fallback /produtos?nome quando ?codigo não retorna estoque", async () => {
     vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
       if (endpoint.includes("codigo=SKU-LIL")) return { itens: [] };
-      if (endpoint === "/produtos/100") return { estoque: 42 };
+      if (endpoint.includes("nome="))
+        return { itens: [{ id: 100, codigo: "SKU-LIL", estoque: 42 }] };
       throw new Error("unexpected " + endpoint);
     });
 
     const { results } = await fetchTinyStockForProduct({
       tinyId: 999,
       tinyColorMap: { lilas: { tiny_id: 100, sku: "SKU-LIL" } },
+      productName: "ADDS Implant",
     });
 
     expect(results[0].stock).toBe(42);
+    expect(results[0].source).toBe("list_by_nome");
+  });
+
+  it("último fallback: /produtos/{id} (detalhe) se nem ?codigo nem ?nome trazem estoque", async () => {
+    vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
+      if (endpoint.includes("codigo=")) return { itens: [] };
+      if (endpoint.includes("nome=")) return { itens: [] };
+      if (endpoint === "/produtos/100") return { estoque: 99 };
+      throw new Error("unexpected " + endpoint);
+    });
+
+    const { results } = await fetchTinyStockForProduct({
+      tinyId: 999,
+      tinyColorMap: { lilas: { tiny_id: 100, sku: "SKU-LIL" } },
+      productName: "ADDS Implant",
+    });
+
+    expect(results[0].stock).toBe(99);
+    expect(results[0].source).toBe("detail");
   });
 
   it("registra erro quando não encontra estoque em nenhum caminho", async () => {
     vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
-      if (endpoint.includes("codigo=SKU-XYZ")) return { itens: [] };
+      if (endpoint.includes("codigo=")) return { itens: [] };
+      if (endpoint.includes("nome=")) return { itens: [] };
       if (endpoint === "/produtos/300") return { id: 300, nome: "..." }; // sem estoque
       throw new Error("unexpected " + endpoint);
     });
@@ -91,6 +113,7 @@ describe("fetchTinyStockForProduct", () => {
     const { results, errors } = await fetchTinyStockForProduct({
       tinyId: null,
       tinyColorMap: { broken: { tiny_id: 300, sku: "SKU-XYZ" } },
+      productName: "Produto X",
     });
 
     expect(results).toEqual([]);
@@ -107,7 +130,7 @@ describe("fetchTinyStockForProduct", () => {
     });
 
     expect(errors).toEqual([]);
-    expect(results).toEqual([{ tinyId: 555, stock: 196, colorKey: null }]);
+    expect(results).toMatchObject([{ tinyId: 555, stock: 196, colorKey: null }]);
   });
 
   it("retorna vazio quando não há tiny_id nem variantes", async () => {

@@ -49,7 +49,7 @@ export async function POST(
     .from("supplier_inventory_items")
     .select(`
       id, product_id, color_key, pool,
-      product:products(id, tiny_id, tiny_color_map),
+      product:products(id, name, tiny_id, tiny_color_map),
       inventory:supplier_inventories!inner(id, supplier_id)
     `)
     .eq("inventory_id", invId);
@@ -104,9 +104,11 @@ export async function POST(
           continue;
         }
 
+        const productName = (product as { name?: string }).name ?? null;
         const { results, errors: fetchErrors } = await fetchTinyStockForProduct({
           tinyId: product.tiny_id,
           tinyColorMap: product.tiny_color_map,
+          productName,
         });
         if (fetchErrors.length > 0)
           errors.push(...fetchErrors.map((e) => `${productId}: ${e}`));

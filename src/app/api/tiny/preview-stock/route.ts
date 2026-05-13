@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
     const { results, errors } = await fetchTinyStockForProduct({
       tinyId: product.tiny_id,
       tinyColorMap: colorMap,
+      productName: product.name,
     });
 
     const variants: PreviewVariant[] = [];
