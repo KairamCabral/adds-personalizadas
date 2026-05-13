@@ -465,6 +465,50 @@ export async function sendClientToBling(
       ? extractBlingErrorMessage(res.status, blingResponse)
       : null;
 
+    // Auto-recuperação: Bling rejeitou por CPF/CNPJ duplicado. O contato
+    // existe sob outra razão social (caso clássico: CRM tem "X LTDA",
+    // Bling tem "X EIRELI" com mesmo CNPJ). Buscamos por documento e
+    // reutilizamos o ID, atualizando os campos com dados do CRM.
+    const isDuplicateDocument =
+      !res.ok &&
+      typeof errorMessage === "string" &&
+      /\b(cnpj|cpf)\b[^a-z]*j[áa]\s+est[áa]\s+cadastrado/i.test(errorMessage);
+
+    const docDigits = client?.document
+      ? String(client.document).replace(/\D/g, "")
+      : "";
+
+    if (isDuplicateDocument && docDigits) {
+      const recoveredId = await findBlingContactByDocument(
+        docDigits,
+        apiToken,
+        baseUrl
+      );
+      if (recoveredId != null) {
+        await db.from("supplier_data_logs").insert({
+          supplier_id: supplierId,
+          order_id: orderId,
+          client_id: orderData.client_id,
+          data_sent: payload as never,
+          fields_sent: fieldsSent,
+          bling_contact_id: recoveredId,
+          bling_response: blingResponse as never,
+          status: "success",
+          error_message: `Contato recuperado por CNPJ após colisão: ${errorMessage}`,
+          sent_by: sentBy ?? null,
+        });
+        // Sincroniza dados do CRM no contato existente (nome inclusive).
+        await updateBlingContact(supplierId, recoveredId, orderId, db).catch(
+          (err) =>
+            console.warn(
+              "[bling] updateBlingContact pós-recuperação falhou:",
+              err
+            )
+        );
+        return { success: true, blingContactId: recoveredId };
+      }
+    }
+
     await db.from("supplier_data_logs").insert({
       supplier_id: supplierId,
       order_id: orderId,
@@ -743,6 +787,54 @@ function generateNameVariations(name: string): string[] {
 
   // Remover duplicatas mantendo ordem
   return [...new Set(variations)];
+}
+
+/**
+ * Busca contato existente no Bling por CPF/CNPJ.
+ *
+ * Caminho preferencial quando o cliente do CRM tem `document`: o Bling
+ * rejeita criar contato com CNPJ duplicado (erro de validação), e a busca
+ * por nome falha quando a razão social diverge entre CRM e Bling.
+ * Documento é a única chave que identifica o contato com certeza.
+ *
+ * Aceita CPF/CNPJ com ou sem formatação — normaliza para dígitos antes
+ * de consultar.
+ */
+async function findBlingContactByDocument(
+  documentRaw: string | null | undefined,
+  apiToken: string,
+  baseUrl: string
+): Promise<number | null> {
+  const digits = (documentRaw ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+
+  try {
+    const searchUrl = `${baseUrl}/contatos?numeroDocumento=${encodeURIComponent(digits)}&limite=5`;
+    const res = await blingFetch(
+      searchUrl,
+      { headers: { Authorization: `Bearer ${apiToken}` } },
+      `find-contact-by-doc:${digits}`
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      data?: { id?: number; numeroDocumento?: string }[];
+    };
+    const contacts = data?.data ?? [];
+
+    // Bling pode retornar contatos com documentos parecidos — confirma match exato
+    const exact = contacts.find(
+      (c) => (c.numeroDocumento ?? "").replace(/\D/g, "") === digits
+    );
+    if (exact?.id != null) return exact.id;
+
+    if (contacts.length > 0 && contacts[0].id != null) {
+      return contacts[0].id;
+    }
+  } catch {
+    // erros de rede já são logados por blingFetch
+  }
+
+  return null;
 }
 
 /** Busca contato existente no Bling por nome, com múltiplas estratégias. */
@@ -1325,6 +1417,21 @@ export async function createBlingOrder(
       .maybeSingle();
 
     blingContactId = lastLogByClient?.bling_contact_id as number | null;
+  }
+
+  // Parte 2: Lookup por CPF/CNPJ no Bling antes de tentar criar.
+  // Crítico quando a razão social diverge entre CRM e Bling — sem isso, o
+  // POST /contatos colide com "CNPJ já cadastrado" e o fallback por nome
+  // não acha porque o Bling tem o cliente sob outro nome.
+  if (!blingContactId) {
+    const client = orderData.client as { document?: string | null } | null;
+    if (client?.document) {
+      blingContactId = await findBlingContactByDocument(
+        client.document,
+        apiToken,
+        baseUrl
+      );
+    }
   }
 
   if (!blingContactId) {
