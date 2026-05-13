@@ -8,19 +8,30 @@ type ColorMapEntry = {
 
 export type ProductColorMap = Record<string, ColorMapEntry>;
 
-export interface TinyProductDetail {
+interface TinyListItem {
   id?: number;
   nome?: string;
   codigo?: string;
+  sku?: string;
   estoque?: number | string;
   saldo?: number | string;
-  data?: {
-    id?: number;
-    nome?: string;
-    codigo?: string;
-    estoque?: number | string;
-    saldo?: number | string;
-  };
+}
+
+interface TinyListPayload {
+  itens?: TinyListItem[];
+  data?: { itens?: TinyListItem[] };
+  produtos?: TinyListItem[];
+}
+
+interface TinyProductDetailV3 {
+  id?: number;
+  nome?: string;
+  descricao?: string;
+  codigo?: string;
+  sku?: string;
+  estoque?: number | string;
+  saldo?: number | string;
+  data?: TinyProductDetailV3;
 }
 
 export interface TinyStockResult {
@@ -34,14 +45,75 @@ function toNumber(value: number | string | undefined | null): number {
   return typeof value === "string" ? parseFloat(value) || 0 : Number(value) || 0;
 }
 
+function extractListItems(payload: TinyListPayload): TinyListItem[] {
+  return (
+    payload.itens ??
+    payload.data?.itens ??
+    payload.produtos ??
+    []
+  );
+}
+
 /**
- * Lê o estoque agregado retornado pela Tiny v3 em /produtos/{id}.
- * A API do escopo OAuth padrão NÃO expõe saldo por depósito; o sistema usa
- * o total agregado e o usuário (WS) declara manualmente a separação entre pools.
+ * Extrai o estoque diretamente do payload de detalhe (raramente preenchido na v3).
+ * Mantido como fallback.
  */
-export function extractStock(raw: TinyProductDetail): number {
+export function extractStock(raw: TinyProductDetailV3): number {
   const root = raw?.data ?? raw;
   return toNumber(root.estoque ?? root.saldo);
+}
+
+/**
+ * Busca o estoque de uma variante específica via /produtos?codigo=SKU.
+ * A v3 retorna o estoque na LISTAGEM (mas não no detalhe /produtos/{id}).
+ * Fallback: tenta /produtos/{id} caso a busca por código não traga resultado.
+ */
+async function fetchStockForVariant(args: {
+  tinyId: number | null | undefined;
+  sku: string | null | undefined;
+}): Promise<{ stock: number | null; usedSku: boolean }> {
+  const { tinyId, sku } = args;
+
+  // 1) Busca por SKU (mais confiável — match exato)
+  if (sku) {
+    try {
+      const list = await tinyApiGet<TinyListPayload>(
+        `/produtos?codigo=${encodeURIComponent(sku)}&limit=5`
+      );
+      const items = extractListItems(list);
+      // Procura match exato pelo SKU (case-insensitive) para evitar falsos positivos
+      const match =
+        items.find(
+          (it) =>
+            (it.codigo ?? "").toUpperCase() === sku.toUpperCase() ||
+            (it.sku ?? "").toUpperCase() === sku.toUpperCase()
+        ) ?? items[0];
+      if (match) {
+        const stock = toNumber(match.estoque ?? match.saldo);
+        if (match.estoque !== undefined || match.saldo !== undefined) {
+          return { stock, usedSku: true };
+        }
+      }
+    } catch {
+      // segue para fallback
+    }
+  }
+
+  // 2) Fallback: tenta o detalhe (caso raro em que retorna estoque)
+  if (tinyId) {
+    try {
+      const raw = await tinyApiGet<TinyProductDetailV3>(`/produtos/${tinyId}`);
+      const stock = extractStock(raw);
+      const root = raw?.data ?? raw;
+      if (root.estoque !== undefined || root.saldo !== undefined) {
+        return { stock, usedSku: false };
+      }
+    } catch {
+      // se falhar tudo, retorna null
+    }
+  }
+
+  return { stock: null, usedSku: false };
 }
 
 /**
@@ -49,8 +121,7 @@ export function extractStock(raw: TinyProductDetail): number {
  * `tiny_color_map`. Quando não há cores, busca pelo `tiny_id` do produto pai.
  *
  * Retorna o saldo agregado (todos os depósitos somados). A divisão entre
- * pools PERSONALIZADO/MARKETPLACE é feita pelo usuário no inventário mensal —
- * o sistema valida coerência ao comparar `soma(declared) ≈ total Tiny`.
+ * pools PERSONALIZADO/MARKETPLACE é feita pelo usuário no inventário mensal.
  */
 export async function fetchTinyStockForProduct(args: {
   tinyId: number | null | undefined;
@@ -61,39 +132,34 @@ export async function fetchTinyStockForProduct(args: {
   const results: TinyStockResult[] = [];
   const errors: string[] = [];
 
-  // 1) Variantes mapeadas por cor
-  const tinyIdsToColor = new Map<number, string[]>();
-  for (const [colorKey, mapping] of Object.entries(colorMap)) {
-    if (mapping?.tiny_id) {
-      const existing = tinyIdsToColor.get(mapping.tiny_id) ?? [];
-      existing.push(colorKey);
-      tinyIdsToColor.set(mapping.tiny_id, existing);
-    }
-  }
+  const colorEntries = Object.entries(colorMap).filter(
+    ([, m]) => m?.tiny_id || m?.sku
+  );
 
-  for (const [variantTinyId, colorKeys] of tinyIdsToColor) {
-    try {
-      const raw = await tinyApiGet<TinyProductDetail>(`/produtos/${variantTinyId}`);
-      const stock = extractStock(raw);
-      for (const colorKey of colorKeys) {
-        results.push({ tinyId: variantTinyId, stock, colorKey });
+  if (colorEntries.length > 0) {
+    // Variantes mapeadas
+    for (const [colorKey, mapping] of colorEntries) {
+      const { stock } = await fetchStockForVariant({
+        tinyId: mapping.tiny_id,
+        sku: mapping.sku,
+      });
+      if (stock != null && mapping.tiny_id) {
+        results.push({ tinyId: mapping.tiny_id, stock, colorKey });
+      } else if (stock == null) {
+        errors.push(
+          `cor "${colorKey}": estoque não retornado pelo Tiny (sku=${
+            mapping.sku ?? "—"
+          }, tiny_id=${mapping.tiny_id ?? "—"})`
+        );
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`tiny_id=${variantTinyId}: ${msg}`);
     }
-  }
-
-  // 2) Produto pai sem variantes (ex: Cera Orto, Passafio)
-  const hasMappedColors = tinyIdsToColor.size > 0;
-  if (!hasMappedColors && tinyId) {
-    try {
-      const raw = await tinyApiGet<TinyProductDetail>(`/produtos/${tinyId}`);
-      const stock = extractStock(raw);
+  } else if (tinyId) {
+    // Produto sem variantes
+    const { stock } = await fetchStockForVariant({ tinyId, sku: null });
+    if (stock != null) {
       results.push({ tinyId, stock, colorKey: null });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`tiny_id=${tinyId}: ${msg}`);
+    } else {
+      errors.push(`tiny_id=${tinyId}: estoque não retornado pelo Tiny`);
     }
   }
 

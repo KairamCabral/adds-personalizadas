@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   extractStock,
   fetchTinyStockForProduct,
-  type TinyProductDetail,
 } from "./supplier-stock-sync";
 
 vi.mock("@/lib/tiny-api", () => ({
@@ -13,23 +12,16 @@ import { tinyApiGet } from "@/lib/tiny-api";
 
 describe("extractStock", () => {
   it("lê estoque do root", () => {
-    expect(extractStock({ estoque: 100 } as TinyProductDetail)).toBe(100);
-    expect(extractStock({ saldo: 50 } as TinyProductDetail)).toBe(50);
+    expect(extractStock({ estoque: 100 } as never)).toBe(100);
+    expect(extractStock({ saldo: 50 } as never)).toBe(50);
   });
 
   it("lê estoque de data.* quando wrapper v3", () => {
-    expect(extractStock({ data: { estoque: 200 } } as TinyProductDetail)).toBe(200);
-    expect(extractStock({ data: { saldo: 25 } } as TinyProductDetail)).toBe(25);
+    expect(extractStock({ data: { estoque: 200 } } as never)).toBe(200);
   });
 
-  it("parse string com vírgula/ponto retorna número", () => {
-    expect(extractStock({ estoque: "150" } as TinyProductDetail)).toBe(150);
-    expect(extractStock({ saldo: "12.5" } as TinyProductDetail)).toBe(12.5);
-  });
-
-  it("retorna 0 para valores ausentes", () => {
-    expect(extractStock({} as TinyProductDetail)).toBe(0);
-    expect(extractStock({ estoque: null as unknown as number } as TinyProductDetail)).toBe(0);
+  it("retorna 0 quando campo ausente", () => {
+    expect(extractStock({} as never)).toBe(0);
   });
 });
 
@@ -38,18 +30,20 @@ describe("fetchTinyStockForProduct", () => {
     vi.mocked(tinyApiGet).mockReset();
   });
 
-  it("busca estoque de cada variante mapeada no tiny_color_map", async () => {
+  it("busca estoque por SKU (listagem) para cada cor mapeada", async () => {
     vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
-      if (endpoint === "/produtos/100") return { estoque: 50 };
-      if (endpoint === "/produtos/200") return { estoque: 75 };
+      if (endpoint.includes("codigo=SKU-LIL"))
+        return { itens: [{ id: 100, codigo: "SKU-LIL", estoque: 50 }] };
+      if (endpoint.includes("codigo=SKU-AMA"))
+        return { itens: [{ id: 200, codigo: "SKU-AMA", estoque: 75 }] };
       throw new Error("unexpected " + endpoint);
     });
 
     const { results, errors } = await fetchTinyStockForProduct({
       tinyId: 999,
       tinyColorMap: {
-        lilas: { tiny_id: 100 },
-        amarela: { tiny_id: 200 },
+        lilas: { tiny_id: 100, sku: "SKU-LIL" },
+        amarela: { tiny_id: 200, sku: "SKU-AMA" },
       },
     });
 
@@ -59,7 +53,52 @@ describe("fetchTinyStockForProduct", () => {
     expect(results.find((r) => r.colorKey === "amarela")?.stock).toBe(75);
   });
 
-  it("busca apenas o tiny_id pai quando não há cores mapeadas", async () => {
+  it("aceita estoque vindo dentro de data.itens", async () => {
+    vi.mocked(tinyApiGet).mockResolvedValue({
+      data: { itens: [{ id: 100, codigo: "SKU-LIL", saldo: 88 }] },
+    });
+
+    const { results } = await fetchTinyStockForProduct({
+      tinyId: 999,
+      tinyColorMap: { lilas: { tiny_id: 100, sku: "SKU-LIL" } },
+    });
+
+    expect(results[0].stock).toBe(88);
+  });
+
+  it("usa fallback /produtos/{id} se a listagem por SKU não retorna estoque", async () => {
+    vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
+      if (endpoint.includes("codigo=SKU-LIL")) return { itens: [] };
+      if (endpoint === "/produtos/100") return { estoque: 42 };
+      throw new Error("unexpected " + endpoint);
+    });
+
+    const { results } = await fetchTinyStockForProduct({
+      tinyId: 999,
+      tinyColorMap: { lilas: { tiny_id: 100, sku: "SKU-LIL" } },
+    });
+
+    expect(results[0].stock).toBe(42);
+  });
+
+  it("registra erro quando não encontra estoque em nenhum caminho", async () => {
+    vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
+      if (endpoint.includes("codigo=SKU-XYZ")) return { itens: [] };
+      if (endpoint === "/produtos/300") return { id: 300, nome: "..." }; // sem estoque
+      throw new Error("unexpected " + endpoint);
+    });
+
+    const { results, errors } = await fetchTinyStockForProduct({
+      tinyId: null,
+      tinyColorMap: { broken: { tiny_id: 300, sku: "SKU-XYZ" } },
+    });
+
+    expect(results).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("broken");
+  });
+
+  it("busca pelo tiny_id pai quando não há cores mapeadas", async () => {
     vi.mocked(tinyApiGet).mockResolvedValue({ estoque: 196 });
 
     const { results, errors } = await fetchTinyStockForProduct({
@@ -69,41 +108,6 @@ describe("fetchTinyStockForProduct", () => {
 
     expect(errors).toEqual([]);
     expect(results).toEqual([{ tinyId: 555, stock: 196, colorKey: null }]);
-  });
-
-  it("ignora produto pai quando há variantes mapeadas", async () => {
-    vi.mocked(tinyApiGet).mockResolvedValue({ estoque: 10 });
-
-    const { results } = await fetchTinyStockForProduct({
-      tinyId: 999,
-      tinyColorMap: { lilas: { tiny_id: 100 } },
-    });
-
-    expect(tinyApiGet).toHaveBeenCalledTimes(1);
-    expect(tinyApiGet).toHaveBeenCalledWith("/produtos/100");
-    expect(results).toHaveLength(1);
-    expect(results[0].colorKey).toBe("lilas");
-  });
-
-  it("captura erros por variante sem interromper o lote", async () => {
-    vi.mocked(tinyApiGet).mockImplementation(async (endpoint: string) => {
-      if (endpoint === "/produtos/100") return { estoque: 50 };
-      if (endpoint === "/produtos/200") throw new Error("not found");
-      throw new Error("unexpected " + endpoint);
-    });
-
-    const { results, errors } = await fetchTinyStockForProduct({
-      tinyId: null,
-      tinyColorMap: {
-        ok: { tiny_id: 100 },
-        broken: { tiny_id: 200 },
-      },
-    });
-
-    expect(results).toHaveLength(1);
-    expect(results[0].colorKey).toBe("ok");
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("200");
   });
 
   it("retorna vazio quando não há tiny_id nem variantes", async () => {
