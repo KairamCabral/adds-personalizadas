@@ -101,11 +101,16 @@ async function fetchOrderHistory(orderId: string): Promise<HistoryEntry[]> {
 async function fetchHistoryReads(historyIds: string[]): Promise<Map<string, HistoryRead>> {
   if (historyIds.length === 0) return new Map();
   const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) return new Map();
   const { data } = await supabase
     .from("order_history_reads")
     .select("history_id, read_at, read_by_profile:profiles!order_history_reads_user_id_fkey(full_name)")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .in("history_id", historyIds as any)
+    // Per-user: cada um marca leitura por si — sem filtro vinha o read mais
+    // antigo de qualquer pessoa, deixando o checkbox disabled pros demais.
+    .eq("user_id", user.id)
     .order("read_at", { ascending: true });
   const map = new Map<string, HistoryRead>();
   for (const row of data ?? []) {
@@ -315,11 +320,11 @@ export function OrderActivityPanel({
                               <Checkbox
                                 checked={!!comment.read_at}
                                 onCheckedChange={(checked) => {
-                                  if (checked && !comment.read_at) {
+                                  if (checked) {
                                     markReadMutation.mutate(comment.id);
                                   }
                                 }}
-                                disabled={!!comment.read_at || markReadMutation.isPending}
+                                disabled={markReadMutation.isPending}
                               />
                               <span>
                                 {comment.read_at
@@ -405,9 +410,7 @@ export function OrderActivityPanel({
                               disabled={!!readInfo || markHistoryReadMutation.isPending}
                             />
                             <span>
-                              {readInfo
-                                ? `Lido por ${readInfo.read_by_profile?.full_name ?? "—"}`
-                                : "Marcar como lido"}
+                              {readInfo ? "Lido" : "Marcar como lido"}
                             </span>
                           </label>
                         </div>
