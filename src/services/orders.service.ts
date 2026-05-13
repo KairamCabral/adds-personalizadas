@@ -249,6 +249,13 @@ export async function createOrderWithItems(
 /**
  * Substitui todos os order_items de um pedido de uma vez.
  * Delete + insert garante consistência sem precisar rastrear diff.
+ *
+ * Concorrência: o UNIQUE INDEX em (order_id, product_id, COALESCE(color, ''))
+ * impede dois replacers paralelos de produzirem duplicatas — qualquer cenário
+ * de interleaving converge para 3 linhas em vez de 6. Quando a interleaving
+ * faz o segundo INSERT chocar com o primeiro, Postgres devolve 23505
+ * (unique_violation); tratamos como "outro caller já gravou o mesmo estado"
+ * e retornamos sem erro.
  */
 export async function replaceOrderItems(
   orderId: string,
@@ -275,7 +282,16 @@ export async function replaceOrderItems(
   }));
 
   const { error: insError } = await supabase.from("order_items").insert(rows);
-  if (insError) throw insError;
+  if (insError) {
+    if (insError.code === "23505") {
+      console.warn(
+        `[orders.service] replaceOrderItems: unique_violation em order=${orderId}. ` +
+          `Outro processo concorrente já inseriu o mesmo conjunto; tratando como no-op.`
+      );
+      return;
+    }
+    throw insError;
+  }
 }
 
 export async function updateOrder(id: string, updates: Partial<Order>) {
