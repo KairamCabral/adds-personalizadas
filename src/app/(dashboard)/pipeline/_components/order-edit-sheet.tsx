@@ -159,8 +159,11 @@ function dbItemsToEditItems(rawItems: RawOrderItem[]): EditItem[] {
       });
     } else {
       const existing = map.get(pid)!;
-      existing.colorQuantities[colorKey] =
-        (existing.colorQuantities[colorKey] ?? 0) + raw.quantity;
+      // Sobrescreve (não acumula): cada (product_id, color) deve ser único no DB
+      // — garantido pelo UNIQUE INDEX order_items_order_product_color_uniq.
+      // Se mesmo assim aparecer duplicata residual, "última linha vence" é mais
+      // seguro que dobrar quantidade ao reabrir o pedido para edição.
+      existing.colorQuantities[colorKey] = raw.quantity;
       existing.colorMeta[colorKey] = {
         unit_price: raw.unit_price ?? existing.colorMeta[colorKey]?.unit_price ?? null,
         total_price: raw.total_price ?? existing.colorMeta[colorKey]?.total_price ?? null,

@@ -713,7 +713,22 @@ export async function importTinyOrderFromApi(
     );
 
     await supabase.from("order_items").delete().eq("order_id", orderId);
-    await supabase.from("order_items").insert(itemsToInsert);
+    const { error: insErr } = await supabase
+      .from("order_items")
+      .insert(itemsToInsert);
+    // UNIQUE INDEX em (order_id, product_id, COALESCE(color, '')) impede que
+    // dois webhooks Tiny concorrentes dobrem as linhas. Quando o segundo
+    // insert colide, Postgres devolve 23505 — sinal de que outro handler já
+    // gravou o mesmo estado; é seguro tratar como no-op.
+    if (insErr && insErr.code !== "23505") {
+      throw insErr;
+    }
+    if (insErr) {
+      console.warn(
+        `[tiny-order-import] order_items insert race em tiny_order=${resolvedTinyOrderId}. ` +
+          `Outro webhook concorrente já gravou; tratando como no-op.`
+      );
+    }
   }
 
   if (aplicarPago) {

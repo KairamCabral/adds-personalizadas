@@ -361,7 +361,15 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
 
         if (itemsToInsert.length > 0) {
           await supabase.from("order_items").delete().eq("order_id", orderId);
-          await supabase.from("order_items").insert(itemsToInsert);
+          const { error: insErr } = await supabase
+            .from("order_items")
+            .insert(itemsToInsert);
+          // UNIQUE INDEX serializa concorrência; 23505 = outro caller já gravou.
+          if (insErr && insErr.code !== "23505") {
+            console.error(
+              `${LOG_PREFIX} Erro ao inserir order_items para tiny_order=${tinyOrderId}: ${insErr.message}`
+            );
+          }
         }
       }
 
