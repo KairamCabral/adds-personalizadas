@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -21,11 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { getSuppliers } from "@/services/suppliers.service";
 import { updateProduct } from "@/services/products.service";
-import { TinyDepositoSelect } from "@/components/inventory/tiny-deposito-select";
 import { StockPreview } from "@/components/inventory/stock-preview";
 import type { Product } from "@/types/database.types";
 
@@ -40,8 +38,6 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [pools, setPools] = useState<Pool[]>([]);
-  const [personalDeposito, setPersonalDeposito] = useState<number | null>(null);
-  const [marketDeposito, setMarketDeposito] = useState<number | null>(null);
 
   const suppliersQuery = useQuery({
     queryKey: ["suppliers"],
@@ -54,13 +50,9 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
     const p = product as Product & {
       inventory_supplier_id?: string | null;
       inventory_pools?: Pool[] | null;
-      tiny_deposito_personalizado_id?: number | null;
-      tiny_deposito_marketplace_id?: number | null;
     };
     setSupplierId(p.inventory_supplier_id ?? null);
     setPools(p.inventory_pools ?? []);
-    setPersonalDeposito(p.tiny_deposito_personalizado_id ?? null);
-    setMarketDeposito(p.tiny_deposito_marketplace_id ?? null);
   }, [product]);
 
   const saveMutation = useMutation({
@@ -69,8 +61,6 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
       await updateProduct(product.id, {
         inventory_supplier_id: supplierId,
         inventory_pools: pools,
-        tiny_deposito_personalizado_id: personalDeposito,
-        tiny_deposito_marketplace_id: marketDeposito,
       } as never);
     },
     onSuccess: () => {
@@ -94,8 +84,8 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
         <DialogHeader>
           <DialogTitle>Inventário no fornecedor</DialogTitle>
           <DialogDescription>
-            {product?.name} — vincule o fornecedor, escolha os pools de estoque e
-            informe os IDs de depósito no Tiny.
+            {product?.name} — vincule o fornecedor e escolha em quais pools de
+            estoque esse produto entra.
           </DialogDescription>
         </DialogHeader>
 
@@ -123,61 +113,49 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
           <div className="space-y-2">
             <Label>Pools de estoque</Label>
             <div className="space-y-2 rounded-md border border-border p-3">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-start gap-2 text-sm">
                 <Checkbox
                   checked={pools.includes("PERSONALIZADO")}
                   onCheckedChange={(c) => togglePool("PERSONALIZADO", c === true)}
+                  className="mt-0.5"
                 />
-                Personalizados (consome carteira do CRM)
+                <span className="space-y-0.5">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Sparkles className="h-3.5 w-3.5 text-[--adds-blue]" />
+                    Personalizados
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Consome carteira do CRM. Pedidos em APROVADO/PRODUCAO/EXPEDICAO
+                    reservam estoque automaticamente.
+                  </span>
+                </span>
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-start gap-2 text-sm">
                 <Checkbox
                   checked={pools.includes("MARKETPLACE")}
                   onCheckedChange={(c) => togglePool("MARKETPLACE", c === true)}
+                  className="mt-0.5"
                 />
-                Marketplace (apenas cruzamento com Tiny)
+                <span className="space-y-0.5">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <ShoppingBag className="h-3.5 w-3.5 text-[--adds-orange]" />
+                    Marketplace
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Sem carteira no CRM (vendas em ML, e-commerce, etc).
+                    Apenas cruzamento com Tiny.
+                  </span>
+                </span>
               </label>
             </div>
           </div>
 
-          {pools.includes("PERSONALIZADO") && (
-            <div className="space-y-2">
-              <Label>Depósito Tiny — Personalizado</Label>
-              <TinyDepositoSelect
-                value={personalDeposito}
-                onChange={setPersonalDeposito}
-                hint="personaliz"
-                placeholder="Escolha o depósito do Tiny"
-              />
-              <StockPreview
-                productId={product?.id ?? null}
-                depositoId={personalDeposito}
-                accent="blue"
-              />
-            </div>
-          )}
-
-          {pools.includes("MARKETPLACE") && (
-            <div className="space-y-2">
-              <Label>Depósito Tiny — Marketplace</Label>
-              <TinyDepositoSelect
-                value={marketDeposito}
-                onChange={setMarketDeposito}
-                hint="marketpl"
-                placeholder="Escolha o depósito do Tiny"
-              />
-              <StockPreview
-                productId={product?.id ?? null}
-                depositoId={marketDeposito}
-                accent="orange"
-              />
-            </div>
-          )}
-
-          {pools.length === 0 && (
+          {pools.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               Sem pools selecionados, o produto não aparece em nenhum inventário.
             </p>
+          ) : (
+            <StockPreview productId={product?.id ?? null} />
           )}
         </div>
 
@@ -188,6 +166,7 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending}
+            className="bg-[--adds-blue] hover:bg-[--adds-blue]/90"
           >
             {saveMutation.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -27,6 +27,11 @@ function parseAvailableColors(value: unknown): AvailableColor[] {
     .filter((c) => c.key.length > 0);
 }
 
+/**
+ * Retorna o estoque total no Tiny de cada variante (cor) do produto.
+ * Não filtra por depósito — a API Tiny v3 com escopo OAuth padrão não suporta
+ * isso. Mostra o total agregado por SKU/variante.
+ */
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -42,9 +47,6 @@ export async function GET(request: NextRequest) {
   }
 
   const productId = request.nextUrl.searchParams.get("product_id");
-  const depositoIdRaw = request.nextUrl.searchParams.get("deposito_id");
-  const depositoId = depositoIdRaw ? parseInt(depositoIdRaw, 10) : null;
-
   if (!productId) {
     return NextResponse.json({ error: "product_id é obrigatório." }, { status: 400 });
   }
@@ -75,13 +77,11 @@ export async function GET(request: NextRequest) {
     const { results, errors } = await fetchTinyStockForProduct({
       tinyId: product.tiny_id,
       tinyColorMap: colorMap,
-      depositoId,
     });
 
     const variants: PreviewVariant[] = [];
 
     if (Object.keys(colorMap).length === 0) {
-      // produto sem cores mapeadas — uma linha única do tiny_id pai
       const r = results[0];
       variants.push({
         color_key: null,
@@ -105,7 +105,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       product_id: product.id,
       product_name: product.name,
-      deposito_id: depositoId,
       variants,
       errors: errors.length > 0 ? errors : undefined,
     });

@@ -12,23 +12,22 @@ type Variant = {
 
 interface StockPreviewProps {
   productId: string | null;
-  depositoId: number | null;
-  /** Cor de fundo, usado para diferenciar PERSONALIZADO/MARKETPLACE */
-  accent?: "blue" | "orange";
+  /** Mostra o componente só após produto ter ID válido. */
+  enabled?: boolean;
 }
 
 /**
- * Mostra o estoque atual de cada variante do produto no depósito Tiny escolhido.
- * Roda só quando productId + depositoId estão preenchidos.
+ * Mostra o estoque total no Tiny de cada variante (cor) do produto.
+ * Não filtra por depósito — o saldo é o agregado de todos os depósitos
+ * daquela variante. A divisão entre pools é feita pelo usuário no
+ * inventário mensal.
  */
-export function StockPreview({ productId, depositoId, accent = "blue" }: StockPreviewProps) {
+export function StockPreview({ productId, enabled = true }: StockPreviewProps) {
   const query = useQuery({
-    queryKey: ["preview-stock", productId, depositoId],
+    queryKey: ["preview-stock", productId],
     queryFn: async () => {
-      if (!productId || depositoId == null) return null;
-      const res = await fetch(
-        `/api/tiny/preview-stock?product_id=${productId}&deposito_id=${depositoId}`
-      );
+      if (!productId) return null;
+      const res = await fetch(`/api/tiny/preview-stock?product_id=${productId}`);
       const json = await res.json();
       if (!res.ok) {
         return { error: (json.error as string) ?? "Falha ao consultar estoque." };
@@ -36,26 +35,24 @@ export function StockPreview({ productId, depositoId, accent = "blue" }: StockPr
       return json as {
         product_id: string;
         product_name: string;
-        deposito_id: number;
         variants: Variant[];
         errors?: string[];
       };
     },
-    enabled: !!productId && depositoId != null,
+    enabled: enabled && !!productId,
     staleTime: 30 * 1000,
   });
 
-  if (!productId || depositoId == null) return null;
-
-  const accentBg =
-    accent === "orange"
-      ? "border-[--adds-orange]/30 bg-[--adds-orange]/5"
-      : "border-[--adds-blue]/30 bg-[--adds-blue]/5";
+  if (!productId || !enabled) return null;
 
   return (
-    <div className={`mt-2 rounded-md border ${accentBg} p-2`}>
-      <p className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        Estoque atual no depósito (Tiny)
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        <Package className="h-3 w-3" />
+        Estoque atual no Tiny
+        <span className="ml-1 normal-case tracking-normal text-[10px] text-muted-foreground/70">
+          (total agregado por variante)
+        </span>
       </p>
 
       {query.isLoading && (
@@ -73,7 +70,9 @@ export function StockPreview({ productId, depositoId, accent = "blue" }: StockPr
       )}
 
       {query.data && "variants" in query.data && query.data.variants.length === 0 && (
-        <p className="text-xs text-muted-foreground">Nenhuma variante mapeada no Tiny.</p>
+        <p className="text-xs text-muted-foreground">
+          Nenhuma variante mapeada no Tiny ainda.
+        </p>
       )}
 
       {query.data && "variants" in query.data && query.data.variants.length > 0 && (
@@ -81,10 +80,9 @@ export function StockPreview({ productId, depositoId, accent = "blue" }: StockPr
           {query.data.variants.map((v) => (
             <li
               key={v.color_key ?? "__none__"}
-              className="flex items-center justify-between gap-2 text-xs"
+              className="flex items-center justify-between gap-2 text-sm"
             >
-              <span className="flex items-center gap-1.5">
-                <Package className="h-3 w-3 text-muted-foreground" />
+              <span className="flex items-center gap-2">
                 <span className="font-medium">{v.color_label ?? "—"}</span>
                 {v.tiny_id != null ? (
                   <span className="text-[10px] text-muted-foreground">
@@ -95,8 +93,8 @@ export function StockPreview({ productId, depositoId, accent = "blue" }: StockPr
                 )}
               </span>
               <span
-                className={`tabular-nums font-medium ${
-                  v.stock == null ? "text-muted-foreground" : ""
+                className={`tabular-nums font-semibold ${
+                  v.stock == null ? "text-muted-foreground" : "text-foreground"
                 }`}
               >
                 {v.stock == null ? "—" : v.stock.toLocaleString("pt-BR")}
@@ -105,6 +103,10 @@ export function StockPreview({ productId, depositoId, accent = "blue" }: StockPr
           ))}
         </ul>
       )}
+
+      <p className="mt-2 border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
+        No inventário mensal, você divide cada total entre os pools selecionados.
+      </p>
     </div>
   );
 }

@@ -25,7 +25,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/shared/page-header";
+import { PageHeader as _PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   currentReferenceMonth,
   type DivergenceStatus,
@@ -83,8 +82,6 @@ type InventoryItem = {
     image_url: string | null;
     available_colors: unknown;
     tiny_id: number | null;
-    tiny_deposito_personalizado_id: number | null;
-    tiny_deposito_marketplace_id: number | null;
   } | null;
 };
 
@@ -98,53 +95,6 @@ function formatMonth(referenceMonth: string): string {
   const date = new Date(Number(y), Number(m) - 1, 1);
   const formatted = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
-}
-
-function getColor(item: InventoryItem): { key: string | null; label: string; hex: string | null } {
-  if (!item.color_key) return { key: null, label: "—", hex: null };
-  const colors = Array.isArray(item.product?.available_colors)
-    ? (item.product?.available_colors as Array<{ key: string; label?: string; hex?: string }>)
-    : [];
-  const match = colors.find((c) => c.key === item.color_key);
-  return {
-    key: item.color_key,
-    label: match?.label ?? item.color_key,
-    hex: match?.hex ?? null,
-  };
-}
-
-function divergenceBadge(status: DivergenceStatus | null) {
-  if (status === "BREAK" || status === "COMMITTED_GT_DECLARED") {
-    return (
-      <Badge className="gap-1 bg-destructive/15 text-destructive shadow-sm hover:bg-destructive/20">
-        <AlertTriangle className="h-3 w-3" />
-        Ruptura
-      </Badge>
-    );
-  }
-  if (status === "DIVERGE") {
-    return (
-      <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400">
-        Divergência
-      </Badge>
-    );
-  }
-  if (status === "MISSING_TINY") {
-    return (
-      <Badge variant="outline" className="text-muted-foreground">
-        Sem Tiny
-      </Badge>
-    );
-  }
-  if (status === "MATCH") {
-    return (
-      <Badge className="gap-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400">
-        <CheckCircle2 className="h-3 w-3" />
-        OK
-      </Badge>
-    );
-  }
-  return <span className="text-muted-foreground text-sm">—</span>;
 }
 
 function statusBadge(status: InventoryHeader["status"]) {
@@ -313,26 +263,48 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
   });
 
   const items = itemsQuery.data?.items ?? [];
-  const personalizadoItems = items.filter((i) => i.pool === "PERSONALIZADO");
-  const marketplaceItems = items.filter((i) => i.pool === "MARKETPLACE");
 
   const totals = useMemo(() => {
-    const declared = items.reduce((acc, i) => acc + i.quantity_declared, 0);
-    const committed = personalizadoItems.reduce(
-      (acc, i) => acc + i.quantity_committed,
-      0
-    );
+    const declared = items.reduce((acc, i) => acc + (draftEdits[i.id] ?? i.quantity_declared), 0);
+    const committed = items
+      .filter((i) => i.pool === "PERSONALIZADO")
+      .reduce((acc, i) => acc + i.quantity_committed, 0);
     const balance = declared - committed;
+    // Rupturas por LINHA (PERSONALIZADO com committed > declared)
     const breaks = items.filter(
       (i) => i.divergence_status === "BREAK" || i.divergence_status === "COMMITTED_GT_DECLARED"
     ).length;
-    const diverges = items.filter((i) => i.divergence_status === "DIVERGE").length;
-    const matches = items.filter((i) => i.divergence_status === "MATCH").length;
-    const missing = items.filter((i) => i.divergence_status === "MISSING_TINY").length;
-    const synced = items.filter((i) => i.tiny_quantity != null).length;
-    const coverage = items.length > 0 ? Math.round((synced / items.length) * 100) : 0;
-    return { declared, committed, balance, breaks, diverges, matches, missing, coverage };
-  }, [items, personalizadoItems]);
+    // Divergências por COR (uma cor com Δ% > threshold conta uma vez)
+    const colorStatuses = new Map<string, DivergenceStatus | null>();
+    for (const i of items) {
+      const key = `${i.product_id}|${i.color_key ?? ""}`;
+      const cur = colorStatuses.get(key);
+      // status da cor é o "pior": BREAK > DIVERGE > MISSING > MATCH
+      const priority = (s: DivergenceStatus | null) =>
+        s === "BREAK" || s === "COMMITTED_GT_DECLARED"
+          ? 3
+          : s === "DIVERGE"
+            ? 2
+            : s === "MISSING_TINY"
+              ? 1
+              : 0;
+      if (cur === undefined || priority(i.divergence_status) > priority(cur)) {
+        colorStatuses.set(key, i.divergence_status);
+      }
+    }
+    let diverges = 0;
+    let missing = 0;
+    let matches = 0;
+    for (const s of colorStatuses.values()) {
+      if (s === "DIVERGE") diverges++;
+      else if (s === "MISSING_TINY") missing++;
+      else if (s === "MATCH") matches++;
+    }
+    const totalColors = colorStatuses.size;
+    const coverage =
+      totalColors > 0 ? Math.round(((totalColors - missing) / totalColors) * 100) : 0;
+    return { declared, committed, balance, breaks, diverges, matches, missing, coverage, totalColors };
+  }, [items, draftEdits]);
 
   const monthOptions = useMemo(() => {
     const set = new Set<string>([currentReferenceMonth(), referenceMonth]);
@@ -340,15 +312,8 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
     return Array.from(set).sort().reverse();
   }, [inventories, referenceMonth]);
 
-  // Agrupa items por product_id, mantendo a ordem original
-  const personalizadoByProduct = useMemo(
-    () => groupItemsByProduct(personalizadoItems),
-    [personalizadoItems]
-  );
-  const marketplaceByProduct = useMemo(
-    () => groupItemsByProduct(marketplaceItems),
-    [marketplaceItems]
-  );
+  // Agrupa items por product_id → cor (para a UI agregada)
+  const productsByGroup = useMemo(() => groupItems(items), [items]);
 
   return (
     <>
@@ -457,7 +422,6 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
           </div>
         </div>
 
-        {/* Hero KPIs */}
         {current && items.length > 0 && (
           <>
             <Separator className="my-5" />
@@ -474,7 +438,6 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
                 value={totals.committed.toLocaleString("pt-BR")}
                 hint="Pedidos abertos no CRM"
                 icon={<ShoppingBag className="h-4 w-4" />}
-                tone="default"
               />
               <KpiHero
                 label="Rupturas"
@@ -490,7 +453,7 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
               <KpiHero
                 label="Cobertura Tiny"
                 value={`${totals.coverage}%`}
-                hint={`${items.length - totals.missing} de ${items.length} variantes`}
+                hint={`${totals.totalColors - totals.missing} de ${totals.totalColors} cores`}
                 icon={<TrendingUp className="h-4 w-4" />}
                 tone={totals.coverage === 100 ? "success" : totals.coverage > 60 ? "default" : "warning"}
                 progress={totals.coverage}
@@ -608,68 +571,17 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
           }
         />
       ) : (
-        <Tabs defaultValue={personalizadoItems.length > 0 ? "personalizado" : "marketplace"}>
-          <TabsList className="grid w-fit grid-cols-2">
-            <TabsTrigger value="personalizado" className="gap-1.5">
-              <Sparkles className="h-3.5 w-3.5" />
-              Personalizados
-              <Badge variant="secondary" className="ml-1 h-5">
-                {personalizadoItems.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="marketplace" className="gap-1.5">
-              <ShoppingBag className="h-3.5 w-3.5" />
-              Marketplace
-              <Badge variant="secondary" className="ml-1 h-5">
-                {marketplaceItems.length}
-              </Badge>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="personalizado" className="mt-4 space-y-3">
-            {personalizadoByProduct.length === 0 ? (
-              <EmptyState
-                icon={<Sparkles className="h-6 w-6" />}
-                title="Nenhum produto no pool Personalizados"
-                description="Configure o pool em Settings › Produtos › … › Inventário ou importe do Tiny."
-                compact
-              />
-            ) : (
-              personalizadoByProduct.map((group) => (
-                <ProductCard
-                  key={group.productId}
-                  group={group}
-                  pool="PERSONALIZADO"
-                  canEdit={canEdit && current.status === "DRAFT"}
-                  draftEdits={draftEdits}
-                  setDraftEdits={setDraftEdits}
-                />
-              ))
-            )}
-          </TabsContent>
-
-          <TabsContent value="marketplace" className="mt-4 space-y-3">
-            {marketplaceByProduct.length === 0 ? (
-              <EmptyState
-                icon={<ShoppingBag className="h-6 w-6" />}
-                title="Nenhum produto no pool Marketplace"
-                description="Configure o pool em Settings › Produtos › … › Inventário ou importe do Tiny."
-                compact
-              />
-            ) : (
-              marketplaceByProduct.map((group) => (
-                <ProductCard
-                  key={group.productId}
-                  group={group}
-                  pool="MARKETPLACE"
-                  canEdit={canEdit && current.status === "DRAFT"}
-                  draftEdits={draftEdits}
-                  setDraftEdits={setDraftEdits}
-                />
-              ))
-            )}
-          </TabsContent>
-        </Tabs>
+        <div className="space-y-3">
+          {productsByGroup.map((g) => (
+            <ProductCard
+              key={g.productId}
+              group={g}
+              canEdit={canEdit && current.status === "DRAFT"}
+              draftEdits={draftEdits}
+              setDraftEdits={setDraftEdits}
+            />
+          ))}
+        </div>
       )}
 
       <ImportFromTinyDialog
@@ -678,7 +590,6 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
         onClose={() => setImportOpen(false)}
         onImported={() => {
           queryClient.invalidateQueries({ queryKey: ["supplier-inventory-items", current?.id] });
-          // Recriar inventário para popular novos items vinculados
           if (current) {
             createMutation.mutate({ reference_month: current.reference_month });
           }
@@ -687,6 +598,8 @@ export function InventoryView({ supplier, role }: InventoryViewProps) {
     </>
   );
 }
+
+// ─── KPI Hero ──────────────────────────────────────────────────────────
 
 function KpiHero({
   label,
@@ -700,7 +613,7 @@ function KpiHero({
   value: string;
   hint: string;
   icon: React.ReactNode;
-  tone: "default" | "success" | "warning" | "danger";
+  tone?: "default" | "success" | "warning" | "danger";
   progress?: number;
 }) {
   const toneCls = {
@@ -708,13 +621,13 @@ function KpiHero({
     success: "text-emerald-600 dark:text-emerald-400",
     warning: "text-amber-600 dark:text-amber-400",
     danger: "text-destructive",
-  }[tone];
+  }[tone ?? "default"];
   const iconBg = {
     default: "bg-muted text-muted-foreground",
     success: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
     warning: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
     danger: "bg-destructive/15 text-destructive",
-  }[tone];
+  }[tone ?? "default"];
 
   return (
     <div className="rounded-xl border border-border bg-background/80 p-4 backdrop-blur">
@@ -736,20 +649,14 @@ function EmptyState({
   title,
   description,
   actions,
-  compact,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
   actions?: React.ReactNode;
-  compact?: boolean;
 }) {
   return (
-    <div
-      className={`flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 text-center ${
-        compact ? "p-8" : "p-12"
-      }`}
-    >
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 p-12 text-center">
       <div className="rounded-full bg-background p-3 text-muted-foreground">
         {icon}
       </div>
@@ -762,65 +669,121 @@ function EmptyState({
   );
 }
 
+// ─── Agrupamento ───────────────────────────────────────────────────────
+
+type ColorGroup = {
+  colorKey: string | null;
+  colorLabel: string;
+  colorHex: string | null;
+  items: InventoryItem[]; // 1 ou 2 (PERSONALIZADO e/ou MARKETPLACE)
+};
+
 type ProductGroup = {
   productId: string;
   productName: string;
   productImage: string | null;
-  items: InventoryItem[];
+  colors: ColorGroup[];
+  pools: Set<Pool>;
 };
 
-function groupItemsByProduct(items: InventoryItem[]): ProductGroup[] {
-  const byId = new Map<string, ProductGroup>();
+function groupItems(items: InventoryItem[]): ProductGroup[] {
+  const byProduct = new Map<string, ProductGroup>();
+
   for (const it of items) {
-    if (!byId.has(it.product_id)) {
-      byId.set(it.product_id, {
+    if (!byProduct.has(it.product_id)) {
+      byProduct.set(it.product_id, {
         productId: it.product_id,
         productName: it.product?.name ?? "Sem produto",
         productImage: it.product?.image_url ?? null,
-        items: [],
+        colors: [],
+        pools: new Set(),
       });
     }
-    byId.get(it.product_id)!.items.push(it);
+    const product = byProduct.get(it.product_id)!;
+    product.pools.add(it.pool);
+
+    let color = product.colors.find(
+      (c) => (c.colorKey ?? "") === (it.color_key ?? "")
+    );
+    if (!color) {
+      const colorList = Array.isArray(it.product?.available_colors)
+        ? (it.product?.available_colors as Array<{
+            key: string;
+            label?: string;
+            hex?: string;
+          }>)
+        : [];
+      const meta = colorList.find((c) => c.key === it.color_key);
+      color = {
+        colorKey: it.color_key,
+        colorLabel: meta?.label ?? it.color_key ?? "—",
+        colorHex: meta?.hex ?? null,
+        items: [],
+      };
+      product.colors.push(color);
+    }
+    color.items.push(it);
   }
-  return Array.from(byId.values()).sort((a, b) =>
+
+  return Array.from(byProduct.values()).sort((a, b) =>
     a.productName.localeCompare(b.productName, "pt-BR")
   );
 }
 
+// ─── Product card ──────────────────────────────────────────────────────
+
 function ProductCard({
   group,
-  pool,
   canEdit,
   draftEdits,
   setDraftEdits,
 }: {
   group: ProductGroup;
-  pool: Pool;
   canEdit: boolean;
   draftEdits: Record<string, number>;
   setDraftEdits: (v: Record<string, number>) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
 
-  const totals = useMemo(() => {
-    const declared = group.items.reduce((acc, i) => {
-      const d = draftEdits[i.id];
-      return acc + (d !== undefined ? d : i.quantity_declared);
-    }, 0);
-    const committed = group.items.reduce((acc, i) => acc + i.quantity_committed, 0);
-    const balance = declared - committed;
-    const tiny = group.items.reduce((acc, i) => acc + (i.tiny_quantity ?? 0), 0);
-    const hasBreak = group.items.some(
-      (i) => i.divergence_status === "BREAK" || i.divergence_status === "COMMITTED_GT_DECLARED"
-    );
-    const usePct = declared > 0 ? Math.min(100, (committed / declared) * 100) : 0;
-    return { declared, committed, balance, tiny, hasBreak, usePct };
-  }, [group.items, draftEdits]);
+  const productTotals = useMemo(() => {
+    let declared = 0;
+    let committed = 0;
+    let tiny = 0;
+    let hasTiny = false;
+    let hasBreak = false;
+    let hasDiverge = false;
+    for (const c of group.colors) {
+      for (const it of c.items) {
+        const d = draftEdits[it.id] ?? it.quantity_declared;
+        declared += d;
+        if (it.pool === "PERSONALIZADO") committed += it.quantity_committed;
+        if (
+          it.divergence_status === "BREAK" ||
+          it.divergence_status === "COMMITTED_GT_DECLARED"
+        )
+          hasBreak = true;
+        if (it.divergence_status === "DIVERGE") hasDiverge = true;
+      }
+      const colorTiny = c.items.find((i) => i.tiny_quantity != null)?.tiny_quantity;
+      if (colorTiny != null) {
+        tiny += colorTiny;
+        hasTiny = true;
+      }
+    }
+    return {
+      declared,
+      committed,
+      balance: declared - committed,
+      tiny: hasTiny ? tiny : null,
+      hasBreak,
+      hasDiverge,
+    };
+  }, [group.colors, draftEdits]);
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border bg-card transition-colors ${
-        totals.hasBreak ? "border-destructive/40" : "border-border"
+      className={`overflow-hidden rounded-xl border bg-card ${
+        productTotals.hasBreak ? "border-destructive/40" : "border-border"
       }`}
     >
       <button
@@ -845,42 +808,63 @@ function ProductCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-medium">{group.productName}</h3>
-            {totals.hasBreak && (
+            {productTotals.hasBreak && (
               <Badge className="gap-1 bg-destructive/15 text-destructive">
                 <AlertTriangle className="h-3 w-3" />
                 Ruptura
               </Badge>
             )}
+            {!productTotals.hasBreak && productTotals.hasDiverge && (
+              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                Divergência
+              </Badge>
+            )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            {group.items.length}{" "}
-            {pool === "PERSONALIZADO" ? "variante(s) Personalizado" : "variante(s) Marketplace"}
-          </p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>{group.colors.length} cor(es)</span>
+            <span>·</span>
+            {group.pools.has("PERSONALIZADO") && (
+              <span className="inline-flex items-center gap-1">
+                <Sparkles className="h-3 w-3 text-[--adds-blue]" />
+                Personalizados
+              </span>
+            )}
+            {group.pools.has("MARKETPLACE") && (
+              <span className="inline-flex items-center gap-1">
+                <ShoppingBag className="h-3 w-3 text-[--adds-orange]" />
+                Marketplace
+              </span>
+            )}
+          </div>
         </div>
         <div className="hidden text-right md:block">
           <div className="flex items-baseline gap-4">
             <div>
-              <p className="text-xs text-muted-foreground">Declarado</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Declarado
+              </p>
               <p className="font-medium tabular-nums">
-                {totals.declared.toLocaleString("pt-BR")}
+                {productTotals.declared.toLocaleString("pt-BR")}
               </p>
             </div>
-            {pool === "PERSONALIZADO" && (
+            {group.pools.has("PERSONALIZADO") && (
               <div>
-                <p className="text-xs text-muted-foreground">Carteira</p>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Carteira
+                </p>
                 <p className="font-medium tabular-nums text-muted-foreground">
-                  {totals.committed.toLocaleString("pt-BR")}
+                  {productTotals.committed.toLocaleString("pt-BR")}
                 </p>
               </div>
             )}
             <div>
-              <p className="text-xs text-muted-foreground">Saldo</p>
-              <p
-                className={`font-semibold tabular-nums ${
-                  totals.balance < 0 ? "text-destructive" : ""
-                }`}
-              >
-                {totals.balance.toLocaleString("pt-BR")}
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Tiny
+              </p>
+              <p className="font-medium tabular-nums text-muted-foreground">
+                {productTotals.tiny == null
+                  ? "—"
+                  : productTotals.tiny.toLocaleString("pt-BR")}
               </p>
             </div>
           </div>
@@ -892,28 +876,12 @@ function ProductCard({
         )}
       </button>
 
-      {pool === "PERSONALIZADO" && totals.declared > 0 && (
-        <div className="px-4 pb-1">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Uso da carteira</span>
-            <Progress
-              value={totals.usePct}
-              className={`h-1.5 flex-1 ${
-                totals.usePct > 100 ? "[&>div]:bg-destructive" : ""
-              }`}
-            />
-            <span className="tabular-nums">{Math.round(totals.usePct)}%</span>
-          </div>
-        </div>
-      )}
-
       {expanded && (
         <div className="border-t border-border bg-muted/20">
-          {group.items.map((item) => (
-            <VariantRow
-              key={item.id}
-              item={item}
-              pool={pool}
+          {group.colors.map((color) => (
+            <ColorBlock
+              key={color.colorKey ?? "__none__"}
+              color={color}
               canEdit={canEdit}
               draftEdits={draftEdits}
               setDraftEdits={setDraftEdits}
@@ -925,60 +893,177 @@ function ProductCard({
   );
 }
 
-function VariantRow({
+// ─── Color block (por produto, mostra os pools dentro) ────────────────
+
+function ColorBlock({
+  color,
+  canEdit,
+  draftEdits,
+  setDraftEdits,
+}: {
+  color: ColorGroup;
+  canEdit: boolean;
+  draftEdits: Record<string, number>;
+  setDraftEdits: (v: Record<string, number>) => void;
+}) {
+  const totals = useMemo(() => {
+    let declared = 0;
+    let committed = 0;
+    for (const it of color.items) {
+      const d = draftEdits[it.id] ?? it.quantity_declared;
+      declared += d;
+      if (it.pool === "PERSONALIZADO") committed += it.quantity_committed;
+    }
+    const tiny =
+      color.items.find((i) => i.tiny_quantity != null)?.tiny_quantity ?? null;
+    const delta = tiny != null && declared > 0 ? ((tiny - declared) / declared) * 100 : null;
+    // pega o status da cor (será o mesmo em todas as linhas pós-recompute)
+    const status: DivergenceStatus | null =
+      color.items.find((i) => i.divergence_status === "DIVERGE")?.divergence_status ??
+      color.items.find((i) => i.divergence_status === "MATCH")?.divergence_status ??
+      color.items.find((i) => i.divergence_status === "MISSING_TINY")?.divergence_status ??
+      null;
+    return {
+      declared,
+      committed,
+      tiny,
+      delta,
+      colorStatus: status,
+    };
+  }, [color.items, draftEdits]);
+
+  // Garante ordem: PERSONALIZADO primeiro
+  const sortedItems = [...color.items].sort((a, b) =>
+    a.pool === "PERSONALIZADO" ? -1 : b.pool === "PERSONALIZADO" ? 1 : 0
+  );
+
+  return (
+    <div className="border-b border-border last:border-b-0">
+      {/* Color header */}
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        {color.colorKey && (
+          <div
+            className="h-6 w-6 shrink-0 rounded-full border border-border shadow-sm"
+            style={{ backgroundColor: color.colorHex ?? "#9ca3af" }}
+            title={color.colorLabel}
+          />
+        )}
+        <h4 className="flex-1 text-sm font-medium">{color.colorLabel}</h4>
+
+        {/* Resumo agregado da cor */}
+        <div className="flex items-center gap-4 text-xs">
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground">Total declarado</p>
+            <p className="font-semibold tabular-nums">
+              {totals.declared.toLocaleString("pt-BR")}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground">Tiny</p>
+            <p className="font-semibold tabular-nums text-muted-foreground">
+              {totals.tiny == null ? "—" : totals.tiny.toLocaleString("pt-BR")}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground">Δ%</p>
+            <p
+              className={`font-semibold tabular-nums ${
+                totals.delta == null
+                  ? "text-muted-foreground"
+                  : Math.abs(totals.delta) > 10
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-emerald-600 dark:text-emerald-400"
+              }`}
+            >
+              {totals.delta == null
+                ? "—"
+                : `${totals.delta > 0 ? "+" : ""}${totals.delta.toFixed(1)}%`}
+            </p>
+          </div>
+          <ColorDivergenceBadge status={totals.colorStatus} />
+        </div>
+      </div>
+
+      {/* Linhas por pool */}
+      <div className="border-t border-border/60 bg-background/50">
+        {sortedItems.map((item) => (
+          <PoolRow
+            key={item.id}
+            item={item}
+            canEdit={canEdit}
+            draftEdits={draftEdits}
+            setDraftEdits={setDraftEdits}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ColorDivergenceBadge({ status }: { status: DivergenceStatus | null }) {
+  if (status === "DIVERGE") {
+    return (
+      <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+        Divergência
+      </Badge>
+    );
+  }
+  if (status === "MISSING_TINY") {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        Sem Tiny
+      </Badge>
+    );
+  }
+  if (status === "MATCH") {
+    return (
+      <Badge className="gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+        <CheckCircle2 className="h-3 w-3" />
+        OK
+      </Badge>
+    );
+  }
+  return <span className="text-muted-foreground text-sm">—</span>;
+}
+
+// ─── Pool row (Personalizado ou Marketplace de uma cor) ────────────────
+
+function PoolRow({
   item,
-  pool,
   canEdit,
   draftEdits,
   setDraftEdits,
 }: {
   item: InventoryItem;
-  pool: Pool;
   canEdit: boolean;
   draftEdits: Record<string, number>;
   setDraftEdits: (v: Record<string, number>) => void;
 }) {
-  const color = getColor(item);
-  const draftValue = draftEdits[item.id];
-  const declared = draftValue !== undefined ? draftValue : item.quantity_declared;
-  const balance = declared - item.quantity_committed;
+  const draft = draftEdits[item.id];
+  const declared = draft !== undefined ? draft : item.quantity_declared;
+  const isDraft = draft !== undefined;
   const isBreak =
-    item.divergence_status === "BREAK" || item.divergence_status === "COMMITTED_GT_DECLARED";
-  const deltaPct =
-    item.tiny_quantity != null && declared > 0
-      ? ((item.tiny_quantity - declared) / declared) * 100
-      : null;
-  const isDraft = draftValue !== undefined;
+    item.divergence_status === "BREAK" ||
+    item.divergence_status === "COMMITTED_GT_DECLARED";
+  const balance = declared - item.quantity_committed;
+
+  const Icon = item.pool === "PERSONALIZADO" ? Sparkles : ShoppingBag;
+  const iconCls =
+    item.pool === "PERSONALIZADO" ? "text-[--adds-blue]" : "text-[--adds-orange]";
+  const label = item.pool === "PERSONALIZADO" ? "Personalizado" : "Marketplace";
 
   return (
     <div
-      className={`flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center ${
+      className={`flex items-center gap-3 px-4 py-2.5 text-sm ${
         isBreak ? "bg-destructive/5" : ""
       }`}
     >
-      <div className="flex flex-1 items-center gap-3 min-w-0">
-        {color.key && (
-          <div
-            className="h-7 w-7 shrink-0 rounded-full border border-border shadow-sm"
-            style={{ backgroundColor: color.hex ?? "#9ca3af" }}
-            title={color.label}
-          />
-        )}
-        <div className="min-w-0">
-          <p className="text-sm font-medium">{color.label}</p>
-          {item.tiny_synced_at && (
-            <p className="text-[10px] text-muted-foreground">
-              Tiny: atualizado{" "}
-              {new Date(item.tiny_synced_at).toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </p>
-          )}
-        </div>
-      </div>
+      <span className="flex w-32 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className={`h-3.5 w-3.5 ${iconCls}`} />
+        {label}
+      </span>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5 md:gap-6">
+      <div className="flex flex-1 items-center justify-end gap-5">
         <Metric
           label="Declarado"
           value={
@@ -1006,7 +1091,8 @@ function VariantRow({
             )
           }
         />
-        {pool === "PERSONALIZADO" && (
+
+        {item.pool === "PERSONALIZADO" && (
           <>
             <Metric
               label="Carteira"
@@ -1016,32 +1102,18 @@ function VariantRow({
             <Metric
               label="Saldo"
               value={balance.toLocaleString("pt-BR")}
-              accent={balance < 0 ? "danger" : "default"}
               bold
+              accent={balance < 0 ? "danger" : "default"}
             />
           </>
         )}
-        <Metric
-          label="Tiny"
-          value={item.tiny_quantity?.toLocaleString("pt-BR") ?? "—"}
-          muted
-        />
-        {pool === "MARKETPLACE" ? (
-          <Metric
-            label="Δ%"
-            value={deltaPct == null ? "—" : `${deltaPct > 0 ? "+" : ""}${deltaPct.toFixed(1)}%`}
-            accent={
-              deltaPct == null
-                ? "default"
-                : Math.abs(deltaPct) > 10
-                  ? "warning"
-                  : "default"
-            }
-          />
-        ) : null}
-        <div className="col-span-2 flex items-center justify-end md:col-span-1">
-          {divergenceBadge(item.divergence_status)}
-        </div>
+
+        {isBreak && (
+          <Badge className="gap-1 bg-destructive/15 text-destructive">
+            <AlertTriangle className="h-3 w-3" />
+            Ruptura
+          </Badge>
+        )}
       </div>
     </div>
   );
@@ -1058,14 +1130,13 @@ function Metric({
   value: React.ReactNode;
   muted?: boolean;
   bold?: boolean;
-  accent?: "default" | "danger" | "warning";
+  accent?: "default" | "danger";
 }) {
   const cls = [
     "tabular-nums text-sm",
     muted ? "text-muted-foreground" : "",
     bold ? "font-semibold" : "",
     accent === "danger" ? "text-destructive" : "",
-    accent === "warning" ? "text-amber-600 dark:text-amber-400" : "",
   ]
     .filter(Boolean)
     .join(" ");
