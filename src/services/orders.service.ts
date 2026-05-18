@@ -421,6 +421,16 @@ export async function unarchiveOrder(id: string) {
     .single();
 
   if (error) throw error;
+
+  // Reativar = retomar pedido. Se foi cancelado (manual ou via Tiny), tira a
+  // label PEDIDO_CANCELADO para não ficar visualmente confusa. Espelha o que
+  // `cancelOrder` aplica e o que `revertCanceladoCrmFromTiny` faz no fluxo Tiny.
+  await supabase
+    .from("order_labels")
+    .delete()
+    .eq("order_id", id)
+    .eq("label", "PEDIDO_CANCELADO");
+
   return data;
 }
 
