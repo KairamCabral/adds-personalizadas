@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isTinySituacaoAberto,
+  isTinySituacaoCancelado,
   isTinySituacaoEntregue,
   isTinySituacaoFaturado,
   isTinySituacaoPago,
@@ -82,6 +83,37 @@ describe("isTinySituacaoAberto", () => {
     expect(isTinySituacaoAberto(null)).toBe(false);
     expect(isTinySituacaoAberto(undefined)).toBe(false);
     expect(isTinySituacaoAberto("")).toBe(false);
+  });
+});
+
+describe("isTinySituacaoCancelado", () => {
+  it("aceita código 2 (Tiny: Cancelado)", () => {
+    expect(isTinySituacaoCancelado(2)).toBe(true);
+    expect(isTinySituacaoCancelado("2")).toBe(true);
+  });
+
+  it("aceita rótulo em pt-br (case/acento-insensitive)", () => {
+    expect(isTinySituacaoCancelado("Cancelado")).toBe(true);
+    expect(isTinySituacaoCancelado("cancelado")).toBe(true);
+    expect(isTinySituacaoCancelado("CANCELADO")).toBe(true);
+    expect(isTinySituacaoCancelado("Cancelada")).toBe(true);
+  });
+
+  it("não trata outras situações como cancelado", () => {
+    expect(isTinySituacaoCancelado(0)).toBe(false);
+    expect(isTinySituacaoCancelado(1)).toBe(false);
+    expect(isTinySituacaoCancelado(3)).toBe(false);
+    expect(isTinySituacaoCancelado(6)).toBe(false);
+    expect(isTinySituacaoCancelado("Em aberto")).toBe(false);
+    expect(isTinySituacaoCancelado("Aprovado")).toBe(false);
+    expect(isTinySituacaoCancelado("Faturado")).toBe(false);
+    expect(isTinySituacaoCancelado("Entregue")).toBe(false);
+  });
+
+  it("trata null/undefined/'' como não-cancelado", () => {
+    expect(isTinySituacaoCancelado(null)).toBe(false);
+    expect(isTinySituacaoCancelado(undefined)).toBe(false);
+    expect(isTinySituacaoCancelado("")).toBe(false);
   });
 });
 

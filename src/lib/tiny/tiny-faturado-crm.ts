@@ -80,6 +80,28 @@ export function isTinySituacaoAberto(situacao: unknown): boolean {
 }
 
 /**
+ * Situação Tiny: código 2 = Cancelado (API/webhook). Sincronismo arquiva o
+ * pedido no CRM (archived_at + label PEDIDO_CANCELADO) preservando a etapa
+ * atual do Kanban — o pedido sai da visão ativa mas continua recuperável via
+ * "Desarquivar", voltando pra mesma coluna onde estava.
+ */
+export function isTinySituacaoCancelado(situacao: unknown): boolean {
+  if (situacao === null || situacao === undefined) return false;
+  if (typeof situacao === "number" && Number.isFinite(situacao)) {
+    return situacao === 2;
+  }
+  const s = String(situacao).trim();
+  if (s === "") return false;
+  const n = Number(s);
+  if (Number.isFinite(n) && n === 2) return true;
+  const lower = s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  return lower === "cancelado" || lower === "cancelada";
+}
+
+/**
  * Situação Tiny: código 6 = entregue (API). Sincronismo só aplica a tag ENTREGUE;
  * não muda a coluna do pedido.
  */
@@ -241,4 +263,102 @@ export async function applyPagoCrmFromTiny(
   }
 
   return { tagAdded, statusMoved, gateBlocked };
+}
+
+/**
+ * Arquiva o pedido no CRM quando o Tiny passa para "Cancelado":
+ * - seta `archived_at = NOW()` somente se ainda for null (preserva a data do
+ *   1º cancelamento — webhook duplicado é no-op)
+ * - adiciona label PEDIDO_CANCELADO (idempotente)
+ *
+ * Não mexe em `status` — quem chama deve preservar a etapa atual do Kanban
+ * para que `unarchive` devolva o pedido à coluna original.
+ */
+export async function applyCanceladoCrmFromTiny(
+  supabase: SupabaseClient<Database>,
+  orderId: string
+): Promise<{ archivedNow: boolean; tagAdded: boolean }> {
+  const { data: current } = await supabase
+    .from("orders")
+    .select("archived_at")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  let archivedNow = false;
+  if (current && !current.archived_at) {
+    const { error: archErr } = await supabase
+      .from("orders")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", orderId);
+    if (!archErr) archivedNow = true;
+  }
+
+  const { data: existingLabel } = await supabase
+    .from("order_labels")
+    .select("id")
+    .eq("order_id", orderId)
+    .eq("label", "PEDIDO_CANCELADO")
+    .maybeSingle();
+
+  let tagAdded = false;
+  if (!existingLabel) {
+    const { error: labelErr } = await supabase.from("order_labels").insert({
+      order_id: orderId,
+      label: "PEDIDO_CANCELADO",
+    });
+    if (!labelErr) tagAdded = true;
+  }
+
+  return { archivedNow, tagAdded };
+}
+
+/**
+ * Reverte o arquivamento por cancelamento quando o Tiny sai de "Cancelado":
+ * - zera `archived_at` (idempotente — só se estava setado)
+ * - remove label PEDIDO_CANCELADO (se existir)
+ *
+ * Chamado pelo re-sync sempre que a situação Tiny atual NÃO for cancelado
+ * mas o pedido CRM ainda traz a marca — espelha o que `applyPagoCrmFromTiny`
+ * faz limpando labels obsoletas de "aguardando pagamento".
+ */
+export async function revertCanceladoCrmFromTiny(
+  supabase: SupabaseClient<Database>,
+  orderId: string
+): Promise<{ unarchived: boolean; tagRemoved: boolean }> {
+  const { data: current } = await supabase
+    .from("orders")
+    .select("archived_at")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  const { data: existingLabel } = await supabase
+    .from("order_labels")
+    .select("id")
+    .eq("order_id", orderId)
+    .eq("label", "PEDIDO_CANCELADO")
+    .maybeSingle();
+
+  // Só reverte se o pedido carrega a marca de cancelado-via-Tiny. Sem a label
+  // não dá pra saber se o `archived_at` veio do Tiny ou de um arquivamento
+  // manual feito no CRM — nesse caso não tocamos em nada.
+  if (!existingLabel) {
+    return { unarchived: false, tagRemoved: false };
+  }
+
+  let unarchived = false;
+  if (current?.archived_at) {
+    const { error: unarchErr } = await supabase
+      .from("orders")
+      .update({ archived_at: null })
+      .eq("id", orderId);
+    if (!unarchErr) unarchived = true;
+  }
+
+  const { error: labelErr } = await supabase
+    .from("order_labels")
+    .delete()
+    .eq("order_id", orderId)
+    .eq("label", "PEDIDO_CANCELADO");
+
+  return { unarchived, tagRemoved: !labelErr };
 }

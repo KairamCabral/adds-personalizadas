@@ -4,12 +4,15 @@ import type { Database, Json } from "@/types/database.types";
 import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
 import { fetchFirstPessoaContatoForChat } from "@/lib/tiny/tiny-contact-pessoas";
 import {
+  applyCanceladoCrmFromTiny,
   applyEntregueCrmFromTiny,
   applyPagoCrmFromTiny,
   isTinySituacaoAberto,
+  isTinySituacaoCancelado,
   isTinySituacaoEntregue,
   isTinySituacaoPago,
   notaFiscalIdFromTinyPedidoRaw,
+  revertCanceladoCrmFromTiny,
 } from "@/lib/tiny/tiny-faturado-crm";
 import {
   computeTinyOrderHash,
@@ -569,6 +572,7 @@ export async function importTinyOrderFromApi(
   );
   const pagoNaApi = isTinySituacaoPago(situacao) || notaFromRaw != null;
   const entregueNaApi = isTinySituacaoEntregue(situacao);
+  const canceladoNaApi = isTinySituacaoCancelado(situacao);
   // Entregue implica pago: pedido entregue obrigatoriamente passou por
   // Aprovado/Faturado em algum momento.
   const aplicarPago = pagoNaApi || entregueNaApi;
@@ -619,6 +623,12 @@ export async function importTinyOrderFromApi(
     status = existingOrder.status;
   }
   if (!isNewOrder && entregueNaApi && existingOrder) {
+    status = existingOrder.status;
+  }
+  // Cancelado no Tiny não regride a etapa: o pedido vai para Arquivados
+  // (archived_at) com a coluna do Kanban preservada — ao desarquivar manualmente
+  // o pedido volta para a mesma etapa onde estava antes do cancelamento.
+  if (!isNewOrder && canceladoNaApi && existingOrder) {
     status = existingOrder.status;
   }
   let position: number;
@@ -778,6 +788,18 @@ export async function importTinyOrderFromApi(
   }
   if (entregueNaApi) {
     await applyEntregueCrmFromTiny(supabase, orderId);
+  }
+
+  // Cancelado / reativado no Tiny → reflete em archived_at + label.
+  // - canceladoNaApi: arquiva (idempotente, preserva data original).
+  // - !canceladoNaApi: se o pedido ainda traz a marca de cancelado-via-Tiny
+  //   (label PEDIDO_CANCELADO), reverte automaticamente o arquivamento.
+  //   `revertCanceladoCrmFromTiny` só age se a label existir, então não toca
+  //   em pedidos arquivados manualmente no CRM.
+  if (canceladoNaApi) {
+    await applyCanceladoCrmFromTiny(supabase, orderId);
+  } else if (!isNewOrder) {
+    await revertCanceladoCrmFromTiny(supabase, orderId);
   }
 
   return {
