@@ -216,7 +216,7 @@ export function ProductInventoryDialog({ product, onClose }: ProductInventoryDia
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending}
-            className="bg-[--adds-blue] hover:bg-[--adds-blue]/90"
+            className="bg-accent text-accent-foreground hover:bg-accent/90"
           >
             {saveMutation.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

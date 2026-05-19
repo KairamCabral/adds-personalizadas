@@ -122,6 +122,14 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
   const latestVariations = latestVersion != null ? (byVersion.get(latestVersion) ?? []) : [];
   const historyVersions = versions.slice(1);
   const hasAdjustmentOnLatest = latestVariations.some((v) => v.status === "AJUSTE_SOLICITADO");
+  // Aprovações em versões anteriores: o card da última versão já mostra as
+  // aprovadas da própria versão. O painel só existe para resgatar artes
+  // aprovadas em v1, v2… quando a vida do pedido continuou (revisão, nova
+  // versão). Caso real: cliente aprova v1 op 2, pede ajuste em v1 op 1,
+  // designer sobe v2, cliente aprova v2 → v1 op 2 não pode sumir.
+  const priorApprovals = artworks.filter(
+    (a) => a.status === "APROVADA" && a.version !== latestVersion
+  );
 
   const uploadMutation = useMutation({
     mutationFn: ({ file, asVariation }: { file: File; asVariation?: boolean }) => {
@@ -240,6 +248,12 @@ export function OrderArtwork({ orderId }: OrderArtworkProps) {
   return (
     <div className="space-y-6">
       {usesExistingArtPanel}
+      {priorApprovals.length > 0 && (
+        <PriorApprovedArtworksPanel
+          approvals={priorApprovals}
+          onZoom={(aw) => setZoomArtwork(aw)}
+        />
+      )}
       {latestVariations.length > 0 && (
         <LatestArtworkCard
           variations={latestVariations}
@@ -1012,6 +1026,81 @@ function VariationPreview({
   );
 }
 
+function PriorApprovedArtworksPanel({
+  approvals,
+  onZoom,
+}: {
+  approvals: Artwork[];
+  onZoom: (artwork: Artwork) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/8 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20">
+          <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+            {approvals.length === 1
+              ? "Arte já aprovada anteriormente"
+              : `${approvals.length} artes já aprovadas anteriormente`}
+          </p>
+          <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
+            Aprovadas pelo cliente em versões anteriores — siga produzindo também.
+          </p>
+        </div>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {approvals.map((aw) => {
+          const isPdf =
+            (aw.file_url ?? "").toLowerCase().endsWith(".pdf") ||
+            (aw.file_name ?? "").toLowerCase().endsWith(".pdf");
+          const variationLabel =
+            (aw.variation_index ?? 1) > 1
+              ? `v${aw.version} · opção ${aw.variation_index}`
+              : `v${aw.version}`;
+          return (
+            <button
+              key={aw.id}
+              type="button"
+              onClick={() => onZoom(aw)}
+              className="group flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-background p-2 text-left transition-colors hover:border-emerald-500/60 hover:bg-emerald-500/5"
+            >
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-emerald-500/25 bg-muted">
+                {isPdf ? (
+                  <FileText className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <img
+                    src={aw.file_url}
+                    alt={variationLabel}
+                    className="h-full w-full object-cover"
+                  />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                  {variationLabel}
+                  <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold leading-none text-emerald-700 dark:text-emerald-300">
+                    OK
+                  </span>
+                </p>
+                {aw.approved_by && (
+                  <p className="truncate text-xs text-muted-foreground">
+                    por {aw.approved_by}
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground/80">
+                  {aw.approved_at ? formatDateTime(aw.approved_at) : ""}
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function HistoryVersionItem({
   version,
   variations,
@@ -1019,9 +1108,8 @@ function HistoryVersionItem({
   version: number;
   variations: Artwork[];
 }) {
-  const primary = variations[0];
-  const config = STATUS_CONFIG[primary?.status ?? "PENDENTE"] ?? { label: "", color: "" };
   const hasMultiple = variations.length > 1;
+  const primary = variations[0];
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-3">
       <div className="flex items-center gap-2">
@@ -1029,22 +1117,39 @@ function HistoryVersionItem({
           v{version}
           {hasMultiple && ` (${variations.length} opções)`}
         </span>
-        <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", config.color)}>
-          {config.label}
-        </span>
       </div>
-      {primary?.adjustment_notes && (
-        <div className="mt-1.5 flex items-start gap-1.5">
-          <MessageSquare className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-          <p className="text-xs italic text-muted-foreground">
-            &ldquo;{primary.adjustment_notes}&rdquo;
-          </p>
-        </div>
-      )}
-      {primary?.approved_by && (
-        <p className="mt-1 text-xs text-muted-foreground">— {primary.approved_by}</p>
-      )}
-      <p className="mt-1 text-[10px] text-muted-foreground/80">
+      <div className="mt-2 space-y-1.5">
+        {variations.map((v, i) => {
+          const cfg = STATUS_CONFIG[v.status] ?? { label: "", color: "" };
+          const optionLabel = hasMultiple ? `Opção ${i + 1}` : "Arte";
+          return (
+            <div key={v.id} className="space-y-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-medium text-foreground">
+                  {optionLabel}
+                </span>
+                <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", cfg.color)}>
+                  {cfg.label}
+                </span>
+                {v.status === "APROVADA" && v.approved_by && (
+                  <span className="text-[11px] text-muted-foreground">
+                    por {v.approved_by}
+                  </span>
+                )}
+              </div>
+              {v.status === "AJUSTE_SOLICITADO" && v.adjustment_notes && (
+                <div className="flex items-start gap-1.5 pl-1">
+                  <MessageSquare className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                  <p className="text-xs italic text-muted-foreground">
+                    &ldquo;{v.adjustment_notes}&rdquo;
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[10px] text-muted-foreground/80">
         Enviada em {formatDateTime(primary?.created_at ?? "")}
       </p>
     </div>
