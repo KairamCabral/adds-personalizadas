@@ -31,6 +31,9 @@ export const PERMISSIONS = {
   "products.view": ["MASTER", "GESTOR"],
   "products.manage": ["MASTER", "GESTOR"],
 
+  // Preços (motor de preços — admin)
+  "pricing.manage": ["MASTER", "GESTOR"],
+
   // Artes
   "artworks.upload": ["MASTER", "GESTOR", "PRESTADOR"],
   "artworks.approve": ["MASTER", "GESTOR"],

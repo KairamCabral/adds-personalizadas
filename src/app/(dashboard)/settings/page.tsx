@@ -6,6 +6,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 
 const SETTINGS_NAV = [
   { href: "/settings/products", permission: "products.manage" as const },
+  { href: "/settings/pricing", permission: "pricing.manage" as const },
   { href: "/settings/kanban", permission: "labels.manage" as const },
   { href: "/settings/users", permission: "settings.users" as const },
   { href: "/settings/labels", permission: "labels.manage" as const },
