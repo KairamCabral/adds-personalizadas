@@ -17,7 +17,7 @@
     },
     {
       "path": "/api/cron/nps-dispatch",
-      "schedule": "0 * * * *"
+      "schedule": "0 10 * * *"
     }
   ]
 }
