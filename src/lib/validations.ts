@@ -101,6 +101,61 @@ export const productSchema = z.object({
 export type ProductFormData = z.infer<typeof productSchema>;
 
 // ============================================
+// PRICING (motor de preços — admin)
+// ============================================
+
+export const SALES_CHANNELS = [
+  "CONSUMIDOR",
+  "DENTISTA",
+  "DISTRIBUIDORA",
+  "VAREJISTA",
+] as const;
+
+export const salesChannelSchema = z.enum(SALES_CHANNELS);
+
+/** Edição inline de uma faixa de preço (pricing_tiers). */
+export const pricingTierSchema = z.object({
+  product_id: z.string().uuid(),
+  channel: salesChannelSchema,
+  min_qty: z.coerce.number().int().min(1, "Quantidade mínima 1"),
+  unit_price: z.coerce.number().min(0, "Preço não pode ser negativo"),
+});
+
+export type PricingTierFormData = z.infer<typeof pricingTierSchema>;
+
+/** Desconto por volume (pricing_volume_discounts). */
+export const volumeDiscountSchema = z.object({
+  channel: salesChannelSchema,
+  min_order_value: z.coerce.number().min(0, "Valor não pode ser negativo"),
+  discount_pct: z.coerce
+    .number()
+    .min(0, "Mínimo 0%")
+    .max(100, "Máximo 100%"),
+  is_active: z.boolean().default(true),
+});
+
+export type VolumeDiscountFormData = z.infer<typeof volumeDiscountSchema>;
+
+/** Configurações gerais (pricing_settings — singleton). */
+export const pricingSettingsSchema = z.object({
+  avista_discount_pct: z.coerce
+    .number()
+    .min(0, "Mínimo 0%")
+    .max(100, "Máximo 100%"),
+  min_order_distribuidora: z.coerce.number().min(0, "Valor não pode ser negativo"),
+  min_order_varejista: z.coerce.number().min(0, "Valor não pode ser negativo"),
+  valid_until: z
+    .preprocess(
+      (val) => (val === "" || val === null || val === undefined ? null : val),
+      z.string().nullable()
+    )
+    .nullable()
+    .optional(),
+});
+
+export type PricingSettingsFormData = z.infer<typeof pricingSettingsSchema>;
+
+// ============================================
 // NEW ORDER (Wizard 3 passos)
 // ============================================
 

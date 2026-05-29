@@ -15,6 +15,7 @@ import {
   Link2,
   Database,
   Truck,
+  DollarSign,
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +24,12 @@ const navItems = [
     label: "Produtos",
     icon: Package,
     permission: "products.manage" as const,
+  },
+  {
+    href: "/settings/pricing",
+    label: "Preços",
+    icon: DollarSign,
+    permission: "pricing.manage" as const,
   },
   {
     href: "/settings/kanban",
