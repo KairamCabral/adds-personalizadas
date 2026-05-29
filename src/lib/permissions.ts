@@ -34,6 +34,9 @@ export const PERMISSIONS = {
   // Preços (motor de preços — admin)
   "pricing.manage": ["MASTER", "GESTOR"],
 
+  // NPS (campanhas, métricas, fila de detratores — admin)
+  "nps.manage": ["MASTER", "GESTOR"],
+
   // Artes
   "artworks.upload": ["MASTER", "GESTOR", "PRESTADOR"],
   "artworks.approve": ["MASTER", "GESTOR"],

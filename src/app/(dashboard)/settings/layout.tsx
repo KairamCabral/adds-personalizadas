@@ -16,6 +16,7 @@ import {
   Database,
   Truck,
   DollarSign,
+  Gauge,
 } from "lucide-react";
 
 const navItems = [
@@ -30,6 +31,12 @@ const navItems = [
     label: "Preços",
     icon: DollarSign,
     permission: "pricing.manage" as const,
+  },
+  {
+    href: "/settings/nps",
+    label: "NPS",
+    icon: Gauge,
+    permission: "nps.manage" as const,
   },
   {
     href: "/settings/kanban",
