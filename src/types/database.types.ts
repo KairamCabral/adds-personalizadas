@@ -397,6 +397,7 @@ export type Database = {
           number: string | null
           person_type: Database["public"]["Enums"]["person_type"]
           phone: string | null
+          sales_channel: Database["public"]["Enums"]["sales_channel"] | null
           state: string | null
           street: string | null
           tiny_id: number | null
@@ -421,6 +422,7 @@ export type Database = {
           number?: string | null
           person_type?: Database["public"]["Enums"]["person_type"]
           phone?: string | null
+          sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
           state?: string | null
           street?: string | null
           tiny_id?: number | null
@@ -445,6 +447,7 @@ export type Database = {
           number?: string | null
           person_type?: Database["public"]["Enums"]["person_type"]
           phone?: string | null
+          sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
           state?: string | null
           street?: string | null
           tiny_id?: number | null
@@ -782,6 +785,51 @@ export type Database = {
         }
         Relationships: []
       }
+      order_items_backup_20260513150000: {
+        Row: {
+          backed_up_at: string | null
+          color: string | null
+          color_name: string | null
+          created_at: string | null
+          id: string | null
+          order_id: string | null
+          personalization: Json | null
+          product_id: string | null
+          product_name: string | null
+          quantity: number | null
+          total_price: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          color?: string | null
+          color_name?: string | null
+          created_at?: string | null
+          id?: string | null
+          order_id?: string | null
+          personalization?: Json | null
+          product_id?: string | null
+          product_name?: string | null
+          quantity?: number | null
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          color?: string | null
+          color_name?: string | null
+          created_at?: string | null
+          id?: string | null
+          order_id?: string | null
+          personalization?: Json | null
+          product_id?: string | null
+          product_name?: string | null
+          quantity?: number | null
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Relationships: []
+      }
       order_labels: {
         Row: {
           added_by: string | null
@@ -886,9 +934,11 @@ export type Database = {
       }
       orders: {
         Row: {
+          approval_note: string | null
           archived_at: string | null
           assigned_to: string | null
           bling_order_id: number | null
+          card_installments: number | null
           client_id: string | null
           contact_name: string | null
           contact_phone: string | null
@@ -907,10 +957,12 @@ export type Database = {
           order_number: number
           order_type: Database["public"]["Enums"]["order_type"]
           origin: string | null
+          payment_terms: Database["public"]["Enums"]["payment_term"] | null
           personalization_data: Json | null
           position: number
           priority: Database["public"]["Enums"]["order_priority"]
           rep_id: string | null
+          sales_channel: Database["public"]["Enums"]["sales_channel"] | null
           start_date: string | null
           status: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id: number | null
@@ -921,9 +973,11 @@ export type Database = {
           uses_existing_art: boolean
         }
         Insert: {
+          approval_note?: string | null
           archived_at?: string | null
           assigned_to?: string | null
           bling_order_id?: number | null
+          card_installments?: number | null
           client_id?: string | null
           contact_name?: string | null
           contact_phone?: string | null
@@ -942,10 +996,12 @@ export type Database = {
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
           origin?: string | null
+          payment_terms?: Database["public"]["Enums"]["payment_term"] | null
           personalization_data?: Json | null
           position?: number
           priority?: Database["public"]["Enums"]["order_priority"]
           rep_id?: string | null
+          sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id?: number | null
@@ -956,9 +1012,11 @@ export type Database = {
           uses_existing_art?: boolean
         }
         Update: {
+          approval_note?: string | null
           archived_at?: string | null
           assigned_to?: string | null
           bling_order_id?: number | null
+          card_installments?: number | null
           client_id?: string | null
           contact_name?: string | null
           contact_phone?: string | null
@@ -977,10 +1035,12 @@ export type Database = {
           order_number?: number
           order_type?: Database["public"]["Enums"]["order_type"]
           origin?: string | null
+          payment_terms?: Database["public"]["Enums"]["payment_term"] | null
           personalization_data?: Json | null
           position?: number
           priority?: Database["public"]["Enums"]["order_priority"]
           rep_id?: string | null
+          sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           tiny_invoice_id?: number | null
@@ -1020,6 +1080,125 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      orders_canceled_backfill_backup_20260518150000: {
+        Row: {
+          applied_archived_at: string | null
+          backed_up_at: string
+          op: string
+          order_id: string
+          previous_archived_at: string | null
+        }
+        Insert: {
+          applied_archived_at?: string | null
+          backed_up_at?: string
+          op: string
+          order_id: string
+          previous_archived_at?: string | null
+        }
+        Update: {
+          applied_archived_at?: string | null
+          backed_up_at?: string
+          op?: string
+          order_id?: string
+          previous_archived_at?: string | null
+        }
+        Relationships: []
+      }
+      pricing_settings: {
+        Row: {
+          avista_discount_pct: number
+          id: boolean
+          min_order_distribuidora: number
+          min_order_varejista: number
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          avista_discount_pct?: number
+          id?: boolean
+          min_order_distribuidora?: number
+          min_order_varejista?: number
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          avista_discount_pct?: number
+          id?: boolean
+          min_order_distribuidora?: number
+          min_order_varejista?: number
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: []
+      }
+      pricing_tiers: {
+        Row: {
+          channel: Database["public"]["Enums"]["sales_channel"]
+          created_at: string
+          id: string
+          is_active: boolean
+          min_qty: number
+          product_id: string
+          unit_price: number
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["sales_channel"]
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          min_qty?: number
+          product_id: string
+          unit_price: number
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["sales_channel"]
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          min_qty?: number
+          product_id?: string
+          unit_price?: number
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pricing_tiers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pricing_volume_discounts: {
+        Row: {
+          channel: Database["public"]["Enums"]["sales_channel"]
+          discount_pct: number
+          id: string
+          is_active: boolean
+          min_order_value: number
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["sales_channel"]
+          discount_pct: number
+          id?: string
+          is_active?: boolean
+          min_order_value: number
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["sales_channel"]
+          discount_pct?: number
+          id?: string
+          is_active?: boolean
+          min_order_value?: number
+        }
+        Relationships: []
       }
       products: {
         Row: {
@@ -2209,6 +2388,44 @@ export type Database = {
           },
         ]
       }
+      tiny_depositos: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: number
+          is_active: boolean
+          name: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id: number
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tiny_depositos_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tiny_sync_logs: {
         Row: {
           created_at: string
@@ -2332,6 +2549,7 @@ export type Database = {
           number: string | null
           person_type: Database["public"]["Enums"]["person_type"]
           phone: string | null
+          sales_channel: Database["public"]["Enums"]["sales_channel"] | null
           state: string | null
           street: string | null
           tiny_id: number | null
@@ -2474,6 +2692,7 @@ export type Database = {
         | "RUSH"
         | "PROMOCIONAL"
         | "ORCAMENTO_PUBLICO"
+      payment_term: "PIX_AVISTA" | "CARTAO" | "APROVACAO_ADDS"
       person_type: "FISICA" | "JURIDICA"
       quote_status:
         | "PENDENTE"
@@ -2481,6 +2700,7 @@ export type Database = {
         | "CONCLUIDO"
         | "APROVADO"
         | "REJEITADO"
+      sales_channel: "CONSUMIDOR" | "DENTISTA" | "DISTRIBUIDORA" | "VAREJISTA"
       supplier_inventory_pool: "PERSONALIZADO" | "MARKETPLACE"
       supplier_inventory_status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED"
       user_role: "MASTER" | "GESTOR" | "PRESTADOR" | "REPRESENTANTE"
@@ -2667,6 +2887,7 @@ export const Constants = {
         "PROMOCIONAL",
         "ORCAMENTO_PUBLICO",
       ],
+      payment_term: ["PIX_AVISTA", "CARTAO", "APROVACAO_ADDS"],
       person_type: ["FISICA", "JURIDICA"],
       quote_status: [
         "PENDENTE",
@@ -2675,13 +2896,13 @@ export const Constants = {
         "APROVADO",
         "REJEITADO",
       ],
+      sales_channel: ["CONSUMIDOR", "DENTISTA", "DISTRIBUIDORA", "VAREJISTA"],
       supplier_inventory_pool: ["PERSONALIZADO", "MARKETPLACE"],
       supplier_inventory_status: ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"],
       user_role: ["MASTER", "GESTOR", "PRESTADOR", "REPRESENTANTE"],
     },
   },
 } as const
-
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 export type Client = Database["public"]["Tables"]["clients"]["Row"]
 export type Order = Database["public"]["Tables"]["orders"]["Row"]
