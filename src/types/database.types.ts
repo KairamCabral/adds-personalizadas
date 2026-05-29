@@ -617,6 +617,358 @@ export type Database = {
           },
         ]
       }
+      nps_dispatches: {
+        Row: {
+          channel: Database["public"]["Enums"]["nps_dispatch_channel"]
+          client_id: string | null
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          last_reminder_at: string | null
+          order_id: string | null
+          recipient_email: string | null
+          recipient_phone: string | null
+          reminders_sent: number
+          scheduled_for: string
+          send_error: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["nps_dispatch_status"]
+          survey_id: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          channel?: Database["public"]["Enums"]["nps_dispatch_channel"]
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          last_reminder_at?: string | null
+          order_id?: string | null
+          recipient_email?: string | null
+          recipient_phone?: string | null
+          reminders_sent?: number
+          scheduled_for?: string
+          send_error?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["nps_dispatch_status"]
+          survey_id: string
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["nps_dispatch_channel"]
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          last_reminder_at?: string | null
+          order_id?: string | null
+          recipient_email?: string | null
+          recipient_phone?: string | null
+          reminders_sent?: number
+          scheduled_for?: string
+          send_error?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["nps_dispatch_status"]
+          survey_id?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nps_dispatches_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_dispatches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_dispatches_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_dispatches_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "nps_surveys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nps_followups: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          id: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          response_id: string
+          status: Database["public"]["Enums"]["nps_followup_status"]
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          response_id: string
+          status?: Database["public"]["Enums"]["nps_followup_status"]
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          response_id?: string
+          status?: Database["public"]["Enums"]["nps_followup_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nps_followups_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_followups_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_followups_response_id_fkey"
+            columns: ["response_id"]
+            isOneToOne: true
+            referencedRelation: "nps_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nps_response_tags: {
+        Row: {
+          created_at: string
+          id: string
+          response_id: string
+          theme: Database["public"]["Enums"]["nps_theme"]
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          response_id: string
+          theme: Database["public"]["Enums"]["nps_theme"]
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          response_id?: string
+          theme?: Database["public"]["Enums"]["nps_theme"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nps_response_tags_response_id_fkey"
+            columns: ["response_id"]
+            isOneToOne: false
+            referencedRelation: "nps_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nps_responses: {
+        Row: {
+          allow_contact: boolean
+          allow_testimonial: boolean
+          category: Database["public"]["Enums"]["nps_category"] | null
+          client_id: string | null
+          comment: string | null
+          created_at: string
+          dispatch_id: string
+          id: string
+          order_id: string | null
+          rep_id: string | null
+          responded_at: string
+          respondent_meta: Json | null
+          sales_channel: Database["public"]["Enums"]["sales_channel"] | null
+          score: number
+          survey_id: string
+        }
+        Insert: {
+          allow_contact?: boolean
+          allow_testimonial?: boolean
+          category?: Database["public"]["Enums"]["nps_category"] | null
+          client_id?: string | null
+          comment?: string | null
+          created_at?: string
+          dispatch_id: string
+          id?: string
+          order_id?: string | null
+          rep_id?: string | null
+          responded_at?: string
+          respondent_meta?: Json | null
+          sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
+          score: number
+          survey_id: string
+        }
+        Update: {
+          allow_contact?: boolean
+          allow_testimonial?: boolean
+          category?: Database["public"]["Enums"]["nps_category"] | null
+          client_id?: string | null
+          comment?: string | null
+          created_at?: string
+          dispatch_id?: string
+          id?: string
+          order_id?: string | null
+          rep_id?: string | null
+          responded_at?: string
+          respondent_meta?: Json | null
+          sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
+          score?: number
+          survey_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nps_responses_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_responses_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: true
+            referencedRelation: "nps_dispatches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_responses_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_responses_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_responses_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "nps_surveys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nps_surveys: {
+        Row: {
+          cooldown_days: number
+          created_at: string
+          created_by: string | null
+          delay_hours: number
+          expires_after_days: number
+          fallback_channel:
+            | Database["public"]["Enums"]["nps_dispatch_channel"]
+            | null
+          id: string
+          is_active: boolean
+          max_reminders: number
+          name: string
+          primary_channel: Database["public"]["Enums"]["nps_dispatch_channel"]
+          question_detractor: string
+          question_main: string
+          question_passive: string
+          question_promoter: string
+          reminder_after_hours: number
+          sales_channel: Database["public"]["Enums"]["sales_channel"] | null
+          trigger_status: Database["public"]["Enums"]["order_status"] | null
+          type: Database["public"]["Enums"]["nps_survey_type"]
+          updated_at: string
+        }
+        Insert: {
+          cooldown_days?: number
+          created_at?: string
+          created_by?: string | null
+          delay_hours?: number
+          expires_after_days?: number
+          fallback_channel?:
+            | Database["public"]["Enums"]["nps_dispatch_channel"]
+            | null
+          id?: string
+          is_active?: boolean
+          max_reminders?: number
+          name: string
+          primary_channel?: Database["public"]["Enums"]["nps_dispatch_channel"]
+          question_detractor?: string
+          question_main?: string
+          question_passive?: string
+          question_promoter?: string
+          reminder_after_hours?: number
+          sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
+          trigger_status?: Database["public"]["Enums"]["order_status"] | null
+          type: Database["public"]["Enums"]["nps_survey_type"]
+          updated_at?: string
+        }
+        Update: {
+          cooldown_days?: number
+          created_at?: string
+          created_by?: string | null
+          delay_hours?: number
+          expires_after_days?: number
+          fallback_channel?:
+            | Database["public"]["Enums"]["nps_dispatch_channel"]
+            | null
+          id?: string
+          is_active?: boolean
+          max_reminders?: number
+          name?: string
+          primary_channel?: Database["public"]["Enums"]["nps_dispatch_channel"]
+          question_detractor?: string
+          question_main?: string
+          question_passive?: string
+          question_promoter?: string
+          reminder_after_hours?: number
+          sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
+          trigger_status?: Database["public"]["Enums"]["order_status"] | null
+          type?: Database["public"]["Enums"]["nps_survey_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nps_surveys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_history: {
         Row: {
           action: string
@@ -2621,6 +2973,22 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      submit_nps_response: {
+        Args: {
+          p_allow_contact?: boolean
+          p_allow_testimonial?: boolean
+          p_comment?: string
+          p_meta?: Json
+          p_score: number
+          p_themes?: Database["public"]["Enums"]["nps_theme"][]
+          p_token: string
+        }
+        Returns: {
+          category: Database["public"]["Enums"]["nps_category"]
+          message: string
+          ok: boolean
+        }[]
+      }
       validate_approval_token: {
         Args: { p_token: string }
         Returns: {
@@ -2637,6 +3005,23 @@ export type Database = {
           used_at: string
           used_by_name: string
           variation_index: number
+        }[]
+      }
+      validate_nps_token: {
+        Args: { p_token: string }
+        Returns: {
+          already_responded: boolean
+          client_name: string
+          dispatch_id: string
+          is_expired: boolean
+          is_valid: boolean
+          order_title: string
+          question_detractor: string
+          question_main: string
+          question_passive: string
+          question_promoter: string
+          survey_id: string
+          survey_type: Database["public"]["Enums"]["nps_survey_type"]
         }[]
       }
     }
@@ -2670,6 +3055,31 @@ export type Database = {
         | "LINK_ENVIADO"
         | "ENTREGUE"
         | "ARTE_APROVADA"
+      nps_category: "DETRATOR" | "PASSIVO" | "PROMOTOR"
+      nps_dispatch_channel: "EMAIL" | "WHATSAPP"
+      nps_dispatch_status:
+        | "PENDENTE"
+        | "ENVIADO"
+        | "RESPONDIDO"
+        | "EXPIRADO"
+        | "FALHOU"
+        | "CANCELADO"
+      nps_followup_status:
+        | "ABERTO"
+        | "EM_TRATATIVA"
+        | "RESOLVIDO"
+        | "DISPENSADO"
+      nps_survey_type: "TRANSACIONAL" | "RELACIONAL"
+      nps_theme:
+        | "ATENDIMENTO"
+        | "PRAZO_ENTREGA"
+        | "QUALIDADE_ARTE"
+        | "QUALIDADE_PRODUTO"
+        | "PRECO"
+        | "COMUNICACAO"
+        | "FACILIDADE_COMPRA"
+        | "POS_VENDA"
+        | "OUTRO"
       order_priority: "NORMAL" | "ALTA"
       order_status:
         | "AUTOMATICO"
@@ -2863,6 +3273,34 @@ export const Constants = {
         "ENTREGUE",
         "ARTE_APROVADA",
       ],
+      nps_category: ["DETRATOR", "PASSIVO", "PROMOTOR"],
+      nps_dispatch_channel: ["EMAIL", "WHATSAPP"],
+      nps_dispatch_status: [
+        "PENDENTE",
+        "ENVIADO",
+        "RESPONDIDO",
+        "EXPIRADO",
+        "FALHOU",
+        "CANCELADO",
+      ],
+      nps_followup_status: [
+        "ABERTO",
+        "EM_TRATATIVA",
+        "RESOLVIDO",
+        "DISPENSADO",
+      ],
+      nps_survey_type: ["TRANSACIONAL", "RELACIONAL"],
+      nps_theme: [
+        "ATENDIMENTO",
+        "PRAZO_ENTREGA",
+        "QUALIDADE_ARTE",
+        "QUALIDADE_PRODUTO",
+        "PRECO",
+        "COMUNICACAO",
+        "FACILIDADE_COMPRA",
+        "POS_VENDA",
+        "OUTRO",
+      ],
       order_priority: ["NORMAL", "ALTA"],
       order_status: [
         "AUTOMATICO",
@@ -2903,6 +3341,7 @@ export const Constants = {
     },
   },
 } as const
+
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 export type Client = Database["public"]["Tables"]["clients"]["Row"]
 export type Order = Database["public"]["Tables"]["orders"]["Row"]

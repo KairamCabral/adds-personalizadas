@@ -40,6 +40,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/supplier") ||
     pathname.startsWith("/art/approve") ||
     pathname.startsWith("/api/art/approve") ||
+    pathname.startsWith("/nps/") || // página pública de resposta NPS (/nps/<token>)
+    pathname.startsWith("/api/nps/respond") || // submissão pública da resposta NPS
     pathname.startsWith("/api/webhooks") ||
     pathname.startsWith("/api/quote") || // /api/quote/submit, /api/quote/upload-logo
     pathname.startsWith("/api/products/public") || // Catálogo público para formulário de orçamento
