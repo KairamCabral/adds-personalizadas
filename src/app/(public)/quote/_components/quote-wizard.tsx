@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { recalculateQuote } from "@/lib/pricing";
+import { recalculateQuote, buildPricingContext, type PricingContext } from "@/lib/pricing";
 import {
   createPublicQuote,
   uploadQuoteLogo,
   getActiveProducts,
+  getPublicPricingContext,
   type CreatePublicQuoteData,
 } from "@/services/quotes.service";
 import { cn } from "@/lib/utils";
@@ -86,6 +87,24 @@ export function QuoteWizard() {
     queryKey: ["public-products"],
     queryFn: getActiveProducts,
   });
+
+  const { data: pricingRaw } = useQuery({
+    queryKey: ["public-pricing"],
+    queryFn: getPublicPricingContext,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const pricingContext = useMemo<PricingContext | undefined>(
+    () =>
+      pricingRaw
+        ? buildPricingContext(
+            pricingRaw.tiers,
+            pricingRaw.settings,
+            pricingRaw.volumeDiscounts
+          )
+        : undefined,
+    [pricingRaw]
+  );
 
   const goTo = (step: WizardStep) => {
     setCurrentStep(step);
@@ -190,7 +209,7 @@ export function QuoteWizard() {
       });
 
       const catalog = (productCatalog as unknown) as { id: string; name: string; price: number | null; category?: string | null }[];
-      const quoteCalc = recalculateQuote(itemsForSubmit, catalog);
+      const quoteCalc = recalculateQuote(itemsForSubmit, catalog, pricingContext);
 
       const diyCustomizations =
         personalization.artwork_mode === "do_it_yourself"
@@ -302,6 +321,7 @@ export function QuoteWizard() {
           onChange={setProducts}
           onNext={() => goTo("personalization")}
           onBack={() => goTo("client-data")}
+          pricingContext={pricingContext}
         />
       )}
 
@@ -323,6 +343,7 @@ export function QuoteWizard() {
           products={products}
           productCatalog={(productCatalog as unknown) as { id: string; name: string; price: number | null; category?: string | null }[]}
           personalization={personalization}
+          pricingContext={pricingContext}
           onSubmit={handleSubmit}
           isSubmitting={isSubmitting}
           onBack={() => goTo("personalization")}

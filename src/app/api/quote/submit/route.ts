@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { recalculateQuote, buildPricingContext } from "@/lib/pricing";
 import type { Database } from "@/types/database.types";
+import type { QuoteItemInput, ProductCatalogItem } from "@/lib/pricing";
 
 type PublicQuoteInsert = Database["public"]["Tables"]["public_quotes"]["Insert"];
 
@@ -51,6 +53,46 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createAdminClient();
+
+    // Recalcular estimated_value no servidor com pricing DB (não confiar no cliente)
+    try {
+      const [tiersRes, settingsRes, volumeRes, productsRes] = await Promise.all([
+        supabase
+          .from("pricing_tiers")
+          .select("product_id, min_qty, unit_price")
+          .eq("channel", "DENTISTA")
+          .eq("is_active", true)
+          .order("product_id")
+          .order("min_qty"),
+        supabase
+          .from("pricing_settings")
+          .select("avista_discount_pct, valid_until")
+          .eq("id", true)
+          .maybeSingle(),
+        supabase
+          .from("pricing_volume_discounts")
+          .select("min_order_value, discount_pct")
+          .eq("channel", "DENTISTA")
+          .eq("is_active", true)
+          .order("min_order_value"),
+        supabase
+          .from("products")
+          .select("id, name, price, category")
+          .eq("is_active", true),
+      ]);
+
+      const ctx = buildPricingContext(
+        tiersRes.data ?? [],
+        settingsRes.data ?? null,
+        volumeRes.data ?? []
+      );
+      const catalog = (productsRes.data ?? []) as ProductCatalogItem[];
+      const items = (Array.isArray(data.items) ? data.items : []) as QuoteItemInput[];
+      const calc = recalculateQuote(items, catalog, ctx);
+      data.estimated_value = calc.totalPix;
+    } catch (calcErr) {
+      console.warn("[quote/submit] Pricing recalc failed, using client value:", calcErr);
+    }
 
     const payload: PublicQuoteInsert = {
       client_name: data.client_name,

@@ -557,3 +557,29 @@ export async function uploadQuoteLogo(file: File): Promise<string> {
   if (!url) throw new Error("URL não retornada");
   return url;
 }
+
+// ============================================
+// CONTEXTO DE PREÇOS PÚBLICO (motor de preços Fase 4)
+// ============================================
+
+export interface PublicPricingTier {
+  product_id: string;
+  min_qty: number;
+  unit_price: number;
+}
+
+export interface PublicPricingContext {
+  tiers: PublicPricingTier[];
+  settings: { avista_discount_pct: number; valid_until: string | null } | null;
+  volumeDiscounts: { min_order_value: number; discount_pct: number }[];
+}
+
+/** Busca o contexto de preços do canal DENTISTA via API pública (service role). */
+export async function getPublicPricingContext(): Promise<PublicPricingContext> {
+  const res = await fetch("/api/pricing/public", { cache: "no-store" });
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(json.error ?? "Erro ao carregar contexto de preços");
+  }
+  return res.json() as Promise<PublicPricingContext>;
+}
