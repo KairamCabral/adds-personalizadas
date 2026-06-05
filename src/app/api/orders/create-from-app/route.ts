@@ -6,6 +6,11 @@ import {
   TinyTokenExpiredError,
 } from "@/lib/tiny-api";
 import { formatProductWithColor } from "@/lib/products/format";
+import {
+  applyChannelMarcador,
+  SALES_CHANNEL_VALUES,
+  type SalesChannel,
+} from "@/lib/sales-channel";
 import type { Database } from "@/types/database.types";
 
 const CORS_HEADERS = {
@@ -191,10 +196,39 @@ export async function POST(request: NextRequest) {
         console.log(`[create-from-app] Incluindo vendedor Tiny ID: ${tinySellerIdFromRep}`);
       }
 
-      const tinyResult = await tinyApiPost<Record<string, unknown>>(
-        "/pedidos",
-        tinyPayload
-      );
+      // Canal de venda: prioriza o do pedido, com fallback no cliente.
+      const rawChannel =
+        (order as any).sales_channel ?? client?.sales_channel ?? null;
+      const channel: SalesChannel | null =
+        rawChannel &&
+        (SALES_CHANNEL_VALUES as readonly string[]).includes(rawChannel)
+          ? (rawChannel as SalesChannel)
+          : null;
+
+      // Marcador `canal:<X>` no pedido. ⚠️ best-effort: se o Tiny recusar o
+      // payload com marcador, faz retry sem canal — nunca bloqueia o pedido.
+      const tinyPayloadWithChannel = applyChannelMarcador(tinyPayload, channel);
+
+      let tinyResult: Record<string, unknown>;
+      try {
+        tinyResult = await tinyApiPost<Record<string, unknown>>(
+          "/pedidos",
+          tinyPayloadWithChannel
+        );
+      } catch (err) {
+        if (channel && !(err instanceof TinyTokenExpiredError)) {
+          console.warn(
+            "[create-from-app] Falha com canal — retry sem canal:",
+            err instanceof Error ? err.message : err
+          );
+          tinyResult = await tinyApiPost<Record<string, unknown>>(
+            "/pedidos",
+            tinyPayload
+          );
+        } else {
+          throw err;
+        }
+      }
 
       const tinyOrderId =
         (tinyResult as any)?.id ??

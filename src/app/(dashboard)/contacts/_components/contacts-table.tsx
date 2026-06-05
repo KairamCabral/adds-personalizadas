@@ -16,6 +16,7 @@ import { DataTable } from "@/components/shared/data-table";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { maskPhone, getInitials, generateAvatarColor } from "@/lib/utils";
+import { SALES_CHANNEL_LABELS, type SalesChannel } from "@/lib/sales-channel";
 import type { Client } from "@/types/database.types";
 import {
   MoreHorizontal,
@@ -96,6 +97,17 @@ export function ContactsTable({
             {type === "FISICA" ? "Pessoa Física" : "Pessoa Jurídica"}
           </Badge>
         );
+      },
+    },
+    {
+      accessorKey: "sales_channel",
+      header: "Canal",
+      cell: ({ row }) => {
+        const channel = row.getValue("sales_channel") as SalesChannel | null;
+        if (!channel) {
+          return <span className="text-muted-foreground">—</span>;
+        }
+        return <Badge variant="outline">{SALES_CHANNEL_LABELS[channel]}</Badge>;
       },
     },
     {
@@ -186,7 +198,7 @@ export function ContactsTable({
         <table className="w-full">
           <thead>
             <tr className="border-b border-border">
-              {["Nome", "Tipo", "E-mail", "Telefone", "Cidade/Estado", ""].map(
+              {["Nome", "Tipo", "Canal", "E-mail", "Telefone", "Cidade/Estado", ""].map(
                 (h) => (
                   <th
                     key={h}
@@ -209,6 +221,9 @@ export function ContactsTable({
                       <Skeleton className="h-3 w-24" />
                     </div>
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  <Skeleton className="h-5 w-20 rounded-full" />
                 </td>
                 <td className="px-4 py-3">
                   <Skeleton className="h-5 w-20 rounded-full" />

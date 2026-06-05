@@ -37,6 +37,10 @@ export const clientSchema = z.object({
   neighborhood: z.string().nullable().optional(),
   city: z.string().nullable().optional(),
   state: z.string().nullable().optional(),
+  sales_channel: z
+    .enum(["CONSUMIDOR", "DENTISTA", "DISTRIBUIDORA", "VAREJISTA"])
+    .nullable()
+    .optional(),
 });
 
 export type ClientFormData = z.infer<typeof clientSchema>;

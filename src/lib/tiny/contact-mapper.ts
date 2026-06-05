@@ -3,6 +3,11 @@
  * Usado pelo sync em lote e pela importação via webhook/API.
  */
 
+import {
+  salesChannelFromTinyContact,
+  type SalesChannel,
+} from "@/lib/sales-channel";
+
 export function cleanClientName(rawName: string): string {
   if (!rawName || typeof rawName !== "string") return rawName || "";
   return (
@@ -64,6 +69,8 @@ export function clientUpsertPayloadFromTinyContact(raw: Record<string, unknown>)
   neighborhood: string | null;
   tiny_id: number;
   tiny_synced_at: string;
+  /** Só presente quando derivável do "tipo de contato" — evita sobrescrever com null. */
+  sales_channel?: SalesChannel;
 } | null {
   const id = raw.id;
   const tinyId = typeof id === "number" ? id : typeof id === "string" ? Number(id) : NaN;
@@ -71,6 +78,7 @@ export function clientUpsertPayloadFromTinyContact(raw: Record<string, unknown>)
 
   const rawName = raw.nome ?? raw.nomeFantasia ?? raw.fantasia ?? "Sem nome";
   const endereco = (raw.endereco as Record<string, unknown>) ?? {};
+  const salesChannel = salesChannelFromTinyContact(raw);
   const city =
     (endereco.municipio as string | undefined) ??
     (endereco.cidade as string | undefined) ??
@@ -106,5 +114,6 @@ export function clientUpsertPayloadFromTinyContact(raw: Record<string, unknown>)
     neighborhood: (endereco.bairro as string | undefined) ?? (raw.bairro as string | undefined) ?? null,
     tiny_id: tinyId,
     tiny_synced_at: new Date().toISOString(),
+    ...(salesChannel ? { sales_channel: salesChannel } : {}),
   };
 }

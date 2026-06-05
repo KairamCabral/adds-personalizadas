@@ -25,6 +25,10 @@ import {
 } from "@/components/ui/select";
 import { createClient, updateClient } from "@/services/clients.service";
 import { clientSchema, type ClientFormData } from "@/lib/validations";
+import {
+  SALES_CHANNEL_LABELS,
+  SALES_CHANNEL_VALUES,
+} from "@/lib/sales-channel";
 import { formatPhoneInput, formatDocumentInput } from "@/lib/utils";
 import type { Client } from "@/types/database.types";
 import { RefreshCw } from "lucide-react";
@@ -60,8 +64,11 @@ export function ContactForm({
       neighborhood: "",
       city: "",
       state: "",
+      sales_channel: null,
     },
   });
+
+  const NO_CHANNEL = "__none__";
 
   const createMutation = useMutation({
     mutationFn: async (data: Parameters<typeof createClient>[0]) => {
@@ -153,6 +160,7 @@ export function ContactForm({
           neighborhood: c.neighborhood ?? "",
           city: c.city ?? "",
           state: c.state ?? "",
+          sales_channel: c.sales_channel ?? null,
         });
       }
     },
@@ -187,6 +195,7 @@ export function ContactForm({
         neighborhood: initialData.neighborhood ?? "",
         city: initialData.city ?? "",
         state: initialData.state ?? "",
+        sales_channel: initialData.sales_channel ?? null,
       });
     } else if (open && !initialData) {
       form.reset({
@@ -204,6 +213,7 @@ export function ContactForm({
         neighborhood: "",
         city: "",
         state: "",
+        sales_channel: null,
       });
     }
   }, [open, initialData, form]);
@@ -224,6 +234,7 @@ export function ContactForm({
       neighborhood: data.neighborhood?.trim() || null,
       city: data.city?.trim() || null,
       state: data.state?.trim() || null,
+      sales_channel: data.sales_channel ?? null,
     };
 
     if (isEdit) {
@@ -354,6 +365,35 @@ export function ContactForm({
                     />
                   )}
                 />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="sales_channel">Canal de venda</Label>
+                <Select
+                  value={form.watch("sales_channel") ?? NO_CHANNEL}
+                  onValueChange={(v) =>
+                    form.setValue(
+                      "sales_channel",
+                      v === NO_CHANNEL
+                        ? null
+                        : (v as (typeof SALES_CHANNEL_VALUES)[number])
+                    )
+                  }
+                >
+                  <SelectTrigger id="sales_channel">
+                    <SelectValue placeholder="Não definido" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_CHANNEL}>Não definido</SelectItem>
+                    {SALES_CHANNEL_VALUES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {SALES_CHANNEL_LABELS[c]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
