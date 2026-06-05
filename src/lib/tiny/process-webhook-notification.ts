@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import { importTinyOrderFromApi } from "@/lib/tiny/tiny-order-import";
 import { applyPagoCrmFromTiny } from "@/lib/tiny/tiny-faturado-crm";
+import { salesChannelFromTinyContact } from "@/lib/sales-channel";
 // `bling.service` é carregado dinamicamente — ver justificativa em tiny-order-import.ts.
 
 export interface TinyPayload {
@@ -455,6 +456,10 @@ async function handleContato(
   if (endereco.numero) clientData.number = endereco.numero;
   if (endereco.complemento) clientData.complement = endereco.complemento;
   if (endereco.bairro) clientData.neighborhood = endereco.bairro;
+  // Canal de venda a partir do "tipo de contato" do Tiny — só quando derivável
+  // (omitir preserva canal definido manualmente no web).
+  const salesChannel = salesChannelFromTinyContact(dados);
+  if (salesChannel) clientData.sales_channel = salesChannel;
 
   const { data: client } = await supabase
     .from("clients")

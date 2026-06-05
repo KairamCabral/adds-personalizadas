@@ -14,6 +14,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { tinyApiGet } from "@/lib/tiny-api";
+import { salesChannelFromTinyContact } from "@/lib/sales-channel";
 
 const LOG_PREFIX = "[Tiny Sync Incremental]";
 const SETTINGS_KEY = "tiny_clients_incremental_sync";
@@ -103,6 +104,7 @@ export function mapContactToClient(raw: any) {
     raw.municipio ??
     raw.cidade ??
     null;
+  const salesChannel = salesChannelFromTinyContact(raw);
   return {
     name: cleanClientName(rawName),
     email: raw.email ?? null,
@@ -124,6 +126,9 @@ export function mapContactToClient(raw: any) {
     neighborhood: endereco.bairro ?? raw.bairro ?? null,
     tiny_id: raw.id,
     tiny_synced_at: new Date().toISOString(),
+    // Só inclui quando derivável do "tipo de contato" — omitir preserva
+    // canal definido manualmente no web (não sobrescreve com null).
+    ...(salesChannel ? { sales_channel: salesChannel } : {}),
   };
 }
 

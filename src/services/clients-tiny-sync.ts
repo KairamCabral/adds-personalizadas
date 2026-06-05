@@ -73,6 +73,7 @@ export async function syncClientFromTiny(clientId: string): Promise<{
     if (mapped.street && mapped.street !== existing.street) fieldsUpdated.push("street");
     if (mapped.city && mapped.city !== existing.city) fieldsUpdated.push("city");
     if (mapped.zip_code && mapped.zip_code !== existing.zip_code) fieldsUpdated.push("zip_code");
+    if (mapped.sales_channel) fieldsUpdated.push("canal");
 
     const { data: updated, error: updateError } = await supabase
       .from("clients")
@@ -91,6 +92,10 @@ export async function syncClientFromTiny(clientId: string): Promise<{
         complement: mapped.complement,
         neighborhood: mapped.neighborhood,
         tiny_synced_at: new Date().toISOString(),
+        // Só sobrescreve quando o Tiny tem um tipo de canal definido.
+        ...(mapped.sales_channel
+          ? { sales_channel: mapped.sales_channel }
+          : {}),
       })
       .eq("id", clientId)
       .select()

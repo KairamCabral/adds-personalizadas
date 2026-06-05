@@ -5,6 +5,11 @@ import {
   isTinyConnected,
   TinyTokenExpiredError,
 } from "@/lib/tiny-api";
+import {
+  applySalesChannelToTinyContact,
+  SALES_CHANNEL_VALUES,
+  type SalesChannel,
+} from "@/lib/sales-channel";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -24,20 +29,40 @@ export async function OPTIONS() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { nome, name, cpf_cnpj, document, fone, phone, email, cidade, uf, endereco, cep } =
-      body as {
-        nome?: string;
-        name?: string;
-        cpf_cnpj?: string;
-        document?: string;
-        fone?: string;
-        phone?: string;
-        email?: string;
-        cidade?: string;
-        uf?: string;
-        endereco?: string;
-        cep?: string;
-      };
+    const {
+      nome,
+      name,
+      cpf_cnpj,
+      document,
+      fone,
+      phone,
+      email,
+      cidade,
+      uf,
+      endereco,
+      cep,
+      sales_channel,
+    } = body as {
+      nome?: string;
+      name?: string;
+      cpf_cnpj?: string;
+      document?: string;
+      fone?: string;
+      phone?: string;
+      email?: string;
+      cidade?: string;
+      uf?: string;
+      endereco?: string;
+      cep?: string;
+      sales_channel?: SalesChannel | null;
+    };
+
+    // Valida o canal recebido (NULL/ausente = sem marcador de canal).
+    const channel: SalesChannel | null =
+      sales_channel &&
+      (SALES_CHANNEL_VALUES as readonly string[]).includes(sales_channel)
+        ? sales_channel
+        : null;
 
     const resolvedName = (nome ?? name ?? "").trim();
     if (!resolvedName) {
@@ -122,10 +147,31 @@ export async function POST(request: NextRequest) {
     if (uf) payload.uf = uf;
     if (cep) payload.cep = cep.replace(/\D/g, "");
 
-    const created = await tinyApiPost<Record<string, unknown>>(
-      "/contatos",
-      payload
-    );
+    // Anexa o canal (marcador `canal:<X>` + "tipo de contato" best-effort).
+    // ⚠️ O formato do campo de tipos na API Tiny v3 não foi validado contra
+    // resposta real — por isso há retry sem-canal: a criação NUNCA é bloqueada.
+    const payloadWithChannel = applySalesChannelToTinyContact(payload, channel);
+
+    let created: Record<string, unknown>;
+    try {
+      created = await tinyApiPost<Record<string, unknown>>(
+        "/contatos",
+        payloadWithChannel
+      );
+    } catch (err) {
+      if (channel && !(err instanceof TinyTokenExpiredError)) {
+        console.warn(
+          "[tiny/create-contact] Falha com canal — retry sem canal:",
+          err instanceof Error ? err.message : err
+        );
+        created = await tinyApiPost<Record<string, unknown>>(
+          "/contatos",
+          payload
+        );
+      } else {
+        throw err;
+      }
+    }
 
     const newId =
       (created as any)?.id ??
