@@ -24,7 +24,7 @@ import type {
   WizardProductItem,
   WizardPersonalization,
 } from "./quote-wizard-types";
-import type { ProductCatalogItem } from "@/lib/pricing";
+import type { ProductCatalogItem, PricingContext } from "@/lib/pricing";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -34,6 +34,7 @@ interface StepReviewProps {
   products: WizardProductItem[];
   productCatalog: ProductCatalogItem[];
   personalization: WizardPersonalization;
+  pricingContext?: PricingContext;
   onSubmit: () => void;
   isSubmitting: boolean;
   onBack: () => void;
@@ -47,6 +48,7 @@ export function StepReview({
   products,
   productCatalog,
   personalization,
+  pricingContext,
   onSubmit,
   isSubmitting,
   onBack,
@@ -54,7 +56,7 @@ export function StepReview({
   onEditProducts,
   onEditPersonalization,
 }: StepReviewProps) {
-  const quote = recalculateQuote(products, productCatalog);
+  const quote = recalculateQuote(products, productCatalog, pricingContext);
 
   return (
     <div className="space-y-8 w-full max-w-5xl mx-auto min-w-0">
@@ -136,8 +138,20 @@ export function StepReview({
                 <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium tabular-nums">{formatCurrency(quote.subtotal)}</span>
               </div>
+              {quote.volumeDiscountPct > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Desconto por volume ({quote.volumeDiscountPct}%)
+                  </span>
+                  <span className="text-green-600 dark:text-green-400 tabular-nums">
+                    -{formatCurrency(quote.volumeDiscountValue)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Desconto PIX/Boleto (5%)</span>
+                <span className="text-muted-foreground">
+                  Desconto PIX/Boleto ({Math.round(quote.pixDiscountRate * 100)}%)
+                </span>
                 <span className="text-green-600 dark:text-green-400 tabular-nums">
                   -{formatCurrency(quote.pixDiscountValue)}
                 </span>

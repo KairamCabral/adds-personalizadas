@@ -25,7 +25,7 @@ import {
 import { toast } from "sonner";
 import { getActiveProducts } from "@/services/quotes.service";
 import { recalculateQuote } from "@/lib/pricing";
-import type { ProductCatalogItem } from "@/lib/pricing";
+import type { ProductCatalogItem, PricingContext } from "@/lib/pricing";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -75,6 +75,7 @@ interface StepProductsProps {
   onChange: (products: WizardProductItem[]) => void;
   onNext: () => void;
   onBack: () => void;
+  pricingContext?: PricingContext;
 }
 
 function getTotalQuantity(item: WizardProductItem): number {
@@ -102,6 +103,7 @@ export function StepProducts({
   onChange,
   onNext,
   onBack,
+  pricingContext,
 }: StepProductsProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
@@ -816,7 +818,8 @@ export function StepProducts({
               ? { quantity_per_color: p.quantity_per_color }
               : {}),
           })),
-          catalog
+          catalog,
+          pricingContext
         );
         if (quote.items.length === 0) return null;
         return (
@@ -830,8 +833,20 @@ export function StepProducts({
                   <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-medium tabular-nums">{formatCurrency(quote.subtotal)}</span>
                 </div>
+                {quote.volumeDiscountPct > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Desconto por volume ({quote.volumeDiscountPct}%)
+                    </span>
+                    <span className="text-green-600 dark:text-green-400 tabular-nums">
+                      -{formatCurrency(quote.volumeDiscountValue)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Desconto PIX/Boleto (5%)</span>
+                  <span className="text-muted-foreground">
+                    Desconto PIX/Boleto ({Math.round(quote.pixDiscountRate * 100)}%)
+                  </span>
                   <span className="text-green-600 dark:text-green-400 tabular-nums">
                     -{formatCurrency(quote.pixDiscountValue)}
                   </span>

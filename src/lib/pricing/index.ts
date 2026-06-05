@@ -21,6 +21,10 @@ export {
 
 export {
   recalculateQuote,
+  buildPricingContext,
+  lookupTierPrice,
+  type DbTier,
+  type PricingContext,
   type QuoteItemInput,
   type QuoteLineItem,
   type QuoteSummary,

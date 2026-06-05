@@ -21,9 +21,9 @@ import {
   type SalesChannel,
 } from "@/services/pricing.service";
 
-// CONSUMIDOR/DISTRIBUIDORA/VAREJISTA usam faixa única (min_qty=1);
-// DENTISTA usa faixas escalonadas por quantidade.
-const CHANNEL_TIERS: {
+// CONSUMIDOR/DISTRIBUIDORA/VAREJISTA usam faixa única (min_qty=1).
+// DENTISTA usa faixas lidas do banco (dinâmicas por produto).
+const FIXED_CHANNEL_TIERS: {
   channel: SalesChannel;
   label: string;
   minQtys: number[];
@@ -31,8 +31,9 @@ const CHANNEL_TIERS: {
   { channel: "CONSUMIDOR", label: "Consumidor", minQtys: [1] },
   { channel: "DISTRIBUIDORA", label: "Distribuidora", minQtys: [1] },
   { channel: "VAREJISTA", label: "Varejista", minQtys: [1] },
-  { channel: "DENTISTA", label: "Dentista", minQtys: [24, 36, 72, 120, 240] },
 ];
+
+const DENTISTA_FALLBACK_MIN_QTYS = [24, 36, 72, 120, 240];
 
 function rowKey(channel: string, minQty: number) {
   return `${channel}:${minQty}`;
@@ -84,6 +85,22 @@ export function ChannelPricesSection() {
     return map;
   }, [tiers]);
 
+  // Faixas DENTISTA extraídas dos tiers já carregados do banco.
+  // Fallback para faixas padrão se o banco ainda não tiver dados para este produto.
+  const dentistMinQtys = useMemo(() => {
+    const dentistaTiers = tiers.filter((t) => t.channel === "DENTISTA");
+    if (dentistaTiers.length > 0) {
+      return dentistaTiers.map((t) => t.min_qty).sort((a, b) => a - b);
+    }
+    return DENTISTA_FALLBACK_MIN_QTYS;
+  }, [tiers]);
+
+  // Lista de canais para renderização — DENTISTA usa faixas dinâmicas.
+  const channelTiers = useMemo(() => [
+    ...FIXED_CHANNEL_TIERS,
+    { channel: "DENTISTA" as SalesChannel, label: "Dentista", minQtys: dentistMinQtys },
+  ], [dentistMinQtys]);
+
   const valueFor = (key: string) => edits[key] ?? original[key] ?? "";
 
   const isDirty = useMemo(
@@ -97,7 +114,7 @@ export function ChannelPricesSection() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const ops: Promise<unknown>[] = [];
-      for (const ct of CHANNEL_TIERS) {
+      for (const ct of channelTiers) {
         for (const minQty of ct.minQtys) {
           const key = rowKey(ct.channel, minQty);
           if (edits[key] === undefined) continue;
@@ -176,7 +193,7 @@ export function ChannelPricesSection() {
         </div>
       ) : (
         <div className="space-y-6">
-          {CHANNEL_TIERS.map((ct) => (
+          {channelTiers.map((ct) => (
             <div key={ct.channel} className="rounded-lg border border-border">
               <div className="border-b border-border bg-muted/40 px-4 py-2.5">
                 <h3 className="text-sm font-semibold text-foreground">
