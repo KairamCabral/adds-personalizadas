@@ -174,3 +174,156 @@ export async function assignFollowupToMe(id: string): Promise<void> {
     .eq("id", id);
   if (error) throw error;
 }
+
+// ---------- Criar campanha ----------
+export type SalesChannel = Database["public"]["Enums"]["sales_channel"];
+export type NpsSurveyType = Database["public"]["Enums"]["nps_survey_type"];
+export type NpsDispatchChannel = Database["public"]["Enums"]["nps_dispatch_channel"];
+export type OrderStatus = Database["public"]["Enums"]["order_status"];
+
+export interface CreateSurveyInput {
+  name: string;
+  type: NpsSurveyType;
+  sales_channel: SalesChannel | null;
+  trigger_status: OrderStatus | null;
+  primary_channel: NpsDispatchChannel;
+  fallback_channel: NpsDispatchChannel | null;
+  delay_hours: number;
+  expires_after_days: number;
+  cooldown_days: number;
+  max_reminders: number;
+  reminder_after_hours: number;
+  question_main: string;
+  question_detractor: string;
+  question_passive: string;
+  question_promoter: string;
+}
+
+export async function createSurvey(input: CreateSurveyInput): Promise<NpsSurvey> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from("nps_surveys")
+    .insert({ ...input, is_active: false, created_by: user?.id ?? null })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// ---------- Busca de clientes (envio manual) ----------
+export interface ClientLite {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  sales_channel: SalesChannel | null;
+}
+
+export async function searchClients(query: string): Promise<ClientLite[]> {
+  const term = query.trim();
+  if (term.length < 2) return [];
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, name, email, phone, sales_channel")
+    .ilike("name", `%${term}%`)
+    .order("name", { ascending: true })
+    .limit(20);
+  if (error) throw error;
+  return data ?? [];
+}
+
+// ---------- Disparo manual (link p/ enviar pelo WhatsApp à mão) ----------
+export interface ManualDispatchResult {
+  token: string;
+  clientName: string;
+  phone: string | null;
+}
+
+/**
+ * Cria um disparo já marcado como ENVIADO (o staff envia o link à mão pelo
+ * WhatsApp). O cron não reenvia (não fica PENDENTE) nem lembra (canal WhatsApp
+ * não está "configurado" no app). Quando o cliente responde, o closed-loop roda.
+ */
+export async function createManualDispatch(input: {
+  surveyId: string;
+  clientId: string;
+}): Promise<ManualDispatchResult> {
+  const [{ data: survey }, { data: client }] = await Promise.all([
+    supabase.from("nps_surveys").select("expires_after_days").eq("id", input.surveyId).single(),
+    supabase.from("clients").select("name, phone, email").eq("id", input.clientId).single(),
+  ]);
+  const expDays = survey?.expires_after_days ?? 30;
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("nps_dispatches")
+    .insert({
+      survey_id: input.surveyId,
+      client_id: input.clientId,
+      channel: "WHATSAPP",
+      status: "ENVIADO",
+      recipient_phone: client?.phone ?? null,
+      recipient_email: client?.email ?? null,
+      scheduled_for: nowIso,
+      sent_at: nowIso,
+      expires_at: new Date(Date.now() + expDays * 86_400_000).toISOString(),
+    })
+    .select("token")
+    .single();
+  if (error) throw error;
+  return { token: data.token, clientName: client?.name ?? "", phone: client?.phone ?? null };
+}
+
+// ---------- Onda relacional (enfileira e-mails pro cohort elegível) ----------
+export async function enqueueRelationalWave(
+  surveyId: string,
+): Promise<{ enqueued: number; skipped: number }> {
+  const { data: survey, error: sErr } = await supabase
+    .from("nps_surveys")
+    .select("*")
+    .eq("id", surveyId)
+    .single();
+  if (sErr || !survey) throw new Error("Campanha não encontrada.");
+
+  // clientes elegíveis: canal compatível + com e-mail
+  let cq = supabase.from("clients").select("id, email").not("email", "is", null);
+  if (survey.sales_channel) cq = cq.eq("sales_channel", survey.sales_channel);
+  const { data: clients, error: cErr } = await cq.limit(5000);
+  if (cErr) throw cErr;
+
+  // cooldown: pula quem recebeu qualquer disparo dentro da janela
+  const since = new Date(Date.now() - survey.cooldown_days * 86_400_000).toISOString();
+  const { data: recent } = await supabase
+    .from("nps_dispatches")
+    .select("client_id")
+    .gt("created_at", since);
+  const recentSet = new Set((recent ?? []).map((r) => r.client_id));
+
+  const eligible = (clients ?? []).filter((c) => c.email && !recentSet.has(c.id));
+  const nowIso = new Date().toISOString();
+  const expIso = new Date(Date.now() + survey.expires_after_days * 86_400_000).toISOString();
+  const rows = eligible.map((c) => ({
+    survey_id: surveyId,
+    client_id: c.id,
+    channel: "EMAIL" as const,
+    status: "PENDENTE" as const,
+    recipient_email: c.email,
+    scheduled_for: nowIso,
+    expires_at: expIso,
+  }));
+
+  let enqueued = 0;
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    const { error } = await supabase.from("nps_dispatches").insert(chunk);
+    if (error) throw error;
+    enqueued += chunk.length;
+  }
+  return { enqueued, skipped: (clients?.length ?? 0) - enqueued };
+}
+
+export function npsPublicUrl(token: string): string {
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.addsbrasil.com.br").replace(/\/$/, "");
+  return `${base}/nps/${token}`;
+}
