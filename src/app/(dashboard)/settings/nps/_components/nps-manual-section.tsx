@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Loader2, MessageCircle, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ export function NpsManualSection() {
   const [surveyId, setSurveyId] = useState("");
   const [result, setResult] = useState<ManualDispatchResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const qc = useQueryClient();
 
   const { data: surveys = [] } = useQuery({ queryKey: ["nps", "surveys"], queryFn: getNpsSurveys });
   const { data: searchResults = [], isFetching } = useQuery({
@@ -52,6 +53,7 @@ export function NpsManualSection() {
     onSuccess: (r) => {
       setResult(r);
       toast.success("Link gerado.");
+      qc.invalidateQueries({ queryKey: ["nps", "dispatch-counts"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao gerar link."),
   });
@@ -189,7 +191,7 @@ export function NpsManualSection() {
               </div>
             </div>
             {result.phone ? (
-              <a href={waLink(result.phone, result.clientName, url)} target="_blank" rel="noreferrer">
+              <a href={waLink(result.phone, result.clientName, url)} target="_blank" rel="noopener noreferrer">
                 <Button className="w-full bg-[#25D366] text-white hover:bg-[#1fb855]">
                   <MessageCircle className="mr-2 h-4 w-4" /> Abrir no WhatsApp
                 </Button>

@@ -224,10 +224,12 @@ export interface ClientLite {
 export async function searchClients(query: string): Promise<ClientLite[]> {
   const term = query.trim();
   if (term.length < 2) return [];
+  // escapa curingas do LIKE (% e _) e a barra de escape
+  const safe = term.replace(/[\\%_]/g, (m) => `\\${m}`);
   const { data, error } = await supabase
     .from("clients")
     .select("id, name, email, phone, sales_channel")
-    .ilike("name", `%${term}%`)
+    .ilike("name", `%${safe}%`)
     .order("name", { ascending: true })
     .limit(20);
   if (error) throw error;
@@ -250,9 +252,10 @@ export async function createManualDispatch(input: {
   surveyId: string;
   clientId: string;
 }): Promise<ManualDispatchResult> {
-  const [{ data: survey }, { data: client }] = await Promise.all([
+  const [{ data: survey }, { data: client }, { data: auth }] = await Promise.all([
     supabase.from("nps_surveys").select("expires_after_days").eq("id", input.surveyId).single(),
     supabase.from("clients").select("name, phone, email").eq("id", input.clientId).single(),
+    supabase.auth.getUser(),
   ]);
   const expDays = survey?.expires_after_days ?? 30;
   const nowIso = new Date().toISOString();
@@ -268,6 +271,7 @@ export async function createManualDispatch(input: {
       scheduled_for: nowIso,
       sent_at: nowIso,
       expires_at: new Date(Date.now() + expDays * 86_400_000).toISOString(),
+      created_by: auth.user?.id ?? null,
     })
     .select("token")
     .single();
@@ -275,53 +279,35 @@ export async function createManualDispatch(input: {
   return { token: data.token, clientName: client?.name ?? "", phone: client?.phone ?? null };
 }
 
-// ---------- Onda relacional (enfileira e-mails pro cohort elegível) ----------
-export async function enqueueRelationalWave(
-  surveyId: string,
-): Promise<{ enqueued: number; skipped: number }> {
-  const { data: survey, error: sErr } = await supabase
-    .from("nps_surveys")
-    .select("*")
-    .eq("id", surveyId)
-    .single();
-  if (sErr || !survey) throw new Error("Campanha não encontrada.");
+// ---------- Onda relacional (via RPC atômico — sem truncar/duplicar) ----------
+// O RPC nps_run_relational_wave faz o anti-join de cooldown no Postgres
+// (sem o teto de 1000 linhas do PostgREST), filtra e-mail não vazio + canal,
+// e serializa execuções concorrentes (advisory lock). dry_run = só conta.
 
-  // clientes elegíveis: canal compatível + com e-mail
-  let cq = supabase.from("clients").select("id, email").not("email", "is", null);
-  if (survey.sales_channel) cq = cq.eq("sales_channel", survey.sales_channel);
-  const { data: clients, error: cErr } = await cq.limit(5000);
-  if (cErr) throw cErr;
-
-  // cooldown: pula quem recebeu qualquer disparo dentro da janela
-  const since = new Date(Date.now() - survey.cooldown_days * 86_400_000).toISOString();
-  const { data: recent } = await supabase
-    .from("nps_dispatches")
-    .select("client_id")
-    .gt("created_at", since);
-  const recentSet = new Set((recent ?? []).map((r) => r.client_id));
-
-  const eligible = (clients ?? []).filter((c) => c.email && !recentSet.has(c.id));
-  const nowIso = new Date().toISOString();
-  const expIso = new Date(Date.now() + survey.expires_after_days * 86_400_000).toISOString();
-  const rows = eligible.map((c) => ({
-    survey_id: surveyId,
-    client_id: c.id,
-    channel: "EMAIL" as const,
-    status: "PENDENTE" as const,
-    recipient_email: c.email,
-    scheduled_for: nowIso,
-    expires_at: expIso,
-  }));
-
-  let enqueued = 0;
-  for (let i = 0; i < rows.length; i += 500) {
-    const chunk = rows.slice(i, i + 500);
-    const { error } = await supabase.from("nps_dispatches").insert(chunk);
-    if (error) throw error;
-    enqueued += chunk.length;
-  }
-  return { enqueued, skipped: (clients?.length ?? 0) - enqueued };
+/** Conta quantos clientes seriam contatados, sem enfileirar (para preview). */
+export async function previewRelationalWave(surveyId: string): Promise<number> {
+  // RPC não está nos types gerados; segue o padrão (supabase.rpc as any) do repo.
+  const { data, error } = await (supabase.rpc as unknown as RpcFn)("nps_run_relational_wave", {
+    p_survey_id: surveyId,
+    p_dry_run: true,
+  });
+  if (error) throw error;
+  return Number(data) || 0;
 }
+
+export async function enqueueRelationalWave(surveyId: string): Promise<{ enqueued: number }> {
+  const { data, error } = await (supabase.rpc as unknown as RpcFn)("nps_run_relational_wave", {
+    p_survey_id: surveyId,
+    p_dry_run: false,
+  });
+  if (error) throw error;
+  return { enqueued: Number(data) || 0 };
+}
+
+type RpcFn = (
+  name: string,
+  args: Record<string, unknown>,
+) => Promise<{ data: unknown; error: { message: string } | null }>;
 
 export function npsPublicUrl(token: string): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.addsbrasil.com.br").replace(/\/$/, "");

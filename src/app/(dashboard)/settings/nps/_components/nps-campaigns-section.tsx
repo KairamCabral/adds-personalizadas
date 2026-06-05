@@ -33,6 +33,7 @@ import {
   createSurvey,
   enqueueRelationalWave,
   getNpsSurveys,
+  previewRelationalWave,
   setSurveyActive,
   type CreateSurveyInput,
   type NpsSurvey,
@@ -53,9 +54,14 @@ export function NpsCampaignsSection() {
   const [waveTarget, setWaveTarget] = useState<NpsSurvey | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const { data: surveys = [], isLoading } = useQuery({
+  const { data: surveys = [], isLoading, isError } = useQuery({
     queryKey: ["nps", "surveys"],
     queryFn: getNpsSurveys,
+  });
+  const { data: wavePreview, isFetching: previewing } = useQuery({
+    queryKey: ["nps", "wave-preview", waveTarget?.id],
+    queryFn: () => previewRelationalWave(waveTarget!.id),
+    enabled: !!waveTarget,
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["nps", "surveys"] });
@@ -72,7 +78,7 @@ export function NpsCampaignsSection() {
   const waveMutation = useMutation({
     mutationFn: (id: string) => enqueueRelationalWave(id),
     onSuccess: (r) => {
-      toast.success(`Onda disparada: ${r.enqueued} enfileirado(s), ${r.skipped} pulado(s).`);
+      toast.success(`Onda disparada: ${r.enqueued} pesquisa(s) enfileirada(s) por e-mail.`);
       qc.invalidateQueries({ queryKey: ["nps", "dispatch-counts"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao disparar onda."),
@@ -84,6 +90,14 @@ export function NpsCampaignsSection() {
   }
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando campanhas…</p>;
+  if (isError)
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-destructive">
+          Não foi possível carregar as campanhas. Atualize a página e tente novamente.
+        </CardContent>
+      </Card>
+    );
 
   return (
     <div className="space-y-4">
@@ -191,9 +205,16 @@ export function NpsCampaignsSection() {
           <AlertDialogHeader>
             <AlertDialogTitle>Disparar onda relacional?</AlertDialogTitle>
             <AlertDialogDescription>
-              Vai enfileirar pesquisas por <strong>e-mail</strong> para os clientes elegíveis de “
-              {waveTarget?.name}” (com e-mail e fora do cooldown de {waveTarget?.cooldown_days} dias). O envio
-              acontece pelo processo automático nas próximas horas.
+              {previewing ? (
+                "Calculando quantos clientes serão contatados…"
+              ) : (
+                <>
+                  Vai enfileirar pesquisas por <strong>e-mail</strong> para{" "}
+                  <strong>{wavePreview ?? 0} cliente(s)</strong> elegíveis de “{waveTarget?.name}” (com
+                  e-mail e fora do cooldown de {waveTarget?.cooldown_days} dias). O envio acontece pelo
+                  processo automático nas próximas horas.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
