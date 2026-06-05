@@ -9,6 +9,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 
 import { NpsCampaignsSection } from "./_components/nps-campaigns-section";
 import { NpsFollowupsSection } from "./_components/nps-followups-section";
+import { NpsManualSection } from "./_components/nps-manual-section";
 import { NpsMetricsSection } from "./_components/nps-metrics-section";
 
 export default function SettingsNpsPage() {
@@ -39,6 +40,7 @@ export default function SettingsNpsPage() {
         <TabsList>
           <TabsTrigger value="metrics">Métricas</TabsTrigger>
           <TabsTrigger value="followups">Detratores</TabsTrigger>
+          <TabsTrigger value="manual">Envio manual</TabsTrigger>
           <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
         </TabsList>
         <TabsContent value="metrics" className="mt-6">
@@ -46,6 +48,9 @@ export default function SettingsNpsPage() {
         </TabsContent>
         <TabsContent value="followups" className="mt-6">
           <NpsFollowupsSection />
+        </TabsContent>
+        <TabsContent value="manual" className="mt-6">
+          <NpsManualSection />
         </TabsContent>
         <TabsContent value="campaigns" className="mt-6">
           <NpsCampaignsSection />

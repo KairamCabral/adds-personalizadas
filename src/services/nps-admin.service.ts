@@ -174,3 +174,142 @@ export async function assignFollowupToMe(id: string): Promise<void> {
     .eq("id", id);
   if (error) throw error;
 }
+
+// ---------- Criar campanha ----------
+export type SalesChannel = Database["public"]["Enums"]["sales_channel"];
+export type NpsSurveyType = Database["public"]["Enums"]["nps_survey_type"];
+export type NpsDispatchChannel = Database["public"]["Enums"]["nps_dispatch_channel"];
+export type OrderStatus = Database["public"]["Enums"]["order_status"];
+
+export interface CreateSurveyInput {
+  name: string;
+  type: NpsSurveyType;
+  sales_channel: SalesChannel | null;
+  trigger_status: OrderStatus | null;
+  primary_channel: NpsDispatchChannel;
+  fallback_channel: NpsDispatchChannel | null;
+  delay_hours: number;
+  expires_after_days: number;
+  cooldown_days: number;
+  max_reminders: number;
+  reminder_after_hours: number;
+  question_main: string;
+  question_detractor: string;
+  question_passive: string;
+  question_promoter: string;
+}
+
+export async function createSurvey(input: CreateSurveyInput): Promise<NpsSurvey> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from("nps_surveys")
+    .insert({ ...input, is_active: false, created_by: user?.id ?? null })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// ---------- Busca de clientes (envio manual) ----------
+export interface ClientLite {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  sales_channel: SalesChannel | null;
+}
+
+export async function searchClients(query: string): Promise<ClientLite[]> {
+  const term = query.trim();
+  if (term.length < 2) return [];
+  // escapa curingas do LIKE (% e _) e a barra de escape
+  const safe = term.replace(/[\\%_]/g, (m) => `\\${m}`);
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, name, email, phone, sales_channel")
+    .ilike("name", `%${safe}%`)
+    .order("name", { ascending: true })
+    .limit(20);
+  if (error) throw error;
+  return data ?? [];
+}
+
+// ---------- Disparo manual (link p/ enviar pelo WhatsApp à mão) ----------
+export interface ManualDispatchResult {
+  token: string;
+  clientName: string;
+  phone: string | null;
+}
+
+/**
+ * Cria um disparo já marcado como ENVIADO (o staff envia o link à mão pelo
+ * WhatsApp). O cron não reenvia (não fica PENDENTE) nem lembra (canal WhatsApp
+ * não está "configurado" no app). Quando o cliente responde, o closed-loop roda.
+ */
+export async function createManualDispatch(input: {
+  surveyId: string;
+  clientId: string;
+}): Promise<ManualDispatchResult> {
+  const [{ data: survey }, { data: client }, { data: auth }] = await Promise.all([
+    supabase.from("nps_surveys").select("expires_after_days").eq("id", input.surveyId).single(),
+    supabase.from("clients").select("name, phone, email").eq("id", input.clientId).single(),
+    supabase.auth.getUser(),
+  ]);
+  const expDays = survey?.expires_after_days ?? 30;
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("nps_dispatches")
+    .insert({
+      survey_id: input.surveyId,
+      client_id: input.clientId,
+      channel: "WHATSAPP",
+      status: "ENVIADO",
+      recipient_phone: client?.phone ?? null,
+      recipient_email: client?.email ?? null,
+      scheduled_for: nowIso,
+      sent_at: nowIso,
+      expires_at: new Date(Date.now() + expDays * 86_400_000).toISOString(),
+      created_by: auth.user?.id ?? null,
+    })
+    .select("token")
+    .single();
+  if (error) throw error;
+  return { token: data.token, clientName: client?.name ?? "", phone: client?.phone ?? null };
+}
+
+// ---------- Onda relacional (via RPC atômico — sem truncar/duplicar) ----------
+// O RPC nps_run_relational_wave faz o anti-join de cooldown no Postgres
+// (sem o teto de 1000 linhas do PostgREST), filtra e-mail não vazio + canal,
+// e serializa execuções concorrentes (advisory lock). dry_run = só conta.
+
+/** Conta quantos clientes seriam contatados, sem enfileirar (para preview). */
+export async function previewRelationalWave(surveyId: string): Promise<number> {
+  // RPC não está nos types gerados; segue o padrão (supabase.rpc as any) do repo.
+  const { data, error } = await (supabase.rpc as unknown as RpcFn)("nps_run_relational_wave", {
+    p_survey_id: surveyId,
+    p_dry_run: true,
+  });
+  if (error) throw error;
+  return Number(data) || 0;
+}
+
+export async function enqueueRelationalWave(surveyId: string): Promise<{ enqueued: number }> {
+  const { data, error } = await (supabase.rpc as unknown as RpcFn)("nps_run_relational_wave", {
+    p_survey_id: surveyId,
+    p_dry_run: false,
+  });
+  if (error) throw error;
+  return { enqueued: Number(data) || 0 };
+}
+
+type RpcFn = (
+  name: string,
+  args: Record<string, unknown>,
+) => Promise<{ data: unknown; error: { message: string } | null }>;
+
+export function npsPublicUrl(token: string): string {
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.addsbrasil.com.br").replace(/\/$/, "");
+  return `${base}/nps/${token}`;
+}
