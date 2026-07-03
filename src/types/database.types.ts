@@ -1304,6 +1304,7 @@ export type Database = {
           id: string
           is_personalized: boolean | null
           is_pipeline_managed: boolean
+          meta_capi_sent_at: string | null
           notes: string | null
           order_date: string | null
           order_number: number
@@ -1343,6 +1344,7 @@ export type Database = {
           id?: string
           is_personalized?: boolean | null
           is_pipeline_managed?: boolean
+          meta_capi_sent_at?: string | null
           notes?: string | null
           order_date?: string | null
           order_number?: number
@@ -1382,6 +1384,7 @@ export type Database = {
           id?: string
           is_personalized?: boolean | null
           is_pipeline_managed?: boolean
+          meta_capi_sent_at?: string | null
           notes?: string | null
           order_date?: string | null
           order_number?: number
