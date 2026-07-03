@@ -18,6 +18,10 @@
     {
       "path": "/api/cron/nps-dispatch",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/meta-capi-dispatch",
+      "schedule": "0 8 * * *"
     }
   ]
 }
