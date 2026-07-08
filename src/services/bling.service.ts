@@ -1375,8 +1375,9 @@ export async function createBlingOrder(
   supplierId: string,
   orderId: string,
   userId: string | null,
-  supabaseClient: SupabaseClient<Database>
-): Promise<{ blingOrderId: number; blingOrderNumber: number }> {
+  supabaseClient: SupabaseClient<Database>,
+  options?: { force?: boolean }
+): Promise<{ blingOrderId: number; blingOrderNumber: number; alreadyExisted?: boolean }> {
   const db = supabaseClient ?? supabase;
 
   const { data: supplier, error: supplierError } = await db
@@ -1404,6 +1405,39 @@ export async function createBlingOrder(
   }
   if (!orderData.client_id) {
     throw new Error("Pedido sem cliente vinculado.");
+  }
+
+  // Idempotência por (fornecedor, pedido): se este fornecedor já criou um pedido
+  // de venda no Bling para este pedido (log de sucesso com "bling_order"), não
+  // cria outro — evita duplicar em retry manual, clique duplo ou webhook repetido.
+  // Guard é por fornecedor (não por orders.bling_order_id, que é coluna única),
+  // então preserva o fan-out multi-fornecedor. force=true recria deliberadamente.
+  if (!options?.force) {
+    const { data: existingOrderLog } = await db
+      .from("supplier_data_logs")
+      .select("bling_response")
+      .eq("supplier_id", supplierId)
+      .eq("order_id", orderId)
+      .eq("status", "success")
+      .contains("fields_sent", ["bling_order"])
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const prev = existingOrderLog?.bling_response as
+      | { data?: { id?: number; numero?: number } }
+      | null;
+    const prevId = prev?.data?.id;
+    if (prevId != null) {
+      console.info(
+        `[bling] createBlingOrder: pedido ${orderId} já enviado ao fornecedor ${supplierId} (bling_order_id=${prevId}) — criação ignorada (idempotência).`
+      );
+      return {
+        blingOrderId: prevId,
+        blingOrderNumber: prev?.data?.numero ?? prevId,
+        alreadyExisted: true,
+      };
+    }
   }
 
   const apiToken = await getValidBlingToken(supplierId, supplier, db);
@@ -1601,12 +1635,14 @@ export async function sendOrderToBling(
   supplierId: string,
   orderId: string,
   userId: string | null,
-  supabaseClient?: SupabaseClient<Database>
+  supabaseClient?: SupabaseClient<Database>,
+  options?: { force?: boolean }
 ): Promise<{
   contactSent: boolean;
   orderSent: boolean;
   blingOrderId?: number;
   blingOrderNumber?: number;
+  alreadyExisted?: boolean;
   error?: string;
 }> {
   const db = supabaseClient ?? supabase;
@@ -1615,6 +1651,7 @@ export async function sendOrderToBling(
     orderSent: false,
     blingOrderId: undefined as number | undefined,
     blingOrderNumber: undefined as number | undefined,
+    alreadyExisted: false,
     error: undefined as string | undefined,
   };
 
@@ -1649,10 +1686,11 @@ export async function sendOrderToBling(
   await new Promise((r) => setTimeout(r, 500));
 
   try {
-    const orderResult = await createBlingOrder(supplierId, orderId, userId, db);
+    const orderResult = await createBlingOrder(supplierId, orderId, userId, db, options);
     result.orderSent = true;
     result.blingOrderId = orderResult.blingOrderId;
     result.blingOrderNumber = orderResult.blingOrderNumber;
+    result.alreadyExisted = orderResult.alreadyExisted ?? false;
   } catch (e) {
     const orderError = `Erro ao criar pedido: ${e instanceof Error ? e.message : String(e)}`;
     result.error = result.error ? `${result.error} | ${orderError}` : orderError;

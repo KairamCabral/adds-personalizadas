@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
       supplierId,
       orderId,
       user.id,
-      supabase
+      supabase,
+      { force }
     );
 
     if (result.orderSent) {
@@ -52,6 +53,10 @@ export async function POST(request: NextRequest) {
         orderSent: result.orderSent,
         blingOrderId: result.blingOrderId,
         blingOrderNumber: result.blingOrderNumber,
+        alreadyExisted: result.alreadyExisted,
+        message: result.alreadyExisted
+          ? `Pedido já estava sincronizado no Bling (nº ${result.blingOrderNumber ?? result.blingOrderId}). Nenhum novo pedido criado.`
+          : undefined,
       });
     }
 
