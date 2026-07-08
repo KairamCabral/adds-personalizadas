@@ -86,15 +86,24 @@ export async function POST(
 
       const { data: crmItems } = await supabase
         .from("order_items")
-        .select("product:products(bling_sku, bling_color_sku_map)")
+        .select("product:products(bling_sku, bling_color_sku_map, tiny_color_map)")
         .eq("order_id", orderId);
 
+      // Identidades já cobertas pelos itens do CRM. Espelha buildBlingOrderPayload:
+      // dedup por tiny_id e nome (preenchidos em tiny_color_map), com SKU de fallback,
+      // porque o SKU do Tiny em tiny_color_map costuma vir vazio.
       const crmSkus = new Set<string>();
+      const crmTinyIds = new Set<number>();
+      const crmTinyNames = new Set<string>();
       for (const row of crmItems ?? []) {
         const item = row as {
           product?: {
             bling_sku?: string | null;
             bling_color_sku_map?: Record<string, string> | null;
+            tiny_color_map?: Record<
+              string,
+              { sku?: string; name?: string; tiny_id?: number | string } | null
+            > | null;
           } | null;
         };
         const p = item.product;
@@ -102,6 +111,20 @@ export async function POST(
         if (p?.bling_color_sku_map && typeof p.bling_color_sku_map === "object") {
           for (const sku of Object.values(p.bling_color_sku_map)) {
             if (typeof sku === "string") crmSkus.add(sku.toUpperCase().trim());
+          }
+        }
+        if (p?.tiny_color_map && typeof p.tiny_color_map === "object") {
+          for (const variation of Object.values(p.tiny_color_map)) {
+            if (!variation || typeof variation !== "object") continue;
+            if (typeof variation.sku === "string" && variation.sku.trim()) {
+              crmSkus.add(variation.sku.toUpperCase().trim());
+            }
+            if (variation.tiny_id != null && Number.isFinite(Number(variation.tiny_id))) {
+              crmTinyIds.add(Number(variation.tiny_id));
+            }
+            if (typeof variation.name === "string" && variation.name.trim()) {
+              crmTinyNames.add(variation.name.toUpperCase().trim());
+            }
           }
         }
       }
@@ -127,7 +150,17 @@ export async function POST(
           typeof produto?.descricao === "string"
             ? produto.descricao
             : "Item";
-        if (!sku || !crmSkus.has(sku)) {
+        const idRaw = produto?.id;
+        const tinyId =
+          idRaw != null && Number.isFinite(Number(idRaw)) ? Number(idRaw) : null;
+        const name = desc.toUpperCase().trim();
+        // Mesmo critério de extra do builder: só é extra se não casar por
+        // tiny_id/nome e tiver SKU próprio não mapeado.
+        const idMatched = tinyId != null && crmTinyIds.has(tinyId);
+        const nameMatched = name.length > 0 && crmTinyNames.has(name);
+        const isExtra =
+          !idMatched && !nameMatched && sku.length > 0 && !crmSkus.has(sku);
+        if (isExtra) {
           tinyExtras.push(`${desc} x${Number.isFinite(q) ? q : 1}`);
         }
       }
