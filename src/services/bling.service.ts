@@ -1080,6 +1080,7 @@ function normalizeTinyApiLineItems(rawItens: unknown): Array<{
   descricao: string;
   quantidade: number;
   valorUnitario: number;
+  tinyId: number | null;
 }> {
   if (!Array.isArray(rawItens)) return [];
   const out: Array<{
@@ -1087,6 +1088,7 @@ function normalizeTinyApiLineItems(rawItens: unknown): Array<{
     descricao: string;
     quantidade: number;
     valorUnitario: number;
+    tinyId: number | null;
   }> = [];
   for (const row of rawItens) {
     const line =
@@ -1115,11 +1117,16 @@ function normalizeTinyApiLineItems(rawItens: unknown): Array<{
     const vu = Number(
       l.valorUnitario ?? l.valor_unitario ?? l.valorUnitarioPedido ?? 0
     );
+    // id do produto/variação no Tiny — chave de dedup robusta (SKU pode vir vazio)
+    const idRaw = p.id;
+    const tinyId =
+      idRaw != null && Number.isFinite(Number(idRaw)) ? Number(idRaw) : null;
     out.push({
       sku: sku.trim(),
       descricao,
       quantidade: Number.isFinite(q) ? q : 0,
       valorUnitario: Number.isFinite(vu) ? vu : 0.01,
+      tinyId,
     });
   }
   return out;
@@ -1213,13 +1220,21 @@ async function buildBlingOrderPayload(
       const tinyPedido = unwrapTinyPedidoFromApiResponse(tinyResponse);
       const tinyItems = normalizeTinyApiLineItems(tinyPedido?.itens);
 
-      // Conjunto de SKUs já adicionados: Bling SKUs + Tiny SKUs (via tiny_color_map)
+      // Identidades já cobertas pelos itens do CRM, para deduplicar os itens que
+      // voltam do pedido do Tiny. SKU sozinho não basta: o mesmo produto tem SKU
+      // diferente no Bling e no Tiny, e o SKU do Tiny em tiny_color_map costuma vir
+      // vazio. Por isso deduplicamos também por tiny_id e por nome (ambos preenchidos).
       const addedSkus = new Set<string>();
+      const addedTinyIds = new Set<number>();
+      const addedTinyNames = new Set<string>();
       for (const item of order.items ?? []) {
         const product = item.product as {
           bling_sku?: string | null;
           bling_color_sku_map?: Record<string, string> | null;
-          tiny_color_map?: Record<string, { sku?: string; tiny_id?: number | string } | null> | null;
+          tiny_color_map?: Record<
+            string,
+            { sku?: string; name?: string; tiny_id?: number | string } | null
+          > | null;
         } | null;
 
         if (product?.bling_sku) {
@@ -1230,19 +1245,33 @@ async function buildBlingOrderPayload(
             if (typeof sku === "string") addedSkus.add(sku.toUpperCase().trim());
           }
         }
-        // Inclui SKUs do Tiny para evitar duplicatas quando o mesmo item vem do Tiny com SKU diferente
+        // Identidade do Tiny (sku + tiny_id + nome) para evitar duplicatas quando o
+        // mesmo item volta do pedido do Tiny com SKU divergente ou vazio.
         if (product?.tiny_color_map && typeof product.tiny_color_map === "object") {
           for (const variation of Object.values(product.tiny_color_map)) {
-            if (variation && typeof variation === "object" && typeof variation.sku === "string") {
+            if (!variation || typeof variation !== "object") continue;
+            if (typeof variation.sku === "string" && variation.sku.trim()) {
               addedSkus.add(variation.sku.toUpperCase().trim());
+            }
+            if (variation.tiny_id != null && Number.isFinite(Number(variation.tiny_id))) {
+              addedTinyIds.add(Number(variation.tiny_id));
+            }
+            if (typeof variation.name === "string" && variation.name.trim()) {
+              addedTinyNames.add(variation.name.toUpperCase().trim());
             }
           }
         }
       }
 
-      console.info(`[bling] SKUs já mapeados (deduplicação): ${[...addedSkus].join(", ")}`);
+      console.info(
+        `[bling] Identidades já mapeadas (dedup) — SKUs: ${[...addedSkus].join(", ") || "-"}; tiny_ids: ${[...addedTinyIds].join(", ") || "-"}`
+      );
 
       const extraTinyItems = tinyItems.filter((ti) => {
+        // Dedup por identidade real (tiny_id / nome), robusto a SKU vazio ou divergente.
+        if (ti.tinyId != null && addedTinyIds.has(ti.tinyId)) return false;
+        const name = ti.descricao.toUpperCase().trim();
+        if (name && addedTinyNames.has(name)) return false;
         const sku = ti.sku.toUpperCase().trim();
         return sku.length > 0 && !addedSkus.has(sku);
       });
