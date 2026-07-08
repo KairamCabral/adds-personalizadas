@@ -175,12 +175,15 @@ export async function POST(
       contactSent: result.contactSent,
       orderSent: result.orderSent,
       blingOrderNumber: result.blingOrderNumber,
+      alreadyExisted: result.alreadyExisted,
       error: result.error,
       tinyExtras,
       message: result.orderSent
-        ? tinyExtras.length > 0
-          ? `Pedido enviado ao Bling. ${tinyExtras.length} item(ns) extra(s) do Tiny incluídos nas observações.`
-          : "Pedido enviado ao Bling com sucesso."
+        ? result.alreadyExisted
+          ? `Pedido já estava sincronizado no Bling (nº ${result.blingOrderNumber ?? result.blingOrderId}). Nenhum novo pedido criado.`
+          : tinyExtras.length > 0
+            ? `Pedido enviado ao Bling. ${tinyExtras.length} item(ns) extra(s) do Tiny incluídos nas observações.`
+            : "Pedido enviado ao Bling com sucesso."
         : result.error ?? "Erro ao enviar.",
     });
   } catch (err) {
