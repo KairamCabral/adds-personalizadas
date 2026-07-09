@@ -5,7 +5,7 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { maskPhone } from "@/lib/utils";
 import type { Client } from "@/types/database.types";
 import { ConsentCheckbox } from "./consent-checkbox";
-import { TurnstileWidget } from "./turnstile-widget";
+import { TurnstileWidget, TURNSTILE_ENABLED } from "./turnstile-widget";
 
 function maskEmail(email: string | null): string | null {
   if (!email) return null;
@@ -20,6 +20,7 @@ interface StepConfirmProps {
   consent: boolean;
   onConsent: (v: boolean) => void;
   onToken: (t: string | null) => void;
+  token: string | null;
   onConfirm: () => void;
   onBack: () => void;
   submitting: boolean;
@@ -31,12 +32,16 @@ export function StepConfirm({
   consent,
   onConsent,
   onToken,
+  token,
   onConfirm,
   onBack,
   submitting,
   error,
 }: StepConfirmProps) {
   const firstName = (client.name ?? "").split(" ")[0] || "tudo bem";
+  // Turnstile ativo → exige o token antes de confirmar (fail-open quando ausente).
+  const awaitingToken = TURNSTILE_ENABLED && !token;
+  const canConfirm = consent && !awaitingToken;
 
   return (
     <div className="mx-auto max-w-md space-y-6">
@@ -63,12 +68,17 @@ export function StepConfirm({
       <TurnstileWidget onToken={onToken} />
 
       {error && <p className="text-center text-sm text-destructive">{error}</p>}
+      {consent && awaitingToken && (
+        <p className="text-center text-xs text-muted-foreground">
+          Verificando segurança, aguarde um instante…
+        </p>
+      )}
 
       <div className="space-y-2">
         <Button
           size="lg"
           className="h-14 w-full text-base"
-          disabled={!consent || submitting}
+          disabled={!canConfirm || submitting}
           onClick={onConfirm}
         >
           {submitting ? (

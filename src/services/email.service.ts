@@ -29,7 +29,7 @@ function getResend(): Resend {
   return new Resend(key);
 }
 
-const FROM = process.env.RESEND_FROM_EMAIL ?? "ADDS Brasil <noreply@addsbrasil.com.br>";
+const FROM = process.env.RESEND_FROM_EMAIL ?? "ADDS Brasil <noreply@adds.com.br>";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://crm.addsbrasil.com.br";
 
 async function send(

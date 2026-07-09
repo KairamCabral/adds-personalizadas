@@ -8,7 +8,7 @@ import { Resend } from "resend";
 import { NpsSurveyEmail } from "@/lib/email-templates/nps-survey";
 import type { ChannelSendResult, MessagingChannel, NpsSurveyMessage } from "./types";
 
-const FROM = process.env.RESEND_FROM_EMAIL ?? "ADDS Brasil <noreply@addsbrasil.com.br>";
+const FROM = process.env.RESEND_FROM_EMAIL ?? "ADDS Brasil <noreply@adds.com.br>";
 
 export const emailChannel: MessagingChannel = {
   channel: "EMAIL",
