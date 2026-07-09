@@ -6,6 +6,7 @@ import { verifyTurnstile } from "@/lib/turnstile";
 import { congressoRegisterSchema } from "@/lib/validations";
 import { syncRegistrationNow } from "@/services/congressos-sync.service";
 import { sendCongressDispatchNow } from "@/services/congressos-dispatch.service";
+import type { Client } from "@/types/database.types";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -148,10 +149,27 @@ export async function POST(request: NextRequest) {
     let email = input.email ?? null;
     let phone = input.phone?.trim() || null;
 
-    const { data: clientRows } = await supabase.rpc("find_client_by_document", {
-      doc_digits: digits,
-    });
-    const client = Array.isArray(clientRows) ? clientRows[0] : null;
+    // Prioriza o cliente que o participante confirmou (existing_client_id),
+    // buscando-o por id — determinístico. Só cai no lookup por documento quando
+    // não há id. Isso evita pegar uma DUPLICATA errada do mesmo CPF: como pode
+    // haver vários clients com o mesmo documento, `find_client_by_document`
+    // (LIMIT 1) podia retornar um registro SEM e-mail, deixando a confirmação
+    // por e-mail sem ser enfileirada.
+    let client: Client | null = null;
+    if (matchedClientId) {
+      const { data } = await supabase
+        .from("clients")
+        .select("*")
+        .eq("id", matchedClientId)
+        .maybeSingle();
+      client = data ?? null;
+    }
+    if (!client) {
+      const { data: clientRows } = await supabase.rpc("find_client_by_document", {
+        doc_digits: digits,
+      });
+      client = Array.isArray(clientRows) ? (clientRows[0] ?? null) : null;
+    }
     if (client) {
       isExistingClient = true;
       matchedClientId = client.id;
