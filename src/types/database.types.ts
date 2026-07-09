@@ -395,6 +395,7 @@ export type Database = {
           neighborhood: string | null
           notes: string | null
           number: string | null
+          origin: string | null
           person_type: Database["public"]["Enums"]["person_type"]
           phone: string | null
           sales_channel: Database["public"]["Enums"]["sales_channel"] | null
@@ -420,6 +421,7 @@ export type Database = {
           neighborhood?: string | null
           notes?: string | null
           number?: string | null
+          origin?: string | null
           person_type?: Database["public"]["Enums"]["person_type"]
           phone?: string | null
           sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
@@ -445,6 +447,7 @@ export type Database = {
           neighborhood?: string | null
           notes?: string | null
           number?: string | null
+          origin?: string | null
           person_type?: Database["public"]["Enums"]["person_type"]
           phone?: string | null
           sales_channel?: Database["public"]["Enums"]["sales_channel"] | null
@@ -522,6 +525,358 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_credits: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          edition_id: string
+          id: string
+          min_order_qty: number | null
+          min_order_value: number | null
+          redeemed_at: string | null
+          redeemed_order_id: string | null
+          registration_id: string
+          status: Database["public"]["Enums"]["event_credit_status"]
+          type: Database["public"]["Enums"]["event_cashback_type"]
+          valid_until: string | null
+          value: number
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          edition_id: string
+          id?: string
+          min_order_qty?: number | null
+          min_order_value?: number | null
+          redeemed_at?: string | null
+          redeemed_order_id?: string | null
+          registration_id: string
+          status?: Database["public"]["Enums"]["event_credit_status"]
+          type: Database["public"]["Enums"]["event_cashback_type"]
+          valid_until?: string | null
+          value: number
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          edition_id?: string
+          id?: string
+          min_order_qty?: number | null
+          min_order_value?: number | null
+          redeemed_at?: string | null
+          redeemed_order_id?: string | null
+          registration_id?: string
+          status?: Database["public"]["Enums"]["event_credit_status"]
+          type?: Database["public"]["Enums"]["event_cashback_type"]
+          valid_until?: string | null
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_credits_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_credits_edition_id_fkey"
+            columns: ["edition_id"]
+            isOneToOne: false
+            referencedRelation: "event_editions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_credits_redeemed_order_id_fkey"
+            columns: ["redeemed_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_credits_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: true
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_dispatches: {
+        Row: {
+          attempts: number
+          channel: Database["public"]["Enums"]["event_dispatch_channel"]
+          created_at: string
+          id: string
+          recipient: string | null
+          registration_id: string
+          scheduled_for: string
+          send_error: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["event_dispatch_status"]
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          channel?: Database["public"]["Enums"]["event_dispatch_channel"]
+          created_at?: string
+          id?: string
+          recipient?: string | null
+          registration_id: string
+          scheduled_for?: string
+          send_error?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["event_dispatch_status"]
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          channel?: Database["public"]["Enums"]["event_dispatch_channel"]
+          created_at?: string
+          id?: string
+          recipient?: string | null
+          registration_id?: string
+          scheduled_for?: string
+          send_error?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["event_dispatch_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_dispatches_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_editions: {
+        Row: {
+          cashback_eligibility:
+            | Database["public"]["Enums"]["event_cashback_eligibility"]
+            | null
+          cashback_enabled: boolean
+          cashback_min_order_qty: number | null
+          cashback_min_order_value: number | null
+          cashback_type:
+            | Database["public"]["Enums"]["event_cashback_type"]
+            | null
+          cashback_valid_days: number | null
+          cashback_value: number | null
+          created_at: string
+          created_by: string | null
+          ends_at: string | null
+          gift_name: string | null
+          gift_stock: number | null
+          id: string
+          is_active: boolean
+          location: string | null
+          name: string
+          slug: string
+          starts_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          cashback_eligibility?:
+            | Database["public"]["Enums"]["event_cashback_eligibility"]
+            | null
+          cashback_enabled?: boolean
+          cashback_min_order_qty?: number | null
+          cashback_min_order_value?: number | null
+          cashback_type?:
+            | Database["public"]["Enums"]["event_cashback_type"]
+            | null
+          cashback_valid_days?: number | null
+          cashback_value?: number | null
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string | null
+          gift_name?: string | null
+          gift_stock?: number | null
+          id?: string
+          is_active?: boolean
+          location?: string | null
+          name: string
+          slug: string
+          starts_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cashback_eligibility?:
+            | Database["public"]["Enums"]["event_cashback_eligibility"]
+            | null
+          cashback_enabled?: boolean
+          cashback_min_order_qty?: number | null
+          cashback_min_order_value?: number | null
+          cashback_type?:
+            | Database["public"]["Enums"]["event_cashback_type"]
+            | null
+          cashback_valid_days?: number | null
+          cashback_value?: number | null
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string | null
+          gift_name?: string | null
+          gift_stock?: number | null
+          id?: string
+          is_active?: boolean
+          location?: string | null
+          name?: string
+          slug?: string
+          starts_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_editions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_gift_redemptions: {
+        Row: {
+          created_at: string
+          edition_id: string
+          id: string
+          redeemed_at: string | null
+          redeemed_by: string | null
+          registration_id: string
+          short_code: string
+          status: Database["public"]["Enums"]["event_gift_status"]
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          edition_id: string
+          id?: string
+          redeemed_at?: string | null
+          redeemed_by?: string | null
+          registration_id: string
+          short_code: string
+          status?: Database["public"]["Enums"]["event_gift_status"]
+          token?: string
+        }
+        Update: {
+          created_at?: string
+          edition_id?: string
+          id?: string
+          redeemed_at?: string | null
+          redeemed_by?: string | null
+          registration_id?: string
+          short_code?: string
+          status?: Database["public"]["Enums"]["event_gift_status"]
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_gift_redemptions_edition_id_fkey"
+            columns: ["edition_id"]
+            isOneToOne: false
+            referencedRelation: "event_editions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_gift_redemptions_redeemed_by_fkey"
+            columns: ["redeemed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_gift_redemptions_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: true
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_registrations: {
+        Row: {
+          consent_at: string | null
+          consent_ip_hmac: string | null
+          consent_version: string | null
+          contact_type: Database["public"]["Enums"]["sales_channel"] | null
+          created_at: string
+          document: string | null
+          edition_id: string
+          email: string | null
+          id: string
+          idempotency_key: string | null
+          is_existing_client: boolean
+          matched_client_id: string | null
+          name: string | null
+          phone: string | null
+          qualified: boolean
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          consent_at?: string | null
+          consent_ip_hmac?: string | null
+          consent_version?: string | null
+          contact_type?: Database["public"]["Enums"]["sales_channel"] | null
+          created_at?: string
+          document?: string | null
+          edition_id: string
+          email?: string | null
+          id?: string
+          idempotency_key?: string | null
+          is_existing_client?: boolean
+          matched_client_id?: string | null
+          name?: string | null
+          phone?: string | null
+          qualified?: boolean
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          consent_at?: string | null
+          consent_ip_hmac?: string | null
+          consent_version?: string | null
+          contact_type?: Database["public"]["Enums"]["sales_channel"] | null
+          created_at?: string
+          document?: string | null
+          edition_id?: string
+          email?: string | null
+          id?: string
+          idempotency_key?: string | null
+          is_existing_client?: boolean
+          matched_client_id?: string | null
+          name?: string | null
+          phone?: string | null
+          qualified?: boolean
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_registrations_edition_id_fkey"
+            columns: ["edition_id"]
+            isOneToOne: false
+            referencedRelation: "event_editions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_registrations_matched_client_id_fkey"
+            columns: ["matched_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
@@ -2743,6 +3098,53 @@ export type Database = {
           },
         ]
       }
+      tiny_contact_sync_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          last_error: string | null
+          next_attempt_at: string
+          payload: Json | null
+          registration_id: string
+          status: Database["public"]["Enums"]["tiny_sync_job_status"]
+          tiny_id: number | null
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          next_attempt_at?: string
+          payload?: Json | null
+          registration_id: string
+          status?: Database["public"]["Enums"]["tiny_sync_job_status"]
+          tiny_id?: number | null
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          next_attempt_at?: string
+          payload?: Json | null
+          registration_id?: string
+          status?: Database["public"]["Enums"]["tiny_sync_job_status"]
+          tiny_id?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tiny_contact_sync_jobs_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: true
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tiny_depositos: {
         Row: {
           created_at: string
@@ -2902,6 +3304,7 @@ export type Database = {
           neighborhood: string | null
           notes: string | null
           number: string | null
+          origin: string | null
           person_type: Database["public"]["Enums"]["person_type"]
           phone: string | null
           sales_channel: Database["public"]["Enums"]["sales_channel"] | null
@@ -2941,6 +3344,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      nps_run_relational_wave: {
+        Args: { p_dry_run?: boolean; p_survey_id: string }
+        Returns: number
+      }
       order_status_stamps: {
         Args: { p_order_ids: string[] }
         Returns: {
@@ -2951,6 +3358,15 @@ export type Database = {
       recompute_supplier_inventory: {
         Args: { p_inventory_id: string }
         Returns: undefined
+      }
+      redeem_gift: {
+        Args: { p_token: string }
+        Returns: {
+          outcome: string
+          redeemed_at: string
+          redeemed_by_name: string
+          success: boolean
+        }[]
       }
       reorder_after_remove: {
         Args: {
@@ -3010,6 +3426,18 @@ export type Database = {
           variation_index: number
         }[]
       }
+      validate_gift_token: {
+        Args: { p_token: string }
+        Returns: {
+          already_redeemed: boolean
+          edition_name: string
+          gift_name: string
+          is_canceled: boolean
+          is_valid: boolean
+          participant_first_name: string
+          short_code: string
+        }[]
+      }
       validate_nps_token: {
         Args: { p_token: string }
         Returns: {
@@ -3047,6 +3475,12 @@ export type Database = {
         | "ARTWORK_REJECT"
         | "SYNC_TINY"
         | "EXPORT"
+      event_cashback_eligibility: "ALL" | "NEW_ONLY"
+      event_cashback_type: "PERCENT" | "FIXED"
+      event_credit_status: "ATIVO" | "USADO" | "EXPIRADO" | "CANCELADO"
+      event_dispatch_channel: "EMAIL" | "WHATSAPP"
+      event_dispatch_status: "PENDENTE" | "ENVIADO" | "FALHOU" | "CANCELADO"
+      event_gift_status: "PENDENTE" | "RETIRADO" | "CANCELADO"
       label_type:
         | "BOLETO"
         | "AGUARDANDO_PAGAMENTO"
@@ -3116,6 +3550,12 @@ export type Database = {
       sales_channel: "CONSUMIDOR" | "DENTISTA" | "DISTRIBUIDORA" | "VAREJISTA"
       supplier_inventory_pool: "PERSONALIZADO" | "MARKETPLACE"
       supplier_inventory_status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED"
+      tiny_sync_job_status:
+        | "PENDING"
+        | "PROCESSING"
+        | "DONE"
+        | "FAILED"
+        | "DEAD"
       user_role: "MASTER" | "GESTOR" | "PRESTADOR" | "REPRESENTANTE"
     }
     CompositeTypes: {
@@ -3264,6 +3704,12 @@ export const Constants = {
         "SYNC_TINY",
         "EXPORT",
       ],
+      event_cashback_eligibility: ["ALL", "NEW_ONLY"],
+      event_cashback_type: ["PERCENT", "FIXED"],
+      event_credit_status: ["ATIVO", "USADO", "EXPIRADO", "CANCELADO"],
+      event_dispatch_channel: ["EMAIL", "WHATSAPP"],
+      event_dispatch_status: ["PENDENTE", "ENVIADO", "FALHOU", "CANCELADO"],
+      event_gift_status: ["PENDENTE", "RETIRADO", "CANCELADO"],
       label_type: [
         "BOLETO",
         "AGUARDANDO_PAGAMENTO",
@@ -3340,6 +3786,7 @@ export const Constants = {
       sales_channel: ["CONSUMIDOR", "DENTISTA", "DISTRIBUIDORA", "VAREJISTA"],
       supplier_inventory_pool: ["PERSONALIZADO", "MARKETPLACE"],
       supplier_inventory_status: ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"],
+      tiny_sync_job_status: ["PENDING", "PROCESSING", "DONE", "FAILED", "DEAD"],
       user_role: ["MASTER", "GESTOR", "PRESTADOR", "REPRESENTANTE"],
     },
   },
@@ -3367,3 +3814,4 @@ export type Supplier = Database["public"]["Tables"]["suppliers"]["Row"]
 export type SupplierAgreement = Database["public"]["Tables"]["supplier_agreements"]["Row"]
 export type SupplierDataLog = Database["public"]["Tables"]["supplier_data_logs"]["Row"]
 export type PushToken = Database["public"]["Tables"]["push_tokens"]["Row"]
+export type EventEdition = Database["public"]["Tables"]["event_editions"]["Row"]
