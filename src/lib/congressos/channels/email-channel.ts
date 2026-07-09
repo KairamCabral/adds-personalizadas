@@ -2,9 +2,11 @@
  * Driver de e-mail de confirmação do brinde (Resend + react-email). Autocontido —
  * não acopla em email.service, para manter o módulo Congressos isolado.
  * Molde: src/lib/nps/channels/email-channel.ts.
+ *
+ * Logo e QR são referenciados por URL HTTPS real (não data-URI): o Gmail e outros
+ * clientes bloqueiam imagens embutidas em base64.
  */
 import { render } from "@react-email/components";
-import QRCode from "qrcode";
 import { Resend } from "resend";
 
 import { CongressoGiftEmail } from "@/lib/email-templates/congresso-gift";
@@ -16,13 +18,14 @@ import type {
 
 const FROM = process.env.RESEND_FROM_EMAIL ?? "ADDS Brasil <noreply@adds.com.br>";
 
-/** Gera o QR do token como data-URI (best-effort). Null se falhar. */
-async function qrDataUrl(token: string): Promise<string | null> {
-  try {
-    return await QRCode.toDataURL(token, { width: 240, margin: 2 });
-  } catch {
-    return null;
-  }
+/** URL pública do app, sem barra final. */
+const APP_URL = (
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://personalizadas.adds.com.br"
+).replace(/\/$/, "");
+
+/** Garante nome de exibição no remetente (ex.: "ADDS Brasil <noreply@adds.com.br>"). */
+function withDisplayName(from: string): string {
+  return from.includes("<") ? from : `ADDS Brasil <${from.trim()}>`;
 }
 
 export const emailChannel: MessagingChannel = {
@@ -38,14 +41,14 @@ export const emailChannel: MessagingChannel = {
       return { success: false, error: "RESEND_API_KEY não configurada." };
     }
     try {
-      const qr = await qrDataUrl(message.giftToken);
       const html = await render(
         CongressoGiftEmail({
           participantFirstName: message.participantFirstName,
           editionName: message.editionName,
           giftName: message.giftName,
           shortCode: message.shortCode,
-          qrDataUrl: qr,
+          logoUrl: `${APP_URL}/Logo-cor-PNG.png`,
+          qrUrl: `${APP_URL}/api/congressos/qr/${message.giftToken}`,
         }),
       );
       const subject = message.editionName
@@ -54,7 +57,7 @@ export const emailChannel: MessagingChannel = {
 
       const resend = new Resend(key);
       const { data, error } = await resend.emails.send({
-        from: FROM,
+        from: withDisplayName(FROM),
         to: [message.to],
         subject,
         html,

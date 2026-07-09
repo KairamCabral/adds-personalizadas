@@ -17,8 +17,10 @@ export interface CongressoGiftEmailProps {
   editionName: string | null;
   giftName: string | null;
   shortCode: string;
-  /** data-URI do QR (gerado server-side). Null = não exibe o QR. */
-  qrDataUrl: string | null;
+  /** URL HTTPS da logo (data-URI não renderiza no Gmail). Null = oculta. */
+  logoUrl: string | null;
+  /** URL HTTPS do QR do brinde (data-URI não renderiza no Gmail). Null = oculta. */
+  qrUrl: string | null;
 }
 
 const ADDS_BLUE = "#21add6";
@@ -29,7 +31,8 @@ export function CongressoGiftEmail({
   editionName,
   giftName,
   shortCode,
-  qrDataUrl,
+  logoUrl,
+  qrUrl,
 }: CongressoGiftEmailProps) {
   const greeting = participantFirstName
     ? `Prontinho, ${participantFirstName}!`
@@ -43,6 +46,16 @@ export function CongressoGiftEmail({
       <Preview>{preview}</Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
+          {logoUrl ? (
+            <Img
+              src={logoUrl}
+              alt="ADDS Brasil"
+              width={80}
+              height={80}
+              style={styles.logo}
+            />
+          ) : null}
+
           <Heading style={styles.h1}>{greeting}</Heading>
 
           <Text style={styles.text}>
@@ -58,10 +71,10 @@ export function CongressoGiftEmail({
             <Text style={styles.code}>{shortCode}</Text>
           </Section>
 
-          {qrDataUrl ? (
+          {qrUrl ? (
             <Section style={styles.qrWrap}>
               <Img
-                src={qrDataUrl}
+                src={qrUrl}
                 alt="QR code do seu brinde"
                 width={200}
                 height={200}
@@ -102,6 +115,7 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 520,
     padding: "32px 28px",
   },
+  logo: { display: "block", height: 80, margin: "0 auto 16px", width: 80 },
   h1: { color: ADDS_NAVY, fontSize: 22, fontWeight: 700, margin: "0 0 12px" },
   text: { color: "#2d3748", fontSize: 16, lineHeight: "24px", margin: "0 0 20px" },
   codeWrap: {
