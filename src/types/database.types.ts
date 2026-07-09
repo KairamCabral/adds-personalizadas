@@ -680,6 +680,7 @@ export type Database = {
           name: string
           slug: string
           starts_at: string | null
+          turnstile_enabled: boolean
           updated_at: string
         }
         Insert: {
@@ -705,6 +706,7 @@ export type Database = {
           name: string
           slug: string
           starts_at?: string | null
+          turnstile_enabled?: boolean
           updated_at?: string
         }
         Update: {
@@ -730,6 +732,7 @@ export type Database = {
           name?: string
           slug?: string
           starts_at?: string | null
+          turnstile_enabled?: boolean
           updated_at?: string
         }
         Relationships: [

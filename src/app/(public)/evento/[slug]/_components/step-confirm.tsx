@@ -21,6 +21,7 @@ interface StepConfirmProps {
   onConsent: (v: boolean) => void;
   onToken: (t: string | null) => void;
   token: string | null;
+  turnstileEnabled: boolean;
   onConfirm: () => void;
   onBack: () => void;
   submitting: boolean;
@@ -33,14 +34,17 @@ export function StepConfirm({
   onConsent,
   onToken,
   token,
+  turnstileEnabled,
   onConfirm,
   onBack,
   submitting,
   error,
 }: StepConfirmProps) {
   const firstName = (client.name ?? "").split(" ")[0] || "tudo bem";
-  // Turnstile ativo → exige o token antes de confirmar (fail-open quando ausente).
-  const awaitingToken = TURNSTILE_ENABLED && !token;
+  // Turnstile exige o token só quando configurado (env) E habilitado na edição
+  // (break-glass). Fica fail-open quando ausente ou desligado na edição.
+  const turnstileActive = TURNSTILE_ENABLED && turnstileEnabled;
+  const awaitingToken = turnstileActive && !token;
   const canConfirm = consent && !awaitingToken;
 
   return (
@@ -65,7 +69,7 @@ export function StepConfirm({
       </div>
 
       <ConsentCheckbox checked={consent} onChange={onConsent} />
-      <TurnstileWidget onToken={onToken} />
+      {turnstileActive && <TurnstileWidget onToken={onToken} />}
 
       {error && <p className="text-center text-sm text-destructive">{error}</p>}
       {consent && awaitingToken && (

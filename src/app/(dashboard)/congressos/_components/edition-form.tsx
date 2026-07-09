@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { AlertTriangle } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -30,6 +32,11 @@ import type { Database, EventEdition } from "@/types/database.types";
 type EventEditionInsert =
   Database["public"]["Tables"]["event_editions"]["Insert"];
 
+// Cashback (Épico 6) ainda não gera `event_credits`. Enquanto o resgate não
+// existir, o toggle fica travado e os campos ocultos para não virar promessa
+// comercial no estande. Basta voltar para `true` quando o E6 entrar.
+const CASHBACK_FEATURE_ENABLED = false;
+
 interface EditionFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -43,6 +50,7 @@ const BLANK: EventEditionFormData = {
   starts_at: "",
   ends_at: "",
   is_active: false,
+  turnstile_enabled: true,
   gift_name: "",
   gift_stock: null,
   cashback_enabled: false,
@@ -113,6 +121,7 @@ export function EditionForm({
         starts_at: initialData.starts_at ?? "",
         ends_at: initialData.ends_at ?? "",
         is_active: initialData.is_active,
+        turnstile_enabled: initialData.turnstile_enabled,
         gift_name: initialData.gift_name ?? "",
         gift_stock: initialData.gift_stock ?? null,
         cashback_enabled: initialData.cashback_enabled,
@@ -137,6 +146,7 @@ export function EditionForm({
       starts_at: data.starts_at || null,
       ends_at: data.ends_at || null,
       is_active: data.is_active,
+      turnstile_enabled: data.turnstile_enabled,
       gift_name: data.gift_name?.trim() || null,
       gift_stock: data.gift_stock ?? null,
       cashback_enabled: on,
@@ -241,6 +251,22 @@ export function EditionForm({
                 onCheckedChange={(v) => form.setValue("is_active", v)}
               />
             </div>
+
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div>
+                <Label htmlFor="turnstile_enabled">
+                  Verificação anti-robô (Turnstile)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Desligue apenas em emergência (falha do Cloudflare no evento).
+                </p>
+              </div>
+              <Switch
+                id="turnstile_enabled"
+                checked={form.watch("turnstile_enabled")}
+                onCheckedChange={(v) => form.setValue("turnstile_enabled", v)}
+              />
+            </div>
           </div>
 
           {/* Brinde */}
@@ -281,6 +307,17 @@ export function EditionForm({
 
           {/* Cashback */}
           <div className="space-y-4">
+            {!CASHBACK_FEATURE_ENABLED && (
+              <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>
+                  Cashback em desenvolvimento — disponível em breve
+                </AlertTitle>
+                <AlertDescription>
+                  A configuração abaixo não gera créditos ainda.
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="flex items-center justify-between rounded-md border p-3">
               <div>
                 <Label htmlFor="cashback_enabled">Cashback</Label>
@@ -291,13 +328,14 @@ export function EditionForm({
               <Switch
                 id="cashback_enabled"
                 checked={cashbackEnabled}
+                disabled={!CASHBACK_FEATURE_ENABLED}
                 onCheckedChange={(v) =>
                   form.setValue("cashback_enabled", v, { shouldValidate: true })
                 }
               />
             </div>
 
-            {cashbackEnabled && (
+            {cashbackEnabled && CASHBACK_FEATURE_ENABLED && (
               <div className="space-y-4 rounded-md border border-dashed p-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">

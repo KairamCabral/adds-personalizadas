@@ -8,6 +8,7 @@ export interface PublicEdition {
   is_active: boolean;
   gift_name: string | null;
   cashback_enabled: boolean;
+  turnstile_enabled: boolean;
 }
 
 /**
@@ -21,7 +22,9 @@ export async function getEditionBySlug(
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("event_editions")
-    .select("id, slug, name, is_active, gift_name, cashback_enabled")
+    .select(
+      "id, slug, name, is_active, gift_name, cashback_enabled, turnstile_enabled"
+    )
     .eq("slug", slug)
     .maybeSingle();
 

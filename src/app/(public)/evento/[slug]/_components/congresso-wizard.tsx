@@ -29,6 +29,7 @@ interface CongressoWizardProps {
   slug: string;
   editionName: string;
   giftName: string | null;
+  turnstileEnabled: boolean;
   utm: Utm;
 }
 
@@ -43,6 +44,7 @@ export function CongressoWizard({
   slug,
   editionName,
   giftName,
+  turnstileEnabled,
   utm,
 }: CongressoWizardProps) {
   const storageKey = `congresso:${slug}`;
@@ -248,6 +250,7 @@ export function CongressoWizard({
           onConsent={setConsent}
           onToken={setTurnstileToken}
           token={turnstileToken}
+          turnstileEnabled={turnstileEnabled}
           onConfirm={handleConfirm}
           onBack={() => {
             setFoundClient(null);
@@ -266,6 +269,7 @@ export function CongressoWizard({
           onConsent={setConsent}
           onToken={setTurnstileToken}
           token={turnstileToken}
+          turnstileEnabled={turnstileEnabled}
           onSubmit={handleRegister}
           onBack={() => goTo("cpf")}
           submitting={submitting}
