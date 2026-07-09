@@ -5,6 +5,7 @@ import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { congressoRegisterSchema } from "@/lib/validations";
 import { syncRegistrationNow } from "@/services/congressos-sync.service";
+import { sendCongressDispatchNow } from "@/services/congressos-dispatch.service";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -250,16 +251,25 @@ export async function POST(request: NextRequest) {
         });
       if (dispErr)
         console.error("[congressos/register] dispatch enqueue:", dispErr);
+    } else {
+      console.info(
+        "[congressos/register] sem e-mail: confirmação não enfileirada",
+        reg.id
+      );
     }
 
-    // Fast-path: tenta sincronizar com o Tiny logo após responder (near-real-time),
-    // sem esperar o cron diário. Best-effort — falha vira retry/backoff na fila.
+    // Fast-path: logo após responder (near-real-time), sem esperar o cron diário —
+    // sincroniza com o Tiny e envia a confirmação por e-mail em paralelo (o e-mail
+    // não espera o Tiny). Best-effort: falhas viram retry/backoff nas filas.
     const registrationId = reg.id;
     after(async () => {
-      try {
-        await syncRegistrationNow(registrationId);
-      } catch (e) {
-        console.error("[congressos/register] after sync:", e);
+      const outcomes = await Promise.allSettled([
+        syncRegistrationNow(registrationId),
+        sendCongressDispatchNow(registrationId),
+      ]);
+      for (const o of outcomes) {
+        if (o.status === "rejected")
+          console.error("[congressos/register] after fast-path:", o.reason);
       }
     });
 
