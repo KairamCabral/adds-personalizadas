@@ -118,7 +118,7 @@ Requisitos técnicos derivados do estudo de Fase 1 e das Dependências & Decisõ
 
 Derivados da seção Web App Requirements e das User Journeys do PRD (não há doc de UX separado):
 
-- UX-DR1: **Landing do evento** (`/congressos/[slug]`) mobile-first no layout `(public)`: logo + nome do congresso + brinde + 1 botão grande "Retirar meu brinde"; alto contraste, alvos ≥ 48px, `noindex`.
+- UX-DR1: **Landing do evento** (`/evento/[slug]`) mobile-first no layout `(public)`: logo + nome do congresso + brinde + 1 botão grande "Retirar meu brinde"; alto contraste, alvos ≥ 48px, `noindex`.
 - UX-DR2: **Tela 1 — CPF/CNPJ**: um único campo, `inputmode="numeric"`, máscara CPF/CNPJ, botão "Continuar" com estado de loading.
 - UX-DR3: **Tela 2a — cliente existente**: saudação com primeiro nome + dados mascarados + confirmação em 1 toque; link discreto "corrigir".
 - UX-DR4: **Tela 2b — novo cadastro**: formulário curto (Nome, WhatsApp, E-mail, Tipo via chips Dentista/Distribuidora/Outro) + checkbox de consentimento LGPD com link ao texto; validação inline (zod).
@@ -318,7 +318,7 @@ So that eu possa imprimir/exibir o QR no estande.
 
 **Given** uma edição ativa
 **When** abro seus detalhes
-**Then** vejo o link público `/congressos/[slug]` e um QR gerado a partir dele, com opção de copiar/baixar
+**Then** vejo o link público `/evento/[slug]` e um QR gerado a partir dele, com opção de copiar/baixar
 
 **Given** uma edição desativada
 **When** o QR é acessado
@@ -341,7 +341,7 @@ So that eu comece a retirada do brinde rapidamente mesmo no 3G do pavilhão.
 **Acceptance Criteria:**
 
 **Given** uma edição ativa
-**When** acesso `/congressos/[slug]`
+**When** acesso `/evento/[slug]`
 **Then** vejo a landing no layout `(public)` com logo, nome do congresso, brinde e botão grande "Retirar meu brinde", com `noindex, nofollow`
 
 **Given** a rota pública nova

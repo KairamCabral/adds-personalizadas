@@ -42,7 +42,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api/art/approve") ||
     pathname.startsWith("/nps/") || // página pública de resposta NPS (/nps/<token>)
     pathname.startsWith("/api/nps/respond") || // submissão pública da resposta NPS
-    pathname.startsWith("/congressos/") || // pré-cadastro público do estande (/congressos/<slug>) — a interna /congressos (sem barra) segue protegida
+    pathname.startsWith("/evento/") || // pré-cadastro público do estande (/evento/<slug>) — a interna /congressos segue protegida
     pathname.startsWith("/api/congressos") || // registro público do pré-cadastro
     pathname.startsWith("/api/webhooks") ||
     pathname.startsWith("/api/quote") || // /api/quote/submit, /api/quote/upload-logo

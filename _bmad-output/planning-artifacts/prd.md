@@ -177,7 +177,7 @@ As jornadas revelam os seguintes conjuntos de capacidades:
 
 ### Project-Type Overview
 Duas superfícies web distintas no mesmo módulo, com perfis opostos de otimização:
-- **Superfície pública** (`/congressos/[slug]`): server-rendered (RSC) com um **wizard cliente mínimo**; prioridade absoluta a peso/latência (3G de pavilhão). Sem SEO, sem chrome de dashboard (layout `(public)`).
+- **Superfície pública** (`/evento/[slug]`): server-rendered (RSC) com um **wizard cliente mínimo**; prioridade absoluta a peso/latência (3G de pavilhão). Sem SEO, sem chrome de dashboard (layout `(public)`).
 - **Superfície interna** (`(dashboard)/congressos`): client-heavy com TanStack Query + `DataTable`; prioridade a produtividade (busca rápida, feedback forte). Herda sidebar/header e auth do dashboard.
 
 ### Technical Architecture Considerations

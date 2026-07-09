@@ -29,7 +29,7 @@ export function EditionQrDialog({
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (typeof window !== "undefined" ? window.location.origin : "");
-  const url = edition ? `${baseUrl}/congressos/${edition.slug}` : "";
+  const url = edition ? `${baseUrl}/evento/${edition.slug}` : "";
 
   useEffect(() => {
     if (!open || !url) {
