@@ -211,3 +211,95 @@ export const quotePersonalizationSchema = z.object({
 });
 
 export type QuotePersonalizationFormData = z.infer<typeof quotePersonalizationSchema>;
+
+// ============================================
+// CONGRESSOS (edições de evento)
+// ============================================
+
+const emptyToNull = (v: unknown) =>
+  v === "" || v === null || v === undefined ? null : v;
+
+export const eventEditionSchema = z
+  .object({
+    name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+    slug: z
+      .string()
+      .min(2, "Slug deve ter pelo menos 2 caracteres")
+      .regex(/^[a-z0-9-]+$/, "Use apenas minúsculas, números e hífen"),
+    location: z.string().nullable().optional(),
+    starts_at: z
+      .preprocess(emptyToNull, z.string().nullable())
+      .nullable()
+      .optional(),
+    ends_at: z
+      .preprocess(emptyToNull, z.string().nullable())
+      .nullable()
+      .optional(),
+    is_active: z.boolean().default(false),
+    gift_name: z.string().nullable().optional(),
+    gift_stock: z
+      .preprocess(emptyToNull, z.coerce.number().int().nonnegative().nullable())
+      .optional(),
+    cashback_enabled: z.boolean().default(false),
+    cashback_type: z.enum(["PERCENT", "FIXED"]).nullable().optional(),
+    cashback_value: z
+      .preprocess(emptyToNull, z.coerce.number().nonnegative().nullable())
+      .optional(),
+    cashback_min_order_value: z
+      .preprocess(emptyToNull, z.coerce.number().nonnegative().nullable())
+      .optional(),
+    cashback_min_order_qty: z
+      .preprocess(emptyToNull, z.coerce.number().int().nonnegative().nullable())
+      .optional(),
+    cashback_eligibility: z.enum(["ALL", "NEW_ONLY"]).nullable().optional(),
+    cashback_valid_days: z
+      .preprocess(emptyToNull, z.coerce.number().int().positive().nullable())
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.cashback_enabled) return;
+    if (!data.cashback_type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cashback_type"],
+        message: "Selecione o tipo de cashback",
+      });
+    }
+    if (data.cashback_value === null || data.cashback_value === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cashback_value"],
+        message: "Informe o valor do cashback",
+      });
+    }
+    if (
+      data.cashback_type === "PERCENT" &&
+      typeof data.cashback_value === "number" &&
+      data.cashback_value > 100
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cashback_value"],
+        message: "Percentual não pode passar de 100",
+      });
+    }
+    if (!data.cashback_eligibility) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cashback_eligibility"],
+        message: "Selecione a elegibilidade",
+      });
+    }
+    if (
+      data.cashback_valid_days === null ||
+      data.cashback_valid_days === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cashback_valid_days"],
+        message: "Informe a validade (dias)",
+      });
+    }
+  });
+
+export type EventEditionFormData = z.infer<typeof eventEditionSchema>;

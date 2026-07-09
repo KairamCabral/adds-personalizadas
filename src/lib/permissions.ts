@@ -37,6 +37,12 @@ export const PERMISSIONS = {
   // NPS (campanhas, métricas, fila de detratores — admin)
   "nps.manage": ["MASTER", "GESTOR"],
 
+  // Congressos (pré-cadastro + brindes + cashback)
+  /** CRUD de edições, config de cashback, dashboard completo, export CSV. */
+  "congressos.manage": ["MASTER", "GESTOR"],
+  /** Buscar participante e marcar retirada de brinde no estande. */
+  "congressos.operate": ["MASTER", "GESTOR", "PRESTADOR"],
+
   // Artes
   "artworks.upload": ["MASTER", "GESTOR", "PRESTADOR"],
   "artworks.approve": ["MASTER", "GESTOR"],

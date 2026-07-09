@@ -25,6 +25,7 @@ import {
   Percent,
   Activity,
   Warehouse,
+  Ticket,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Logo } from "@/components/brand/logo";
@@ -63,6 +64,12 @@ const NAV_SECTIONS = [
         href: "/contacts",
         icon: Users,
         permission: "clients.view" as const,
+      },
+      {
+        label: "Congressos",
+        href: "/congressos",
+        icon: Ticket,
+        permission: "congressos.manage" as const,
       },
       {
         label: "Representantes",
