@@ -41,6 +41,39 @@ async function logSync(
 }
 
 /**
+ * Ponto ÚNICO que grava `tiny_id` + `tiny_synced_at` no client casado quando ele
+ * ainda não tem. Chamado após a resolução do tiny_id (busca prévia, criação nova
+ * ou fallback "já existe"). Trata o conflito de `UNIQUE(clients.tiny_id)` — quando
+ * outra duplicata de documento já carrega esse tiny_id — apenas logando, sem
+ * falhar o job. Não sobrescreve um tiny_id diferente já existente.
+ */
+export async function backfillMatchedClientTinyId(
+  admin: AdminClient,
+  clientId: string,
+  currentTinyId: number | null,
+  tinyId: number,
+  nowTs: string
+): Promise<void> {
+  if (currentTinyId === tinyId) return;
+  if (currentTinyId != null) {
+    console.warn(
+      `[congress-sync] client ${clientId} já tem tiny_id ${currentTinyId} (≠ ${tinyId}) — não sobrescreve`
+    );
+    return;
+  }
+  const { error } = await admin
+    .from("clients")
+    .update({ tiny_id: tinyId, tiny_synced_at: nowTs })
+    .eq("id", clientId);
+  if (error) {
+    // UNIQUE(tiny_id): outra duplicata de documento já tem esse tiny_id — segue.
+    console.warn(
+      `[congress-sync] não gravou tiny_id ${tinyId} no client ${clientId} (provável duplicata com UNIQUE tiny_id): ${error.message}`
+    );
+  }
+}
+
+/**
  * Drena `tiny_contact_sync_jobs`: para cada job, cria/acha o contato no Tiny
  * (todos os participantes) e — só para qualificados — promove a `client` no CRM
  * com marcador de origem "congresso". Retentativas com backoff; idempotente.
@@ -141,14 +174,17 @@ export async function processCongressSyncJobs(): Promise<CongressSyncResult> {
 
       const nowTs = new Date().toISOString();
 
-      // Backfill: grava tiny_id no cliente casado que ainda não tinha (independe
-      // de qualificação — corrige o cliente e habilita o skip-Tiny no próximo run).
-      if (existingClient && !existingClient.tiny_id && tinyId != null) {
-        await admin
-          .from("clients")
-          .update({ tiny_id: tinyId, tiny_synced_at: nowTs })
-          .eq("id", existingClient.id);
-        existingClient.tiny_id = tinyId;
+      // Backfill centralizado do tiny_id no cliente casado — roda em TODOS os
+      // caminhos de resolução (busca prévia, criação nova e fallback "já existe").
+      if (existingClient && tinyId != null) {
+        await backfillMatchedClientTinyId(
+          admin,
+          existingClient.id,
+          existingClient.tiny_id,
+          tinyId,
+          nowTs
+        );
+        if (existingClient.tiny_id == null) existingClient.tiny_id = tinyId;
       }
 
       // Promoção a client — só qualificados (Dentista/Distribuidora)
