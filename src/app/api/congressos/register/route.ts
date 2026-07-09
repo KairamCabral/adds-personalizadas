@@ -6,60 +6,12 @@ import { verifyTurnstile } from "@/lib/turnstile";
 import { congressoRegisterSchema } from "@/lib/validations";
 import { syncRegistrationNow } from "@/services/congressos-sync.service";
 import { sendCongressDispatchNow } from "@/services/congressos-dispatch.service";
+import {
+  fetchRedemption,
+  createRedemption,
+  ensureRedemption,
+} from "@/lib/congressos/redemption";
 import type { Client } from "@/types/database.types";
-
-type AdminClient = ReturnType<typeof createAdminClient>;
-
-interface Redemption {
-  token: string;
-  short_code: string;
-}
-
-async function fetchRedemption(
-  supabase: AdminClient,
-  registrationId: string
-): Promise<Redemption | null> {
-  const { data } = await supabase
-    .from("event_gift_redemptions")
-    .select("token, short_code")
-    .eq("registration_id", registrationId)
-    .maybeSingle();
-  return data ?? null;
-}
-
-/** Gera short_code de 6 dígitos com retry em colisão (edition_id, short_code). */
-async function createRedemption(
-  supabase: AdminClient,
-  editionId: string,
-  registrationId: string
-): Promise<Redemption | null> {
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const shortCode = String(Math.floor(100000 + Math.random() * 900000));
-    const { data, error } = await supabase
-      .from("event_gift_redemptions")
-      .insert({
-        edition_id: editionId,
-        registration_id: registrationId,
-        short_code: shortCode,
-      })
-      .select("token, short_code")
-      .single();
-
-    if (!error && data) return data;
-
-    // 23505 = unique_violation: colisão de short_code (retry) OU registration_id
-    // já tem redemption (retorna a existente).
-    if (error && error.code === "23505") {
-      const existing = await fetchRedemption(supabase, registrationId);
-      if (existing) return existing;
-      continue; // colisão de short_code → tenta outro
-    }
-
-    console.error("[congressos/register] redemption insert:", error);
-    return null;
-  }
-  return null;
-}
 
 export async function POST(request: NextRequest) {
   const ip =
@@ -98,20 +50,12 @@ export async function POST(request: NextRequest) {
     });
     if (!docOk) return rateLimitResponse();
 
-    const captchaOk = await verifyTurnstile(input.turnstile_token, ip);
-    if (!captchaOk) {
-      return NextResponse.json(
-        { error: "Falha na verificação anti-robô. Tente novamente." },
-        { status: 400 }
-      );
-    }
-
     const supabase = createAdminClient();
 
     // Edição precisa existir e estar ativa
     const { data: edition } = await supabase
       .from("event_editions")
-      .select("id, is_active, gift_name")
+      .select("id, is_active, gift_name, turnstile_enabled")
       .eq("slug", input.slug)
       .maybeSingle();
     if (!edition || !edition.is_active) {
@@ -119,6 +63,20 @@ export async function POST(request: NextRequest) {
         { error: "Pré-cadastro indisponível para este evento." },
         { status: 400 }
       );
+    }
+
+    // Turnstile: a fonte de verdade é a edição (NUNCA uma flag vinda do client).
+    // O break-glass (turnstile_enabled = false) pula a verificação para o
+    // pré-cadastro não travar se o Cloudflare cair no evento. Segue fail-open
+    // quando o secret não está configurado (ver verifyTurnstile).
+    if (edition.turnstile_enabled) {
+      const captchaOk = await verifyTurnstile(input.turnstile_token, ip);
+      if (!captchaOk) {
+        return NextResponse.json(
+          { error: "Falha na verificação anti-robô. Tente novamente." },
+          { status: 400 }
+        );
+      }
     }
 
     // Dedup: 1 pré-cadastro por (edição, documento) → retorna o mesmo brinde
@@ -224,7 +182,10 @@ export async function POST(request: NextRequest) {
           .eq("document", digits)
           .maybeSingle();
         if (raced) {
-          const red = await fetchRedemption(supabase, raced.id);
+          // Corrida real: a registration foi criada pelo outro request. Garante
+          // a redemption (busca OU cria) — a janela entre criar a registration e
+          // criar a redemption nunca pode virar 500. Sempre 200 alreadyRegistered.
+          const red = await ensureRedemption(supabase, edition.id, raced.id);
           if (red) {
             return NextResponse.json({
               token: red.token,

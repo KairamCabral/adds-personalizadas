@@ -236,6 +236,7 @@ export const eventEditionSchema = z
       .nullable()
       .optional(),
     is_active: z.boolean().default(false),
+    turnstile_enabled: z.boolean().default(true),
     gift_name: z.string().nullable().optional(),
     gift_stock: z
       .preprocess(emptyToNull, z.coerce.number().int().nonnegative().nullable())

@@ -31,6 +31,7 @@ interface StepRegisterProps {
   onConsent: (v: boolean) => void;
   onToken: (t: string | null) => void;
   token: string | null;
+  turnstileEnabled: boolean;
   onSubmit: () => void;
   onBack: () => void;
   submitting: boolean;
@@ -44,6 +45,7 @@ export function StepRegister({
   onConsent,
   onToken,
   token,
+  turnstileEnabled,
   onSubmit,
   onBack,
   submitting,
@@ -55,8 +57,10 @@ export function StepRegister({
     whatsappDigits.length >= 10 &&
     !!form.contactType &&
     consent;
-  // Turnstile ativo → exige o token antes de concluir (fail-open quando ausente).
-  const awaitingToken = TURNSTILE_ENABLED && !token;
+  // Turnstile exige o token só quando configurado (env) E habilitado na edição
+  // (break-glass). Fica fail-open quando ausente ou desligado na edição.
+  const turnstileActive = TURNSTILE_ENABLED && turnstileEnabled;
+  const awaitingToken = turnstileActive && !token;
   const canSubmit = baseReady && !awaitingToken;
 
   return (
@@ -137,7 +141,7 @@ export function StepRegister({
         </div>
 
         <ConsentCheckbox checked={consent} onChange={onConsent} />
-        <TurnstileWidget onToken={onToken} />
+        {turnstileActive && <TurnstileWidget onToken={onToken} />}
 
         {error && <p className="text-center text-sm text-destructive">{error}</p>}
         {baseReady && awaitingToken && (

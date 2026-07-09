@@ -54,6 +54,7 @@ export default async function CongressoLandingPage({
       slug={edition.slug}
       editionName={edition.name}
       giftName={edition.gift_name}
+      turnstileEnabled={edition.turnstile_enabled}
       utm={{
         source: firstStr(sp.utm_source),
         medium: firstStr(sp.utm_medium),
