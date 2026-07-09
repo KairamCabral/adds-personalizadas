@@ -1,62 +1,92 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { backfillMatchedClientTinyId } from "./congressos-sync.service";
 
-/** Mock mínimo do admin client: from("clients").update({...}).eq("id", id) → { error }. */
-function mockAdmin(result: { error: unknown }) {
-  const eq = vi.fn().mockResolvedValue(result);
-  const update = vi.fn().mockReturnValue({ eq });
-  const from = vi.fn().mockReturnValue({ update });
+/** Admin fake: consome `script` na ordem dos awaits; registra updates. */
+function fakeAdmin(script: Array<{ data?: unknown; error?: unknown }>) {
+  let i = 0;
+  const next = () => script[i++] ?? { data: null, error: null };
+  const updates: Array<{ table: string; payload: any }> = [];
+  function builder(table: string) {
+    const b: any = {
+      select: () => b,
+      update: (p: any) => {
+        updates.push({ table, payload: p });
+        return b;
+      },
+      eq: () => b,
+      maybeSingle: () => Promise.resolve(next()),
+      then: (res: any, rej: any) => Promise.resolve(next()).then(res, rej),
+    };
+    return b;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { admin: { from } as any, from, update, eq };
+  return { admin: { from: (t: string) => builder(t) } as any, updates };
 }
 
 describe("backfillMatchedClientTinyId", () => {
-  it("grava tiny_id no client casado quando ainda não tem (caminho fallback → write)", async () => {
-    const m = mockAdmin({ error: null });
-    await backfillMatchedClientTinyId(
-      m.admin,
-      "cid-1",
-      null,
-      753739799,
-      "2026-07-08T00:00:00Z"
-    );
-    expect(m.from).toHaveBeenCalledWith("clients");
-    expect(m.update).toHaveBeenCalledWith({
-      tiny_id: 753739799,
-      tiny_synced_at: "2026-07-08T00:00:00Z",
+  it("grava tiny_id quando o client casado ainda não tem", async () => {
+    const f = fakeAdmin([{ error: null }]);
+    const r = await backfillMatchedClientTinyId(f.admin, {
+      clientId: "cid-1",
+      registrationId: "reg-1",
+      currentTinyId: null,
+      currentOrigin: null,
+      tinyId: 753739799,
+      nowTs: "now",
     });
-    expect(m.eq).toHaveBeenCalledWith("id", "cid-1");
-  });
-
-  it("não falha o job quando o UNIQUE(tiny_id) conflita (duplicata de documento)", async () => {
-    const m = mockAdmin({
-      error: {
-        code: "23505",
-        message:
-          "duplicate key value violates unique constraint clients_tiny_id_key",
-      },
+    expect(r).toEqual({ clientId: "cid-1", origin: null });
+    expect(f.updates).toContainEqual({
+      table: "clients",
+      payload: { tiny_id: 753739799, tiny_synced_at: "now" },
     });
-    await expect(
-      backfillMatchedClientTinyId(m.admin, "cid-2", null, 753739799, "now")
-    ).resolves.toBeUndefined();
-    expect(m.update).toHaveBeenCalledTimes(1);
-  });
-
-  it("não sobrescreve quando o client já tem OUTRO tiny_id", async () => {
-    const m = mockAdmin({ error: null });
-    await backfillMatchedClientTinyId(m.admin, "cid-3", 111, 999, "now");
-    expect(m.update).not.toHaveBeenCalled();
   });
 
   it("no-op quando já tem o mesmo tiny_id", async () => {
-    const m = mockAdmin({ error: null });
-    await backfillMatchedClientTinyId(
-      m.admin,
-      "cid-4",
-      753739799,
-      753739799,
-      "now"
-    );
-    expect(m.update).not.toHaveBeenCalled();
+    const f = fakeAdmin([]);
+    const r = await backfillMatchedClientTinyId(f.admin, {
+      clientId: "cid-2",
+      registrationId: "reg-2",
+      currentTinyId: 753739799,
+      currentOrigin: "o",
+      tinyId: 753739799,
+      nowTs: "now",
+    });
+    expect(r).toEqual({ clientId: "cid-2", origin: "o" });
+    expect(f.updates).toHaveLength(0);
+  });
+
+  it("não sobrescreve quando o client já tem OUTRO tiny_id", async () => {
+    const f = fakeAdmin([]);
+    const r = await backfillMatchedClientTinyId(f.admin, {
+      clientId: "cid-3",
+      registrationId: "reg-3",
+      currentTinyId: 111,
+      currentOrigin: null,
+      tinyId: 999,
+      nowTs: "now",
+    });
+    expect(r).toEqual({ clientId: "cid-3", origin: null });
+    expect(f.updates).toHaveLength(0);
+  });
+
+  it("conflito UNIQUE(tiny_id) → reconcilia: reaponta a registration para o client dono", async () => {
+    const f = fakeAdmin([
+      { error: { code: "23505", message: "duplicate clients_tiny_id_key" } }, // clients.update conflita
+      { data: { id: "owner-1", origin: "loja" } }, // select do dono
+      { error: null }, // event_registrations.update
+    ]);
+    const r = await backfillMatchedClientTinyId(f.admin, {
+      clientId: "cid-dup",
+      registrationId: "reg-4",
+      currentTinyId: null,
+      currentOrigin: null,
+      tinyId: 753739799,
+      nowTs: "now",
+    });
+    expect(r).toEqual({ clientId: "owner-1", origin: "loja" });
+    expect(f.updates).toContainEqual({
+      table: "event_registrations",
+      payload: { matched_client_id: "owner-1" },
+    });
   });
 });

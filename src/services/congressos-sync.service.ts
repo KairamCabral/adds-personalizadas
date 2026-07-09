@@ -40,37 +40,69 @@ async function logSync(
   });
 }
 
+export interface BackfillParams {
+  clientId: string;
+  registrationId: string;
+  currentTinyId: number | null;
+  currentOrigin: string | null;
+  tinyId: number;
+  nowTs: string;
+}
+
 /**
- * Ponto ÚNICO que grava `tiny_id` + `tiny_synced_at` no client casado quando ele
- * ainda não tem. Chamado após a resolução do tiny_id (busca prévia, criação nova
- * ou fallback "já existe"). Trata o conflito de `UNIQUE(clients.tiny_id)` — quando
- * outra duplicata de documento já carrega esse tiny_id — apenas logando, sem
- * falhar o job. Não sobrescreve um tiny_id diferente já existente.
+ * Ponto ÚNICO que associa o `tiny_id` ao client casado, chamado SEMPRE após a
+ * resolução do tiny_id (busca prévia, criação nova ou fallback "já existe").
+ * Retorna o client efetivo (id + origin atual) para a promoção usar.
+ *
+ * - Se o client já tem esse tiny_id → no-op.
+ * - Se tem outro tiny_id → não sobrescreve (log).
+ * - Se não tem → grava tiny_id + tiny_synced_at.
+ * - Se o UNIQUE(tiny_id) conflita (outra DUPLICATA do documento já carrega esse
+ *   tiny_id) → RECONCILIA: reaponta `event_registrations.matched_client_id` para
+ *   o client que já tem o tiny_id e retorna esse client (não falha o job).
  */
 export async function backfillMatchedClientTinyId(
   admin: AdminClient,
-  clientId: string,
-  currentTinyId: number | null,
-  tinyId: number,
-  nowTs: string
-): Promise<void> {
-  if (currentTinyId === tinyId) return;
+  params: BackfillParams
+): Promise<{ clientId: string; origin: string | null }> {
+  const { clientId, registrationId, currentTinyId, currentOrigin, tinyId, nowTs } =
+    params;
+
+  if (currentTinyId === tinyId) return { clientId, origin: currentOrigin };
   if (currentTinyId != null) {
     console.warn(
       `[congress-sync] client ${clientId} já tem tiny_id ${currentTinyId} (≠ ${tinyId}) — não sobrescreve`
     );
-    return;
+    return { clientId, origin: currentOrigin };
   }
+
   const { error } = await admin
     .from("clients")
     .update({ tiny_id: tinyId, tiny_synced_at: nowTs })
     .eq("id", clientId);
-  if (error) {
-    // UNIQUE(tiny_id): outra duplicata de documento já tem esse tiny_id — segue.
+  if (!error) return { clientId, origin: currentOrigin };
+
+  // UNIQUE(tiny_id): outra duplicata de documento já carrega esse tiny_id.
+  const { data: owner } = await admin
+    .from("clients")
+    .select("id, origin")
+    .eq("tiny_id", tinyId)
+    .maybeSingle();
+  if (owner?.id) {
+    await admin
+      .from("event_registrations")
+      .update({ matched_client_id: owner.id })
+      .eq("id", registrationId);
     console.warn(
-      `[congress-sync] não gravou tiny_id ${tinyId} no client ${clientId} (provável duplicata com UNIQUE tiny_id): ${error.message}`
+      `[congress-sync] tiny_id ${tinyId} já pertence ao client ${owner.id}; reaponta registration ${registrationId} (duplicata ${clientId})`
     );
+    return { clientId: owner.id, origin: owner.origin ?? null };
   }
+
+  console.warn(
+    `[congress-sync] não gravou tiny_id ${tinyId} no client ${clientId}: ${error.message}`
+  );
+  return { clientId, origin: currentOrigin };
 }
 
 /**
@@ -174,17 +206,22 @@ export async function processCongressSyncJobs(): Promise<CongressSyncResult> {
 
       const nowTs = new Date().toISOString();
 
-      // Backfill centralizado do tiny_id no cliente casado — roda em TODOS os
-      // caminhos de resolução (busca prévia, criação nova e fallback "já existe").
+      // Associa/backfill o tiny_id no cliente casado — roda em TODOS os caminhos
+      // de resolução (busca prévia, criação nova e fallback "já existe"). Em
+      // conflito de UNIQUE(tiny_id) por duplicata, reaponta para o client dono.
+      let effClientId = existingClient?.id ?? null;
+      let effOrigin = existingClient?.origin ?? null;
       if (existingClient && tinyId != null) {
-        await backfillMatchedClientTinyId(
-          admin,
-          existingClient.id,
-          existingClient.tiny_id,
+        const eff = await backfillMatchedClientTinyId(admin, {
+          clientId: existingClient.id,
+          registrationId: reg.id,
+          currentTinyId: existingClient.tiny_id,
+          currentOrigin: existingClient.origin,
           tinyId,
-          nowTs
-        );
-        if (existingClient.tiny_id == null) existingClient.tiny_id = tinyId;
+          nowTs,
+        });
+        effClientId = eff.clientId;
+        effOrigin = eff.origin;
       }
 
       // Promoção a client — só qualificados (Dentista/Distribuidora)
@@ -195,10 +232,10 @@ export async function processCongressSyncJobs(): Promise<CongressSyncResult> {
           await admin
             .from("clients")
             .update({
-              origin: existingClient.origin ?? origin,
+              origin: effOrigin ?? origin,
               tiny_synced_at: nowTs,
             })
-            .eq("id", existingClient.id);
+            .eq("id", effClientId ?? existingClient.id);
           result.promoted++;
         } else {
           // Pode existir um client com esse tiny_id (sincronizado antes) —
