@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { formatPhoneInput } from "@/lib/utils";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { ConsentCheckbox } from "./consent-checkbox";
-import { TurnstileWidget } from "./turnstile-widget";
+import { TurnstileWidget, TURNSTILE_ENABLED } from "./turnstile-widget";
 
 export type ContactTypeChoice = "DENTISTA" | "DISTRIBUIDORA" | "CONSUMIDOR";
 
@@ -30,6 +30,7 @@ interface StepRegisterProps {
   consent: boolean;
   onConsent: (v: boolean) => void;
   onToken: (t: string | null) => void;
+  token: string | null;
   onSubmit: () => void;
   onBack: () => void;
   submitting: boolean;
@@ -42,17 +43,21 @@ export function StepRegister({
   consent,
   onConsent,
   onToken,
+  token,
   onSubmit,
   onBack,
   submitting,
   error,
 }: StepRegisterProps) {
   const whatsappDigits = form.whatsapp.replace(/\D/g, "");
-  const canSubmit =
+  const baseReady =
     form.name.trim().length >= 2 &&
     whatsappDigits.length >= 10 &&
     !!form.contactType &&
     consent;
+  // Turnstile ativo → exige o token antes de concluir (fail-open quando ausente).
+  const awaitingToken = TURNSTILE_ENABLED && !token;
+  const canSubmit = baseReady && !awaitingToken;
 
   return (
     <div className="mx-auto max-w-md space-y-6">
@@ -135,6 +140,11 @@ export function StepRegister({
         <TurnstileWidget onToken={onToken} />
 
         {error && <p className="text-center text-sm text-destructive">{error}</p>}
+        {baseReady && awaitingToken && (
+          <p className="text-center text-xs text-muted-foreground">
+            Verificando segurança, aguarde um instante…
+          </p>
+        )}
 
         <div className="space-y-2">
           <Button

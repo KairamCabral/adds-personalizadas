@@ -247,6 +247,7 @@ export function CongressoWizard({
           consent={consent}
           onConsent={setConsent}
           onToken={setTurnstileToken}
+          token={turnstileToken}
           onConfirm={handleConfirm}
           onBack={() => {
             setFoundClient(null);
@@ -264,6 +265,7 @@ export function CongressoWizard({
           consent={consent}
           onConsent={setConsent}
           onToken={setTurnstileToken}
+          token={turnstileToken}
           onSubmit={handleRegister}
           onBack={() => goTo("cpf")}
           submitting={submitting}
