@@ -25,7 +25,7 @@
     },
     {
       "path": "/api/cron/congress-sync",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 7 * * *"
     }
   ]
 }

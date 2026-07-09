@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createHmac } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { congressoRegisterSchema } from "@/lib/validations";
+import { syncRegistrationNow } from "@/services/congressos-sync.service";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -250,6 +251,17 @@ export async function POST(request: NextRequest) {
       if (dispErr)
         console.error("[congressos/register] dispatch enqueue:", dispErr);
     }
+
+    // Fast-path: tenta sincronizar com o Tiny logo após responder (near-real-time),
+    // sem esperar o cron diário. Best-effort — falha vira retry/backoff na fila.
+    const registrationId = reg.id;
+    after(async () => {
+      try {
+        await syncRegistrationNow(registrationId);
+      } catch (e) {
+        console.error("[congressos/register] after sync:", e);
+      }
+    });
 
     const firstName = name ? name.split(" ")[0] : null;
     return NextResponse.json({
