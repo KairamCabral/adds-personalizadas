@@ -303,3 +303,45 @@ export const eventEditionSchema = z
   });
 
 export type EventEditionFormData = z.infer<typeof eventEditionSchema>;
+
+// ============================================
+// CONGRESSOS — pré-cadastro público (registro do participante)
+// ============================================
+
+export const congressoRegisterSchema = z
+  .object({
+    slug: z.string().min(1),
+    document: z.string().min(1),
+    is_existing_client: z.boolean().optional().default(false),
+    existing_client_id: z.string().uuid().nullable().optional(),
+    name: z.string().nullable().optional(),
+    email: z
+      .preprocess(emptyToNull, z.string().email("E-mail inválido").nullable())
+      .optional(),
+    phone: z.string().nullable().optional(),
+    contact_type: z
+      .enum(["CONSUMIDOR", "DENTISTA", "DISTRIBUIDORA", "VAREJISTA"])
+      .nullable()
+      .optional(),
+    consent: z.literal(true, {
+      errorMap: () => ({ message: "Consentimento é obrigatório" }),
+    }),
+    consent_version: z.string().min(1),
+    idempotency_key: z.string().min(1),
+    turnstile_token: z.string().nullable().optional(),
+    utm_source: z.string().nullable().optional(),
+    utm_medium: z.string().nullable().optional(),
+    utm_campaign: z.string().nullable().optional(),
+    utm_content: z.string().nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.is_existing_client && (!data.name || data.name.trim().length < 2)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["name"],
+        message: "Nome é obrigatório",
+      });
+    }
+  });
+
+export type CongressoRegisterInput = z.infer<typeof congressoRegisterSchema>;
