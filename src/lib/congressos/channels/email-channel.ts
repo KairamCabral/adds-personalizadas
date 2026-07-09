@@ -14,7 +14,7 @@ import type {
   MessagingChannel,
 } from "./types";
 
-const FROM = process.env.RESEND_FROM_EMAIL ?? "ADDS Brasil <noreply@addsbrasil.com.br>";
+const FROM = process.env.RESEND_FROM_EMAIL ?? "ADDS Brasil <noreply@adds.com.br>";
 
 /** Gera o QR do token como data-URI (best-effort). Null se falhar. */
 async function qrDataUrl(token: string): Promise<string | null> {
