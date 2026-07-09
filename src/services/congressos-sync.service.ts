@@ -139,17 +139,27 @@ export async function processCongressSyncJobs(): Promise<CongressSyncResult> {
         result.skippedTiny++;
       }
 
+      const nowTs = new Date().toISOString();
+
+      // Backfill: grava tiny_id no cliente casado que ainda não tinha (independe
+      // de qualificação — corrige o cliente e habilita o skip-Tiny no próximo run).
+      if (existingClient && !existingClient.tiny_id && tinyId != null) {
+        await admin
+          .from("clients")
+          .update({ tiny_id: tinyId, tiny_synced_at: nowTs })
+          .eq("id", existingClient.id);
+        existingClient.tiny_id = tinyId;
+      }
+
       // Promoção a client — só qualificados (Dentista/Distribuidora)
       if (reg.qualified && tinyId != null) {
         const origin = slug ? `congresso:${slug}` : "congresso";
-        const nowTs = new Date().toISOString();
 
         if (existingClient) {
           await admin
             .from("clients")
             .update({
               origin: existingClient.origin ?? origin,
-              tiny_id: existingClient.tiny_id ?? tinyId,
               tiny_synced_at: nowTs,
             })
             .eq("id", existingClient.id);
