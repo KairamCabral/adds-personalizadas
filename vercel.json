@@ -26,6 +26,10 @@
     {
       "path": "/api/cron/congress-sync",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/congress-dispatch",
+      "schedule": "0 8 * * *"
     }
   ]
 }
