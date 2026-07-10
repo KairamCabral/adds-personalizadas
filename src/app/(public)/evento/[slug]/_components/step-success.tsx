@@ -67,6 +67,26 @@ export function StepSuccess({
         </p>
       </div>
 
+      {result.cashback_label && (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm font-medium text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+          🛍️ {result.cashback_label}
+        </div>
+      )}
+
+      {result.raffle_number != null && (
+        <div className="space-y-1 rounded-xl border border-adds-orange/30 bg-adds-orange/10 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            🎟️ Seu número da sorte
+          </p>
+          <p className="text-4xl font-bold tracking-[0.3em] text-adds-orange">
+            {String(result.raffle_number).padStart(4, "0")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Guarde este número — o sorteio acontece no evento.
+          </p>
+        </div>
+      )}
+
       {hasEmail && (
         <p className="text-sm text-muted-foreground">
           Enviamos a confirmação para o seu e-mail. 💙

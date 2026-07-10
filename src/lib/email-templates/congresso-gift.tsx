@@ -19,6 +19,8 @@ export interface CongressoGiftEmailProps {
   shortCode: string;
   /** frase de cashback (Épico 6). Null = não renderiza a seção. */
   cashbackLabel?: string | null;
+  /** número da sorte (Épico 8). Null = não renderiza a seção. */
+  raffleNumber?: number | null;
   /** URL HTTPS da logo (data-URI não renderiza no Gmail). Null = oculta. */
   logoUrl: string | null;
   /** URL HTTPS do QR do brinde (data-URI não renderiza no Gmail). Null = oculta. */
@@ -34,6 +36,7 @@ export function CongressoGiftEmail({
   giftName,
   shortCode,
   cashbackLabel,
+  raffleNumber,
   logoUrl,
   qrUrl,
 }: CongressoGiftEmailProps) {
@@ -76,7 +79,16 @@ export function CongressoGiftEmail({
 
           {cashbackLabel ? (
             <Section style={styles.cashbackWrap}>
-              <Text style={styles.cashbackText}>💰 {cashbackLabel}</Text>
+              <Text style={styles.cashbackText}>🛍️ {cashbackLabel}</Text>
+            </Section>
+          ) : null}
+
+          {raffleNumber != null ? (
+            <Section style={styles.raffleWrap}>
+              <Text style={styles.raffleLabel}>🎟️ Seu número da sorte</Text>
+              <Text style={styles.raffleNum}>
+                {String(raffleNumber).padStart(4, "0")}
+              </Text>
             </Section>
           ) : null}
 
@@ -164,6 +176,29 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: "22px",
     margin: 0,
     textAlign: "center" as const,
+  },
+  raffleWrap: {
+    backgroundColor: "#fff7ed",
+    border: "1px solid #fed7aa",
+    borderRadius: 10,
+    margin: "0 0 20px",
+    padding: "14px 12px",
+    textAlign: "center" as const,
+  },
+  raffleLabel: {
+    color: "#9a3412",
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.15em",
+    margin: "0 0 6px",
+    textTransform: "uppercase" as const,
+  },
+  raffleNum: {
+    color: "#c2410c",
+    fontSize: 30,
+    fontWeight: 700,
+    letterSpacing: "0.3em",
+    margin: 0,
   },
   qrWrap: { margin: "0 0 8px", textAlign: "center" as const },
   qr: {

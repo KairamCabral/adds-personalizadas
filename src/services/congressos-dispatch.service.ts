@@ -119,7 +119,7 @@ async function processOne(
   // 3) Contexto do e-mail (registro → edição + brinde).
   const { data: reg } = await admin
     .from("event_registrations")
-    .select("id, name, edition_id")
+    .select("id, name, edition_id, raffle_number")
     .eq("id", d.registration_id)
     .maybeSingle();
 
@@ -173,7 +173,8 @@ async function processOne(
     giftName: ed?.gift_name ?? null,
     giftToken: red.token,
     shortCode: red.short_code,
-    cashbackLabel: buildCashbackEmailLabel(credit),
+    cashbackLabel: buildCashbackEmailLabel(credit, ed?.name ?? null),
+    raffleNumber: reg.raffle_number ?? null,
   });
 
   if (sendResult.success) {

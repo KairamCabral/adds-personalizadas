@@ -11,7 +11,12 @@ import {
   createRedemption,
   ensureRedemption,
 } from "@/lib/congressos/redemption";
-import { ensureCredit } from "@/lib/congressos/credit";
+import {
+  ensureCredit,
+  isCashbackEligible,
+  creditValidUntil,
+} from "@/lib/congressos/credit";
+import { formatBenefitLabel } from "@/lib/congressos/cashback-format";
 import type { Client } from "@/types/database.types";
 
 export async function POST(request: NextRequest) {
@@ -57,7 +62,7 @@ export async function POST(request: NextRequest) {
     const { data: edition } = await supabase
       .from("event_editions")
       .select(
-        "id, is_active, gift_name, turnstile_enabled, cashback_enabled, cashback_type, cashback_value, cashback_min_order_value, cashback_min_order_qty, cashback_eligibility, cashback_valid_days"
+        "id, name, is_active, gift_name, turnstile_enabled, cashback_enabled, cashback_type, cashback_value, cashback_min_order_value, cashback_min_order_qty, cashback_eligibility, cashback_valid_days"
       )
       .eq("slug", input.slug)
       .maybeSingle();
@@ -92,11 +97,17 @@ export async function POST(request: NextRequest) {
     if (existingReg) {
       const red = await fetchRedemption(supabase, existingReg.id);
       if (red) {
+        const { data: raffleNumber } = await supabase.rpc(
+          "assign_raffle_number",
+          { p_registration_id: existingReg.id }
+        );
         return NextResponse.json({
           token: red.token,
           short_code: red.short_code,
           gift_name: edition.gift_name,
           participant_first_name: null,
+          raffle_number: raffleNumber ?? null,
+          cashback_label: null,
           alreadyRegistered: true,
         });
       }
@@ -195,11 +206,17 @@ export async function POST(request: NextRequest) {
             matchedClientId: raced.matched_client_id,
           });
           if (red) {
+            const { data: raffleNumber } = await supabase.rpc(
+              "assign_raffle_number",
+              { p_registration_id: raced.id }
+            );
             return NextResponse.json({
               token: red.token,
               short_code: red.short_code,
               gift_name: edition.gift_name,
               participant_first_name: null,
+              raffle_number: raffleNumber ?? null,
+              cashback_label: null,
               alreadyRegistered: true,
             });
           }
@@ -227,6 +244,29 @@ export async function POST(request: NextRequest) {
       isExistingClient,
       matchedClientId,
     });
+
+    // Sorteio (E8): atribui o número da sorte (idempotente; null se a edição não
+    // tem sorteio). Síncrono, antes da resposta — sucesso/e-mail exibem o número.
+    const { data: raffleNumber } = await supabase.rpc("assign_raffle_number", {
+      p_registration_id: reg.id,
+    });
+
+    // Benefício de compra (Épico 6): texto type-aware pro participante ver já na
+    // tela de sucesso (% → desconto, R$ → vale-compras). Null se não elegível.
+    const cashbackLabel = isCashbackEligible(edition, isExistingClient)
+      ? formatBenefitLabel(
+          {
+            type: edition.cashback_type,
+            value: edition.cashback_value,
+            min_order_value: edition.cashback_min_order_value,
+            valid_until: creditValidUntil(
+              new Date(),
+              edition.cashback_valid_days
+            ),
+          },
+          edition.name
+        )
+      : null;
 
     // Enfileira (write-then-queue). Falhas aqui não afetam o participante;
     // os workers (Épicos 3/4) drenam depois.
@@ -274,6 +314,8 @@ export async function POST(request: NextRequest) {
       short_code: redemption.short_code,
       gift_name: edition.gift_name,
       participant_first_name: firstName,
+      raffle_number: raffleNumber ?? null,
+      cashback_label: cashbackLabel,
       alreadyRegistered: false,
     });
   } catch (err) {

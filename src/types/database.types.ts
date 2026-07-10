@@ -678,6 +678,11 @@ export type Database = {
           is_active: boolean
           location: string | null
           name: string
+          raffle_allow_repeat_winners: boolean
+          raffle_counter: number
+          raffle_eligibility: Database["public"]["Enums"]["event_raffle_eligibility"]
+          raffle_enabled: boolean
+          raffle_prize: string | null
           slug: string
           starts_at: string | null
           turnstile_enabled: boolean
@@ -704,6 +709,11 @@ export type Database = {
           is_active?: boolean
           location?: string | null
           name: string
+          raffle_allow_repeat_winners?: boolean
+          raffle_counter?: number
+          raffle_eligibility?: Database["public"]["Enums"]["event_raffle_eligibility"]
+          raffle_enabled?: boolean
+          raffle_prize?: string | null
           slug: string
           starts_at?: string | null
           turnstile_enabled?: boolean
@@ -730,6 +740,11 @@ export type Database = {
           is_active?: boolean
           location?: string | null
           name?: string
+          raffle_allow_repeat_winners?: boolean
+          raffle_counter?: number
+          raffle_eligibility?: Database["public"]["Enums"]["event_raffle_eligibility"]
+          raffle_enabled?: boolean
+          raffle_prize?: string | null
           slug?: string
           starts_at?: string | null
           turnstile_enabled?: boolean
@@ -803,6 +818,64 @@ export type Database = {
           },
         ]
       }
+      event_raffle_draws: {
+        Row: {
+          drawn_at: string
+          drawn_by: string | null
+          drawn_for_date: string | null
+          edition_id: string
+          id: string
+          pool_size: number | null
+          prize: string | null
+          raffle_number: number | null
+          registration_id: string
+        }
+        Insert: {
+          drawn_at?: string
+          drawn_by?: string | null
+          drawn_for_date?: string | null
+          edition_id: string
+          id?: string
+          pool_size?: number | null
+          prize?: string | null
+          raffle_number?: number | null
+          registration_id: string
+        }
+        Update: {
+          drawn_at?: string
+          drawn_by?: string | null
+          drawn_for_date?: string | null
+          edition_id?: string
+          id?: string
+          pool_size?: number | null
+          prize?: string | null
+          raffle_number?: number | null
+          registration_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_raffle_draws_edition_id_fkey"
+            columns: ["edition_id"]
+            isOneToOne: false
+            referencedRelation: "event_editions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_raffle_draws_drawn_by_fkey"
+            columns: ["drawn_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_raffle_draws_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_registrations: {
         Row: {
           consent_at: string | null
@@ -820,6 +893,7 @@ export type Database = {
           name: string | null
           phone: string | null
           qualified: boolean
+          raffle_number: number | null
           utm_campaign: string | null
           utm_content: string | null
           utm_medium: string | null
@@ -841,6 +915,7 @@ export type Database = {
           name?: string | null
           phone?: string | null
           qualified?: boolean
+          raffle_number?: number | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -862,6 +937,7 @@ export type Database = {
           name?: string | null
           phone?: string | null
           qualified?: boolean
+          raffle_number?: number | null
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -3272,6 +3348,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_raffle_number: {
+        Args: { p_registration_id: string }
+        Returns: number
+      }
       classify_inventory_divergence: {
         Args: {
           p_committed: number
@@ -3361,6 +3441,17 @@ export type Database = {
       recompute_supplier_inventory: {
         Args: { p_inventory_id: string }
         Returns: undefined
+      }
+      raffle_draw: {
+        Args: { p_edition_id: string; p_for_date?: string }
+        Returns: {
+          outcome: string
+          participant_name: string
+          pool_size: number
+          raffle_number: number
+          registration_id: string
+          success: boolean
+        }[]
       }
       redeem_gift: {
         Args: { p_token: string }
@@ -3484,6 +3575,7 @@ export type Database = {
       event_dispatch_channel: "EMAIL" | "WHATSAPP"
       event_dispatch_status: "PENDENTE" | "ENVIADO" | "FALHOU" | "CANCELADO"
       event_gift_status: "PENDENTE" | "RETIRADO" | "CANCELADO"
+      event_raffle_eligibility: "ALL" | "QUALIFIED" | "GIFT_REDEEMED"
       label_type:
         | "BOLETO"
         | "AGUARDANDO_PAGAMENTO"
@@ -3713,6 +3805,7 @@ export const Constants = {
       event_dispatch_channel: ["EMAIL", "WHATSAPP"],
       event_dispatch_status: ["PENDENTE", "ENVIADO", "FALHOU", "CANCELADO"],
       event_gift_status: ["PENDENTE", "RETIRADO", "CANCELADO"],
+      event_raffle_eligibility: ["ALL", "QUALIFIED", "GIFT_REDEEMED"],
       label_type: [
         "BOLETO",
         "AGUARDANDO_PAGAMENTO",
