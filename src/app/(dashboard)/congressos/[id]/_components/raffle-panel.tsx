@@ -10,6 +10,7 @@ import {
   Gift,
   Users,
   MonitorPlay,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,11 +18,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { cn } from "@/lib/utils";
 import {
   drawRaffleWinner,
   getEditionDraws,
   getRaffleNumberedCount,
+  resetRaffleDraws,
   type RaffleDrawResult,
 } from "@/services/congressos-raffle.service";
 import { classifyDrawOutcome } from "@/lib/congressos/draw-outcome";
@@ -63,6 +66,7 @@ export function RafflePanel({
   const queryClient = useQueryClient();
   const [todayOnly, setTodayOnly] = useState(false);
   const [winner, setWinner] = useState<RaffleDrawResult | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
 
   // Canal para o telão receber o MESMO resultado (não re-sortear no telão).
   const channelRef = useRef<RaffleChannel | null>(null);
@@ -108,6 +112,18 @@ export function RafflePanel({
       }
     },
     onError: () => toast.error("Erro ao sortear. Tente de novo."),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: () => resetRaffleDraws(editionId),
+    onSuccess: () => {
+      setWinner(null);
+      toast.success("Sorteio resetado.");
+      queryClient.invalidateQueries({
+        queryKey: ["edition_draws", editionId],
+      });
+    },
+    onError: () => toast.error("Erro ao resetar o sorteio."),
   });
 
   return (
@@ -203,7 +219,25 @@ export function RafflePanel({
 
       {/* Histórico de ganhadores */}
       <div className="space-y-2">
-        <h4 className="text-sm font-medium">Ganhadores</h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium">Ganhadores</h4>
+          {draws.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-muted-foreground hover:text-destructive"
+              onClick={() => setResetOpen(true)}
+              disabled={resetMutation.isPending}
+            >
+              {resetMutation.isPending ? (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="mr-2 h-3.5 w-3.5" />
+              )}
+              Resetar sorteio
+            </Button>
+          )}
+        </div>
         {drawsLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -248,6 +282,20 @@ export function RafflePanel({
           </ul>
         )}
       </div>
+
+      <ConfirmDialog
+        open={resetOpen}
+        onOpenChange={setResetOpen}
+        title="Resetar sorteio"
+        description="Isto apaga todos os ganhadores já sorteados desta edição — todos voltam a concorrer. Os números da sorte dos inscritos e os e-mails já enviados não são afetados. Esta ação não pode ser desfeita."
+        confirmLabel="Resetar sorteio"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          resetMutation.mutate();
+          setResetOpen(false);
+        }}
+      />
     </div>
   );
 }

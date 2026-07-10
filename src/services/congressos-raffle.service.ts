@@ -125,3 +125,16 @@ export async function getRafflePool(
     (r) => r.raffle_number != null
   );
 }
+
+// ---- Reset do sorteio ----
+// Apaga o histórico de ganhadores da edição (RLS `event_raffle_draws_manage`
+// permite DELETE a MASTER/GESTOR). Os números da sorte dos inscritos e os e-mails
+// já enviados NÃO são afetados — todos voltam a concorrer no próximo sorteio.
+
+export async function resetRaffleDraws(editionId: string): Promise<void> {
+  const { error } = await supabase
+    .from("event_raffle_draws")
+    .delete()
+    .eq("edition_id", editionId);
+  if (error) throw error;
+}
