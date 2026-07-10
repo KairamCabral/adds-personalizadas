@@ -1,9 +1,5 @@
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import type {
-  QueueCounts,
-  SyncQueueCounts,
-  DispatchQueueCounts,
-} from "@/lib/congressos/queue-health";
+import type { QueueCounts } from "@/lib/congressos/queue-health";
 import type { Database } from "@/types/database.types";
 
 /**
@@ -11,16 +7,14 @@ import type { Database } from "@/types/database.types";
  * `tiny_contact_sync_jobs` e `event_dispatches` só são legíveis por MASTER/GESTOR
  * — por isso a página que consome isto é gated por `congressos.manage`.
  *
- * Contagens via COUNT (`head:true`, sem puxar linhas) por status. Listas de
- * problemas (jobs MORTOS / e-mails FALHOS) limitadas e enriquecidas com o
- * evento + participante por fetch separado + merge (espelha
+ * Contagens por status num único round-trip via RPC `congress_queue_counts`.
+ * Listas de problemas (jobs MORTOS / e-mails FALHOS) limitadas e enriquecidas
+ * com o evento + participante por fetch separado + merge (espelha
  * `getEditionRegistrations`, evitando embed FK que o PostgREST não detecta em
  * `tiny_contact_sync_jobs`).
  */
 const supabase = createSupabaseClient();
 
-type SyncStatus = Database["public"]["Enums"]["tiny_sync_job_status"];
-type DispatchStatus = Database["public"]["Enums"]["event_dispatch_status"];
 type DispatchChannel = Database["public"]["Enums"]["event_dispatch_channel"];
 type ContactType =
   Database["public"]["Tables"]["event_registrations"]["Row"]["contact_type"];
@@ -56,22 +50,29 @@ export interface QueueHealth extends QueueCounts {
   failedDispatches: FailedDispatch[];
 }
 
-/** COUNT(*) por status (head:true = não traz linhas). Tabelas separadas para
- * manter os tipos gerados do supabase-js estreitos por enum. */
-async function countSyncByStatus(status: SyncStatus): Promise<number> {
-  const { count } = await supabase
-    .from("tiny_contact_sync_jobs")
-    .select("*", { count: "exact", head: true })
-    .eq("status", status);
-  return count ?? 0;
-}
-
-async function countDispatchByStatus(status: DispatchStatus): Promise<number> {
-  const { count } = await supabase
-    .from("event_dispatches")
-    .select("*", { count: "exact", head: true })
-    .eq("status", status);
-  return count ?? 0;
+/**
+ * Contagens das duas filas por status num único round-trip (RPC
+ * `congress_queue_counts`, SECURITY INVOKER — respeita a RLS MASTER/GESTOR).
+ * Substitui os 9 COUNTs separados.
+ */
+async function getQueueCounts(): Promise<QueueCounts> {
+  const { data } = await supabase.rpc("congress_queue_counts");
+  const r = data?.[0];
+  return {
+    sync: {
+      pending: r?.sync_pending ?? 0,
+      processing: r?.sync_processing ?? 0,
+      failed: r?.sync_failed ?? 0,
+      dead: r?.sync_dead ?? 0,
+      done: r?.sync_done ?? 0,
+    },
+    dispatch: {
+      pendente: r?.dispatch_pendente ?? 0,
+      enviado: r?.dispatch_enviado ?? 0,
+      falhou: r?.dispatch_falhou ?? 0,
+      cancelado: r?.dispatch_cancelado ?? 0,
+    },
+  };
 }
 
 interface RegInfo {
@@ -108,27 +109,6 @@ async function fetchRegInfo(
     });
   }
   return map;
-}
-
-async function getSyncCounts(): Promise<SyncQueueCounts> {
-  const [pending, processing, failed, dead, done] = await Promise.all([
-    countSyncByStatus("PENDING"),
-    countSyncByStatus("PROCESSING"),
-    countSyncByStatus("FAILED"),
-    countSyncByStatus("DEAD"),
-    countSyncByStatus("DONE"),
-  ]);
-  return { pending, processing, failed, dead, done };
-}
-
-async function getDispatchCounts(): Promise<DispatchQueueCounts> {
-  const [pendente, enviado, falhou, cancelado] = await Promise.all([
-    countDispatchByStatus("PENDENTE"),
-    countDispatchByStatus("ENVIADO"),
-    countDispatchByStatus("FALHOU"),
-    countDispatchByStatus("CANCELADO"),
-  ]);
-  return { pendente, enviado, falhou, cancelado };
 }
 
 async function getDeadJobs(): Promise<DeadSyncJob[]> {
@@ -185,11 +165,10 @@ async function getFailedDispatches(): Promise<FailedDispatch[]> {
 
 /** Agrega contagens + listas de problemas das duas filas para a tela de saúde. */
 export async function getQueueHealth(): Promise<QueueHealth> {
-  const [sync, dispatch, deadJobs, failedDispatches] = await Promise.all([
-    getSyncCounts(),
-    getDispatchCounts(),
+  const [counts, deadJobs, failedDispatches] = await Promise.all([
+    getQueueCounts(),
     getDeadJobs(),
     getFailedDispatches(),
   ]);
-  return { sync, dispatch, deadJobs, failedDispatches };
+  return { ...counts, deadJobs, failedDispatches };
 }
