@@ -100,7 +100,9 @@ export function DeadJobsTable({ jobs }: { jobs: DeadSyncJob[] }) {
           <Button
             variant="outline"
             size="sm"
-            disabled={mutation.isPending}
+            disabled={
+              mutation.isPending && mutation.variables === row.original.id
+            }
             onClick={() => mutation.mutate(row.original.id)}
           >
             <RotateCcw className="mr-2 h-3.5 w-3.5" />
