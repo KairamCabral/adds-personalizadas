@@ -102,3 +102,26 @@ export async function getRaffleNumberedCount(
   if (error) throw error;
   return count ?? 0;
 }
+
+// ---- Pool numerado (alimenta a roleta de suspense do telão) ----
+
+export interface RafflePoolEntry {
+  id: string;
+  name: string | null;
+  raffle_number: number;
+}
+
+export async function getRafflePool(
+  editionId: string
+): Promise<RafflePoolEntry[]> {
+  const { data, error } = await supabase
+    .from("event_registrations")
+    .select("id, name, raffle_number")
+    .eq("edition_id", editionId)
+    .not("raffle_number", "is", null)
+    .order("raffle_number", { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as RafflePoolEntry[]).filter(
+    (r) => r.raffle_number != null
+  );
+}
