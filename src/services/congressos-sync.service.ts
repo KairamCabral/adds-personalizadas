@@ -367,3 +367,33 @@ export async function syncRegistrationNow(
   await processSingleJob(admin, job, nowIso, result);
   return result;
 }
+
+/**
+ * Reprocessamento manual (E7 / Story 7.1): reseta um job MORTO/FALHO para
+ * PENDING com budget de retry renovado e o processa na hora. Seam para o botão
+ * "Reprocessar" da tela de saúde da fila (gated MASTER/GESTOR na rota).
+ */
+export async function requeueSyncJob(
+  jobId: string
+): Promise<CongressSyncResult> {
+  const admin = createAdminClient();
+  const result = emptyResult();
+  const nowIso = new Date().toISOString();
+
+  const { data: reset } = await admin
+    .from("tiny_contact_sync_jobs")
+    .update({
+      status: "PENDING",
+      attempts: 0,
+      next_attempt_at: nowIso,
+      last_error: null,
+    })
+    .eq("id", jobId)
+    .in("status", ["DEAD", "FAILED"])
+    .select("id, registration_id, attempts")
+    .maybeSingle();
+
+  if (!reset) return result;
+  await processSingleJob(admin, reset, nowIso, result);
+  return result;
+}
