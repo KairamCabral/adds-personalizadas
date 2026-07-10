@@ -51,24 +51,44 @@ function ptDate(isoDate: string): string {
  * Frase de cashback para o e-mail de confirmação. Null quando não há crédito
  * ATIVO (aí o e-mail sai inalterado). Pura — usável no server (dispatch).
  */
-export function buildCashbackEmailLabel(
-  credit: {
-    type: CashbackType | null;
-    value: number | null;
-    min_order_value: number | null;
-    valid_until: string | null;
-    status?: string | null;
-  } | null
-): string | null {
-  if (!credit || credit.value == null) return null;
-  if (credit.status && credit.status !== "ATIVO") return null;
+interface BenefitParams {
+  type: CashbackType | null;
+  value: number | null;
+  min_order_value: number | null;
+  valid_until: string | null;
+}
 
-  let s = `${formatCashbackValue(credit.type, credit.value)} de cashback em compras`;
-  if (credit.min_order_value) {
-    s += ` (pedido mínimo de ${formatCurrency(credit.min_order_value)})`;
+/**
+ * Frase do benefício para o participante — termo por tipo: PERCENT → "desconto",
+ * FIXED → "vale-compras" (mais natural e incentiva comprar). Pura.
+ */
+export function formatBenefitLabel(
+  b: BenefitParams,
+  editionName?: string | null
+): string | null {
+  if (b.value == null) return null;
+  const scope = editionName ? `exclusivo do ${editionName}` : "exclusivo do evento";
+  let s =
+    b.type === "PERCENT"
+      ? `${b.value}% de desconto ${scope} nas compras`
+      : `${formatCurrency(b.value)} de vale-compras ${scope}`;
+  if (b.min_order_value) {
+    s += ` (pedido mínimo de ${formatCurrency(b.min_order_value)})`;
   }
-  if (credit.valid_until) {
-    s += `, válido até ${ptDate(credit.valid_until)}`;
+  if (b.valid_until) {
+    s += `, válido até ${ptDate(b.valid_until)}`;
   }
   return `${s}.`;
+}
+
+/** Frase para o e-mail — só quando o crédito está ATIVO. */
+export function buildCashbackEmailLabel(
+  credit:
+    | (BenefitParams & { status?: string | null })
+    | null,
+  editionName?: string | null
+): string | null {
+  if (!credit) return null;
+  if (credit.status && credit.status !== "ATIVO") return null;
+  return formatBenefitLabel(credit, editionName);
 }

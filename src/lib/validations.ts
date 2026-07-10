@@ -256,6 +256,12 @@ export const eventEditionSchema = z
     cashback_valid_days: z
       .preprocess(emptyToNull, z.coerce.number().int().positive().nullable())
       .optional(),
+    raffle_enabled: z.boolean().default(false),
+    raffle_eligibility: z
+      .enum(["ALL", "QUALIFIED", "GIFT_REDEEMED"])
+      .default("ALL"),
+    raffle_allow_repeat_winners: z.boolean().default(false),
+    raffle_prize: z.string().nullable().optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.cashback_enabled) return;

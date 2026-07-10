@@ -23,6 +23,8 @@ export interface GiftConfirmationMessage {
   shortCode: string;
   /** frase de cashback (Épico 6) — null quando a edição não dá cashback elegível */
   cashbackLabel: string | null;
+  /** número da sorte (Épico 8) — null quando a edição não tem sorteio */
+  raffleNumber: number | null;
 }
 
 export interface ChannelSendResult {

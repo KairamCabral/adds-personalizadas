@@ -22,6 +22,7 @@ import { getEditionRegistrations } from "@/services/congressos-gifts.service";
 import { GiftStats } from "./_components/gift-stats";
 import { RegistrationsTable } from "./_components/registrations-table";
 import { CreditsTable } from "./_components/credits-table";
+import { RafflePanel } from "./_components/raffle-panel";
 
 export default function EditionDetailPage() {
   const params = useParams<{ id: string }>();
@@ -119,11 +120,16 @@ export default function EditionDetailPage() {
             isLoading
           />
         </>
-      ) : edition.cashback_enabled ? (
+      ) : edition.cashback_enabled || edition.raffle_enabled ? (
         <Tabs defaultValue="inscritos" className="space-y-4">
           <TabsList>
             <TabsTrigger value="inscritos">Inscritos & brindes</TabsTrigger>
-            <TabsTrigger value="cashback">Cashback</TabsTrigger>
+            {edition.cashback_enabled && (
+              <TabsTrigger value="cashback">Cashback</TabsTrigger>
+            )}
+            {edition.raffle_enabled && (
+              <TabsTrigger value="sorteio">Sorteio</TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="inscritos" className="space-y-6">
             <GiftStats registrations={registrations} edition={edition} />
@@ -133,9 +139,16 @@ export default function EditionDetailPage() {
               isLoading={regLoading}
             />
           </TabsContent>
-          <TabsContent value="cashback">
-            <CreditsTable editionId={id} />
-          </TabsContent>
+          {edition.cashback_enabled && (
+            <TabsContent value="cashback">
+              <CreditsTable editionId={id} />
+            </TabsContent>
+          )}
+          {edition.raffle_enabled && (
+            <TabsContent value="sorteio">
+              <RafflePanel editionId={id} edition={edition} />
+            </TabsContent>
+          )}
         </Tabs>
       ) : (
         <>

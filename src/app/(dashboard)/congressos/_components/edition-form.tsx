@@ -53,6 +53,10 @@ const BLANK: EventEditionFormData = {
   cashback_min_order_qty: null,
   cashback_eligibility: null,
   cashback_valid_days: null,
+  raffle_enabled: false,
+  raffle_eligibility: "ALL",
+  raffle_allow_repeat_winners: false,
+  raffle_prize: "",
 };
 
 function slugify(s: string): string {
@@ -79,6 +83,7 @@ export function EditionForm({
 
   const cashbackEnabled = form.watch("cashback_enabled");
   const cashbackType = form.watch("cashback_type");
+  const raffleEnabled = form.watch("raffle_enabled");
 
   const createMutation = useMutation({
     mutationFn: (data: EventEditionInsert) => createEdition(data),
@@ -124,6 +129,10 @@ export function EditionForm({
         cashback_min_order_qty: initialData.cashback_min_order_qty ?? null,
         cashback_eligibility: initialData.cashback_eligibility ?? null,
         cashback_valid_days: initialData.cashback_valid_days ?? null,
+        raffle_enabled: initialData.raffle_enabled,
+        raffle_eligibility: initialData.raffle_eligibility,
+        raffle_allow_repeat_winners: initialData.raffle_allow_repeat_winners,
+        raffle_prize: initialData.raffle_prize ?? "",
       });
     } else if (open && !initialData) {
       form.reset(BLANK);
@@ -149,6 +158,10 @@ export function EditionForm({
       cashback_min_order_qty: on ? data.cashback_min_order_qty ?? null : null,
       cashback_eligibility: on ? data.cashback_eligibility ?? null : null,
       cashback_valid_days: on ? data.cashback_valid_days ?? null : null,
+      raffle_enabled: data.raffle_enabled,
+      raffle_eligibility: data.raffle_eligibility,
+      raffle_allow_repeat_winners: data.raffle_allow_repeat_winners,
+      raffle_prize: data.raffle_prize?.trim() || null,
     };
 
     if (isEdit) {
@@ -493,6 +506,82 @@ export function EditionForm({
                       )}
                     />
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sorteio */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div>
+                <Label htmlFor="raffle_enabled">Sorteio</Label>
+                <p className="text-xs text-muted-foreground">
+                  Cada inscrito ganha um número da sorte; você sorteia os
+                  ganhadores na tela da edição.
+                </p>
+              </div>
+              <Switch
+                id="raffle_enabled"
+                checked={raffleEnabled}
+                onCheckedChange={(v) => form.setValue("raffle_enabled", v)}
+              />
+            </div>
+
+            {raffleEnabled && (
+              <div className="space-y-4 rounded-md border border-dashed p-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="raffle_eligibility">Quem concorre</Label>
+                    <Select
+                      value={form.watch("raffle_eligibility")}
+                      onValueChange={(v) =>
+                        form.setValue(
+                          "raffle_eligibility",
+                          v as "ALL" | "QUALIFIED" | "GIFT_REDEEMED"
+                        )
+                      }
+                    >
+                      <SelectTrigger id="raffle_eligibility">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">Todos os inscritos</SelectItem>
+                        <SelectItem value="QUALIFIED">
+                          Só qualificados (dentista/distribuidora)
+                        </SelectItem>
+                        <SelectItem value="GIFT_REDEEMED">
+                          Só quem retirou o brinde
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="raffle_prize">Prêmio</Label>
+                    <Input
+                      id="raffle_prize"
+                      {...form.register("raffle_prize")}
+                      placeholder="Ex.: Kit premium de higiene bucal"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <Label htmlFor="raffle_allow_repeat_winners">
+                      Permitir ganhar mais de uma vez
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Se desligado, quem já ganhou sai dos próximos sorteios.
+                    </p>
+                  </div>
+                  <Switch
+                    id="raffle_allow_repeat_winners"
+                    checked={form.watch("raffle_allow_repeat_winners")}
+                    onCheckedChange={(v) =>
+                      form.setValue("raffle_allow_repeat_winners", v)
+                    }
+                  />
                 </div>
               </div>
             )}

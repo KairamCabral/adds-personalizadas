@@ -24,6 +24,9 @@ export interface RegisterResult {
   short_code: string;
   gift_name: string | null;
   participant_first_name: string | null;
+  raffle_number: number | null;
+  /** frase type-aware do benefício (desconto/vale-compras) — null se não elegível */
+  cashback_label: string | null;
   alreadyRegistered: boolean;
 }
 
