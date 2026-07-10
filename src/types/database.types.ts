@@ -3369,6 +3369,20 @@ export type Database = {
           product_id: string
         }[]
       }
+      congress_queue_counts: {
+        Args: never
+        Returns: {
+          dispatch_cancelado: number
+          dispatch_enviado: number
+          dispatch_falhou: number
+          dispatch_pendente: number
+          sync_dead: number
+          sync_done: number
+          sync_failed: number
+          sync_pending: number
+          sync_processing: number
+        }[]
+      }
       expire_rep_links: { Args: never; Returns: number }
       find_client_by_document: {
         Args: { doc_digits: string }
