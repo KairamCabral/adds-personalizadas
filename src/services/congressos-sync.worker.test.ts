@@ -41,6 +41,7 @@ function createFakeAdmin(script: Array<{ data?: unknown; error?: unknown }>) {
       or: () => b,
       order: () => b,
       eq: () => b,
+      is: () => b,
       limit: () => Promise.resolve(next()),
       maybeSingle: () => Promise.resolve(next()),
       single: () => Promise.resolve(next()),
@@ -79,6 +80,7 @@ describe("processCongressSyncJobs — associação do tiny_id ao cliente casado"
       { data: { slug: "congresso-teste" } }, // edition
       { data: { id: "cli-1", tiny_id: null, origin: null } }, // client
       { error: null }, // backfill update
+      { error: null }, // event_credits backfill (client_id)
       { error: null }, // DONE
       { error: null }, // log
     ]);
@@ -101,6 +103,7 @@ describe("processCongressSyncJobs — associação do tiny_id ao cliente casado"
       { data: reg({ id: "reg-2", matched_client_id: "cli-2" }) },
       { data: { slug: "congresso-teste" } },
       { data: { id: "cli-2", tiny_id: 753739799, origin: null } }, // já tem
+      { error: null }, // event_credits backfill (client_id)
       { error: null }, // DONE
       { error: null }, // log
     ]);
@@ -126,6 +129,7 @@ describe("processCongressSyncJobs — associação do tiny_id ao cliente casado"
       { error: { code: "23505", message: "duplicate clients_tiny_id_key" } }, // backfill CONFLITA
       { data: { id: "owner-1", origin: null } }, // dono do tiny_id
       { error: null }, // reaponta registration
+      { error: null }, // event_credits backfill (client_id)
       { error: null }, // DONE
       { error: null }, // log
     ]);

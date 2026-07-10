@@ -10,11 +10,18 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/use-permissions";
 import { getEditionById } from "@/services/congressos.service";
 import { getEditionRegistrations } from "@/services/congressos-gifts.service";
 import { GiftStats } from "./_components/gift-stats";
 import { RegistrationsTable } from "./_components/registrations-table";
+import { CreditsTable } from "./_components/credits-table";
 
 export default function EditionDetailPage() {
   const params = useParams<{ id: string }>();
@@ -99,22 +106,44 @@ export default function EditionDetailPage() {
           actionLabel="Voltar"
           onAction={() => router.replace("/congressos")}
         />
-      ) : (
+      ) : editionLoading || !edition ? (
         <>
-          {editionLoading || !edition ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 rounded-xl" />
-              ))}
-            </div>
-          ) : (
-            <GiftStats registrations={registrations} edition={edition} />
-          )}
-
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-xl" />
+            ))}
+          </div>
           <RegistrationsTable
             registrations={registrations}
-            editionName={edition?.name ?? "congresso"}
-            isLoading={regLoading || editionLoading}
+            editionName="congresso"
+            isLoading
+          />
+        </>
+      ) : edition.cashback_enabled ? (
+        <Tabs defaultValue="inscritos" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="inscritos">Inscritos & brindes</TabsTrigger>
+            <TabsTrigger value="cashback">Cashback</TabsTrigger>
+          </TabsList>
+          <TabsContent value="inscritos" className="space-y-6">
+            <GiftStats registrations={registrations} edition={edition} />
+            <RegistrationsTable
+              registrations={registrations}
+              editionName={edition.name}
+              isLoading={regLoading}
+            />
+          </TabsContent>
+          <TabsContent value="cashback">
+            <CreditsTable editionId={id} />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <>
+          <GiftStats registrations={registrations} edition={edition} />
+          <RegistrationsTable
+            registrations={registrations}
+            editionName={edition.name}
+            isLoading={regLoading}
           />
         </>
       )}

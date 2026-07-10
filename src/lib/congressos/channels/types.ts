@@ -21,6 +21,8 @@ export interface GiftConfirmationMessage {
   giftToken: string;
   /** código curto de 6 dígitos exibido no balcão */
   shortCode: string;
+  /** frase de cashback (Épico 6) — null quando a edição não dá cashback elegível */
+  cashbackLabel: string | null;
 }
 
 export interface ChannelSendResult {

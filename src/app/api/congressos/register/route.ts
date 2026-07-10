@@ -11,6 +11,7 @@ import {
   createRedemption,
   ensureRedemption,
 } from "@/lib/congressos/redemption";
+import { ensureCredit } from "@/lib/congressos/credit";
 import type { Client } from "@/types/database.types";
 
 export async function POST(request: NextRequest) {
@@ -55,7 +56,9 @@ export async function POST(request: NextRequest) {
     // Edição precisa existir e estar ativa
     const { data: edition } = await supabase
       .from("event_editions")
-      .select("id, is_active, gift_name, turnstile_enabled")
+      .select(
+        "id, is_active, gift_name, turnstile_enabled, cashback_enabled, cashback_type, cashback_value, cashback_min_order_value, cashback_min_order_qty, cashback_eligibility, cashback_valid_days"
+      )
       .eq("slug", input.slug)
       .maybeSingle();
     if (!edition || !edition.is_active) {
@@ -177,7 +180,7 @@ export async function POST(request: NextRequest) {
       if (regErr?.code === "23505") {
         const { data: raced } = await supabase
           .from("event_registrations")
-          .select("id")
+          .select("id, is_existing_client, matched_client_id")
           .eq("edition_id", edition.id)
           .eq("document", digits)
           .maybeSingle();
@@ -186,6 +189,11 @@ export async function POST(request: NextRequest) {
           // a redemption (busca OU cria) — a janela entre criar a registration e
           // criar a redemption nunca pode virar 500. Sempre 200 alreadyRegistered.
           const red = await ensureRedemption(supabase, edition.id, raced.id);
+          // Cashback (idempotente): garante o crédito também no caminho de corrida.
+          await ensureCredit(supabase, edition, raced.id, {
+            isExistingClient: raced.is_existing_client,
+            matchedClientId: raced.matched_client_id,
+          });
           if (red) {
             return NextResponse.json({
               token: red.token,
@@ -211,6 +219,14 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Cashback (E6): emite o crédito (snapshot das regras da edição) se elegível.
+    // Síncrono e antes da resposta para o e-mail de confirmação poder anunciá-lo.
+    // Idempotente (UNIQUE registration_id) e best-effort (não bloqueia o brinde).
+    await ensureCredit(supabase, edition, reg.id, {
+      isExistingClient,
+      matchedClientId,
+    });
 
     // Enfileira (write-then-queue). Falhas aqui não afetam o participante;
     // os workers (Épicos 3/4) drenam depois.

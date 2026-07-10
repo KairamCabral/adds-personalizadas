@@ -20,7 +20,6 @@ import {
   Pencil,
   Trash2,
   QrCode,
-  AlertTriangle,
   ClipboardList,
   ScanLine,
 } from "lucide-react";
@@ -114,18 +113,7 @@ export function EditionsTable({
         if (!e.cashback_enabled) {
           return <span className="text-muted-foreground">—</span>;
         }
-        // Cashback (Épico 6) ainda não gera créditos — a edição pode ter regras
-        // configuradas, mas elas não estão ativas. O resumo fica no tooltip.
-        return (
-          <Badge
-            variant="outline"
-            title={cashbackSummary(e)}
-            className="gap-1 whitespace-nowrap border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-          >
-            <AlertTriangle className="h-3 w-3" />
-            Cashback configurado — não ativo
-          </Badge>
-        );
+        return <Badge variant="secondary">{cashbackSummary(e)}</Badge>;
       },
     },
     {

@@ -47,6 +47,7 @@ export const emailChannel: MessagingChannel = {
           editionName: message.editionName,
           giftName: message.giftName,
           shortCode: message.shortCode,
+          cashbackLabel: message.cashbackLabel,
           logoUrl: `${APP_URL}/Logo-cor-PNG.png`,
           qrUrl: `${APP_URL}/api/congressos/qr/${message.giftToken}`,
         }),
