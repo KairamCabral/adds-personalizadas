@@ -1,9 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Sparkles, Loader2, Trophy, Gift, Users } from "lucide-react";
+import {
+  Sparkles,
+  Loader2,
+  Trophy,
+  Gift,
+  Users,
+  MonitorPlay,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +25,10 @@ import {
   type RaffleDrawResult,
 } from "@/services/congressos-raffle.service";
 import { classifyDrawOutcome } from "@/lib/congressos/draw-outcome";
+import {
+  createRaffleChannel,
+  type RaffleChannel,
+} from "@/lib/congressos/raffle-channel";
 import type { EventEdition } from "@/types/database.types";
 
 const ELIGIBILITY_LABEL: Record<string, string> = {
@@ -53,6 +64,17 @@ export function RafflePanel({
   const [todayOnly, setTodayOnly] = useState(false);
   const [winner, setWinner] = useState<RaffleDrawResult | null>(null);
 
+  // Canal para o telão receber o MESMO resultado (não re-sortear no telão).
+  const channelRef = useRef<RaffleChannel | null>(null);
+  useEffect(() => {
+    const ch = createRaffleChannel(editionId);
+    channelRef.current = ch;
+    return () => ch.close();
+  }, [editionId]);
+
+  const openTelao = () =>
+    window.open(`/telao/${editionId}`, "_blank", "noopener");
+
   const { data: draws = [], isLoading: drawsLoading } = useQuery({
     queryKey: ["edition_draws", editionId],
     queryFn: () => getEditionDraws(editionId),
@@ -74,6 +96,7 @@ export function RafflePanel({
       const fb = classifyDrawOutcome(res?.outcome);
       if (res?.success) {
         setWinner(res);
+        channelRef.current?.emit(res); // dispara a animação no telão
         toast.success(fb.title);
         queryClient.invalidateQueries({
           queryKey: ["edition_draws", editionId],
@@ -121,24 +144,35 @@ export function RafflePanel({
                 Sortear só entre os inscritos de hoje
               </Label>
             </div>
-            <Button
-              size="lg"
-              className="h-12 bg-adds-orange text-base hover:bg-adds-orange/90"
-              onClick={() => mutation.mutate()}
-              disabled={mutation.isPending}
-            >
-              {mutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Sorteando...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-5 w-5" />
-                  Sortear ganhador
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-12"
+                onClick={openTelao}
+              >
+                <MonitorPlay className="mr-2 h-5 w-5" />
+                Abrir telão
+              </Button>
+              <Button
+                size="lg"
+                className="h-12 bg-adds-orange text-base hover:bg-adds-orange/90"
+                onClick={() => mutation.mutate()}
+                disabled={mutation.isPending}
+              >
+                {mutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Sorteando...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-5 w-5" />
+                    Sortear ganhador
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
