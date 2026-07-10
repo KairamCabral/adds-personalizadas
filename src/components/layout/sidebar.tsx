@@ -26,6 +26,7 @@ import {
   Activity,
   Warehouse,
   Ticket,
+  PackageCheck,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Logo } from "@/components/brand/logo";
@@ -70,6 +71,12 @@ const NAV_SECTIONS = [
         href: "/congressos",
         icon: Ticket,
         permission: "congressos.manage" as const,
+      },
+      {
+        label: "Retirada de brindes",
+        href: "/congressos/retirada",
+        icon: PackageCheck,
+        permission: "congressos.operate" as const,
       },
       {
         label: "Representantes",
@@ -292,7 +299,13 @@ export function Sidebar() {
                       pathname === item.href ||
                       (item.href !== "/pipeline" &&
                         item.href !== "/representantes" &&
-                        pathname.startsWith(item.href)) ||
+                        pathname.startsWith(item.href) &&
+                        // "Retirada de brindes" (/congressos/retirada) é item
+                        // próprio — não acender "Congressos" junto nessa rota.
+                        !(
+                          item.href === "/congressos" &&
+                          pathname.startsWith("/congressos/retirada")
+                        )) ||
                       (item.href === "/representantes" &&
                         (pathname === "/representantes" ||
                           (pathname.startsWith("/representantes/") &&

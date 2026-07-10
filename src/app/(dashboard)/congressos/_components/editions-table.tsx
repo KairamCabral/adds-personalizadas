@@ -14,7 +14,16 @@ import { DataTable } from "@/components/shared/data-table";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { EventEdition } from "@/types/database.types";
-import { MoreHorizontal, Pencil, Trash2, QrCode, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import {
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  QrCode,
+  AlertTriangle,
+  ClipboardList,
+  ScanLine,
+} from "lucide-react";
 
 interface EditionsTableProps {
   data: EventEdition[];
@@ -143,6 +152,18 @@ export function EditionsTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/congressos/${e.id}`}>
+                  <ClipboardList className="mr-2 h-4 w-4" />
+                  Inscritos & brindes
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`/congressos/retirada?edition=${e.id}`}>
+                  <ScanLine className="mr-2 h-4 w-4" />
+                  Retirada (estande)
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(e)}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
