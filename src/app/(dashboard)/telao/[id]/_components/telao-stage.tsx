@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Play, Trophy, Sparkles, Volume2 } from "lucide-react";
-import { Logo } from "@/components/brand/logo";
 import { useFullscreen } from "@/hooks/use-fullscreen";
 import { createTelaoAudio, type TelaoAudio } from "@/lib/congressos/telao-audio";
 import {
@@ -21,6 +20,8 @@ import { LuckyNumberRoll } from "./lucky-number-roll";
 import { NameShuffle } from "./name-shuffle";
 
 const ROLL_MS = 3800;
+// Logo ADDS branca (SVG vetorial → nítida em qualquer tamanho), sem fundo.
+const WHITE_LOGO = "/Logo%20ADDS%20Branca.svg";
 
 type Phase = "armed" | "idle" | "rolling" | "revealed";
 
@@ -100,9 +101,10 @@ export function TelaoStage({
 
       {/* Marca no topo (fora do splash) */}
       {phase !== "armed" && (
-        <div className="absolute left-[3vw] top-[3vh] flex items-center gap-3 rounded-2xl bg-white/95 px-4 py-2 shadow-lg">
-          <Logo size="md" priority />
-          <span className="text-lg font-bold tracking-tight text-[#0b4269]">
+        <div className="absolute left-[3vw] top-[3vh] flex items-center gap-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={WHITE_LOGO} alt="ADDS" className="h-9 w-auto sm:h-11" />
+          <span className="text-lg font-bold tracking-tight text-white/90">
             {edition.name}
           </span>
         </div>
@@ -118,9 +120,13 @@ export function TelaoStage({
             exit={{ opacity: 0 }}
             className="flex flex-col items-center gap-8 px-6 text-center"
           >
-            <div className="rounded-3xl bg-white/95 p-8 shadow-2xl">
-              <Logo size="lg" priority className="!h-24 !w-24" />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={WHITE_LOGO}
+              alt="ADDS"
+              className="w-auto drop-shadow-[0_0_40px_rgba(33,173,214,0.35)]"
+              style={{ height: "clamp(4.5rem, 13vw, 9rem)" }}
+            />
             <div>
               <h1
                 className="font-black tracking-tight"
