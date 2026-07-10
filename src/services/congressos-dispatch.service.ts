@@ -260,8 +260,11 @@ export async function sendCongressDispatchNow(
 }
 
 /**
- * Reenvio manual (Story 4.3): reseta um dispatch terminal/enviado para PENDENTE com
- * budget de retry renovado e o processa. Seam para a UI do gestor (Épico 5).
+ * Reenvio manual (Story 4.3 / E7): reseta um dispatch FALHOU para PENDENTE com
+ * budget de retry renovado e o processa. Seam do botão "Reenviar" da tela de
+ * saúde. Restrito a FALHOU de propósito — reenviar um ENVIADO duplicaria o e-mail
+ * ao participante. Quando nada é resetado (não estava FALHOU), retorna resultado
+ * vazio (`processed: 0`) e a rota responde 409.
  */
 export async function resendDispatch(
   dispatchId: string
@@ -279,7 +282,7 @@ export async function resendDispatch(
       attempts: 0,
     })
     .eq("id", dispatchId)
-    .in("status", ["FALHOU", "ENVIADO", "CANCELADO"])
+    .eq("status", "FALHOU")
     .select(DISPATCH_COLS)
     .maybeSingle();
 

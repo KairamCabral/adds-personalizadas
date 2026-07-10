@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission } from "@/lib/permissions";
 import { requeueSyncJob } from "@/services/congressos-sync.service";
@@ -17,6 +18,9 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    if (!z.string().uuid().safeParse(id).success) {
+      return NextResponse.json({ error: "ID inválido." }, { status: 400 });
+    }
     const supabase = await createClient();
     const {
       data: { user },

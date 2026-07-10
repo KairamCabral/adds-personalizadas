@@ -120,7 +120,9 @@ export function FailedDispatchesTable({
           <Button
             variant="outline"
             size="sm"
-            disabled={mutation.isPending}
+            disabled={
+              mutation.isPending && mutation.variables === row.original.id
+            }
             onClick={() => mutation.mutate(row.original.id)}
           >
             <Send className="mr-2 h-3.5 w-3.5" />

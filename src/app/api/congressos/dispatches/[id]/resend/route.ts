@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission } from "@/lib/permissions";
 import { resendDispatch } from "@/services/congressos-dispatch.service";
@@ -16,6 +17,9 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    if (!z.string().uuid().safeParse(id).success) {
+      return NextResponse.json({ error: "ID inválido." }, { status: 400 });
+    }
     const supabase = await createClient();
     const {
       data: { user },
@@ -40,6 +44,17 @@ export async function POST(
     }
 
     const result = await resendDispatch(id);
+    // Nada resetado → o dispatch não estava FALHOU (evita reenvio/duplicação de
+    // um e-mail já ENVIADO ou de um CANCELADO).
+    if (result.processed === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Só é possível reenviar um e-mail que falhou.",
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ success: true, ...result });
   } catch (err) {
     const e = err instanceof Error ? err : new Error(String(err));
