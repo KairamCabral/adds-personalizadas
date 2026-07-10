@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   DropdownMenu,
@@ -57,6 +58,7 @@ export function EditionsTable({
   onShowLink,
   onDelete,
 }: EditionsTableProps) {
+  const router = useRouter();
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const columns: ColumnDef<EventEdition>[] = [
@@ -133,7 +135,8 @@ export function EditionsTable({
         const e = row.original;
         return (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+            {/* Impede que o menu e o botão disparem o clique da linha. */}
+            <DropdownMenuTrigger asChild onClick={(ev) => ev.stopPropagation()}>
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <MoreHorizontal className="h-4 w-4" />
                 <span className="sr-only">Abrir menu</span>
@@ -191,6 +194,7 @@ export function EditionsTable({
         data={data}
         emptyMessage="Nenhuma edição cadastrada"
         pageSize={20}
+        onRowClick={(e) => router.push(`/congressos/${e.id}`)}
       />
       <ConfirmDialog
         open={!!deleteTargetId}
