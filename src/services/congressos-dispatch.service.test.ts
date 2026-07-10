@@ -90,6 +90,7 @@ describe("processCongressDispatches", () => {
       { data: reg() }, // registration
       { data: edition }, // edition
       { data: redemption }, // redemption
+      { data: null }, // credit (sem cashback)
       { error: null }, // ENVIADO
     ]);
     adminHolder.current = fake.admin;
@@ -152,6 +153,7 @@ describe("processCongressDispatches", () => {
       { data: reg() }, // registration
       { data: edition }, // edition
       { data: redemption }, // redemption
+      { data: null }, // credit (sem cashback)
       { error: null }, // markFailure
     ]);
     adminHolder.current = fake.admin;
@@ -173,6 +175,7 @@ describe("processCongressDispatches", () => {
       { data: reg() }, // registration
       { data: edition }, // edition
       { data: redemption }, // redemption
+      { data: null }, // credit (sem cashback)
       { error: null }, // markFailure
     ]);
     adminHolder.current = fake.admin;

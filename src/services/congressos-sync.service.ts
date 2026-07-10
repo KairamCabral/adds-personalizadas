@@ -266,9 +266,22 @@ async function processSingleJob(
             .from("event_registrations")
             .update({ matched_client_id: clientId })
             .eq("id", reg.id);
+          effClientId = clientId;
         }
         result.promoted++;
       }
+    }
+
+    // Cashback (E6): liga o crédito ao cliente casado/promovido, se ainda estiver
+    // solto. O crédito pode nascer no cadastro sem client_id (participante que só
+    // vira `client` aqui na promoção); o guard `is null` evita reescrever um já
+    // ligado. No-op quando não há cashback/crédito.
+    if (effClientId) {
+      await admin
+        .from("event_credits")
+        .update({ client_id: effClientId })
+        .eq("registration_id", reg.id)
+        .is("client_id", null);
     }
 
     await admin

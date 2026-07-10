@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { CashbackCard } from "./cashback-card";
 import {
   maskPhone,
   maskCPF,
@@ -247,7 +248,7 @@ export function ContactDetailView({ client, orders }: ContactDetailViewProps) {
           )}
         </div>
 
-        <div className="w-full lg:w-96">
+        <div className="w-full space-y-6 lg:w-96">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -297,6 +298,7 @@ export function ContactDetailView({ client, orders }: ContactDetailViewProps) {
               )}
             </CardContent>
           </Card>
+          <CashbackCard clientId={client.id} />
         </div>
       </div>
 

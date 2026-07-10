@@ -13,6 +13,7 @@
  */
 import { resolveChannel } from "@/lib/congressos/channels";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { buildCashbackEmailLabel } from "@/lib/congressos/cashback-format";
 import type { EventDispatchChannel } from "@/lib/congressos/channels";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -157,6 +158,13 @@ async function processOne(
     return;
   }
 
+  // Cashback (E6): se houver crédito ATIVO, anuncia no e-mail (senão, null → some).
+  const { data: credit } = await admin
+    .from("event_credits")
+    .select("type, value, min_order_value, valid_until, status")
+    .eq("registration_id", reg.id)
+    .maybeSingle();
+
   // 4) Envio.
   const sendResult = await channel.send({
     to: d.recipient,
@@ -165,6 +173,7 @@ async function processOne(
     giftName: ed?.gift_name ?? null,
     giftToken: red.token,
     shortCode: red.short_code,
+    cashbackLabel: buildCashbackEmailLabel(credit),
   });
 
   if (sendResult.success) {

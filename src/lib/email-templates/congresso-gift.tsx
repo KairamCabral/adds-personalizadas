@@ -17,6 +17,8 @@ export interface CongressoGiftEmailProps {
   editionName: string | null;
   giftName: string | null;
   shortCode: string;
+  /** frase de cashback (Épico 6). Null = não renderiza a seção. */
+  cashbackLabel?: string | null;
   /** URL HTTPS da logo (data-URI não renderiza no Gmail). Null = oculta. */
   logoUrl: string | null;
   /** URL HTTPS do QR do brinde (data-URI não renderiza no Gmail). Null = oculta. */
@@ -31,6 +33,7 @@ export function CongressoGiftEmail({
   editionName,
   giftName,
   shortCode,
+  cashbackLabel,
   logoUrl,
   qrUrl,
 }: CongressoGiftEmailProps) {
@@ -70,6 +73,12 @@ export function CongressoGiftEmail({
             <Text style={styles.codeLabel}>Código do brinde</Text>
             <Text style={styles.code}>{shortCode}</Text>
           </Section>
+
+          {cashbackLabel ? (
+            <Section style={styles.cashbackWrap}>
+              <Text style={styles.cashbackText}>💰 {cashbackLabel}</Text>
+            </Section>
+          ) : null}
 
           {qrUrl ? (
             <Section style={styles.qrWrap}>
@@ -140,6 +149,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     letterSpacing: "0.3em",
     margin: 0,
+  },
+  cashbackWrap: {
+    backgroundColor: "#f0fdf4",
+    border: "1px solid #86efac",
+    borderRadius: 10,
+    margin: "0 0 20px",
+    padding: "14px 16px",
+  },
+  cashbackText: {
+    color: "#166534",
+    fontSize: 15,
+    fontWeight: 600,
+    lineHeight: "22px",
+    margin: 0,
+    textAlign: "center" as const,
   },
   qrWrap: { margin: "0 0 8px", textAlign: "center" as const },
   qr: {
