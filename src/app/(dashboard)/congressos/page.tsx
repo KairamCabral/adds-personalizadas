@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Activity } from "lucide-react";
+import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -77,12 +76,6 @@ export default function CongressosPage() {
         title="Congressos"
         description="Gerencie as edições de congresso, o brinde e o cashback de cada evento."
       >
-        <Button variant="outline" asChild>
-          <Link href="/congressos/saude">
-            <Activity className="mr-2 h-4 w-4" />
-            Saúde da fila
-          </Link>
-        </Button>
         <Button onClick={handleNew}>
           <Plus className="mr-2 h-4 w-4" />
           Nova edição

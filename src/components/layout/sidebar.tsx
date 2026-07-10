@@ -79,6 +79,12 @@ const NAV_SECTIONS = [
         permission: "congressos.operate" as const,
       },
       {
+        label: "Saúde da fila",
+        href: "/congressos/saude",
+        icon: Activity,
+        permission: "congressos.manage" as const,
+      },
+      {
         label: "Representantes",
         href: "/representantes",
         icon: UsersRound,
@@ -300,11 +306,12 @@ export function Sidebar() {
                       (item.href !== "/pipeline" &&
                         item.href !== "/representantes" &&
                         pathname.startsWith(item.href) &&
-                        // "Retirada de brindes" (/congressos/retirada) é item
-                        // próprio — não acender "Congressos" junto nessa rota.
+                        // "Retirada de brindes" e "Saúde da fila" são itens
+                        // próprios — não acender "Congressos" junto nessas rotas.
                         !(
                           item.href === "/congressos" &&
-                          pathname.startsWith("/congressos/retirada")
+                          (pathname.startsWith("/congressos/retirada") ||
+                            pathname.startsWith("/congressos/saude"))
                         )) ||
                       (item.href === "/representantes" &&
                         (pathname === "/representantes" ||

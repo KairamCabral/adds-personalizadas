@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ScanLine, TicketX } from "lucide-react";
+import { ScanLine, TicketX } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -66,13 +66,6 @@ export default function EditionDetailPage() {
   return (
     <div className="min-w-0 space-y-6 p-6">
       <div>
-        <Link
-          href="/congressos"
-          className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Congressos
-        </Link>
         <PageHeader
           title={edition?.name ?? "Edição"}
           description={

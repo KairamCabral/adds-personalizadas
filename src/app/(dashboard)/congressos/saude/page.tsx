@@ -2,9 +2,8 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,13 +48,6 @@ export default function QueueHealthPage() {
   return (
     <div className="min-w-0 space-y-6 p-6">
       <div>
-        <Link
-          href="/congressos"
-          className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Congressos
-        </Link>
         <PageHeader
           title="Saúde da fila"
           description="Jobs de sincronização com o Tiny e e-mails de confirmação — contagens, problemas e reprocessamento."
