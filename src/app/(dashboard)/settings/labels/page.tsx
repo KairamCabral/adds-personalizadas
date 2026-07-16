@@ -18,8 +18,9 @@ export default function SettingsLabelsPage() {
         <CardHeader>
           <CardTitle>Tipos de etiqueta</CardTitle>
           <CardDescription>
-            As 7 etiquetas abaixo podem ser aplicadas aos pedidos no pipeline. A
-            personalização será disponibilizada em versões futuras.
+            As {LABELS.length} etiquetas abaixo podem ser aplicadas aos pedidos
+            no pipeline. A personalização será disponibilizada em versões
+            futuras.
           </CardDescription>
         </CardHeader>
         <CardContent>

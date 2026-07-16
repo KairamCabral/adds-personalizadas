@@ -3601,6 +3601,7 @@ export type Database = {
         | "LINK_ENVIADO"
         | "ENTREGUE"
         | "ARTE_APROVADA"
+        | "ATENCAO"
       nps_category: "DETRATOR" | "PASSIVO" | "PROMOTOR"
       nps_dispatch_channel: "EMAIL" | "WHATSAPP"
       nps_dispatch_status:
@@ -3831,6 +3832,7 @@ export const Constants = {
         "LINK_ENVIADO",
         "ENTREGUE",
         "ARTE_APROVADA",
+        "ATENCAO",
       ],
       nps_category: ["DETRATOR", "PASSIVO", "PROMOTOR"],
       nps_dispatch_channel: ["EMAIL", "WHATSAPP"],
