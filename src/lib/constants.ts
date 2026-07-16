@@ -206,7 +206,8 @@ export type LabelType =
   | "ORCAMENTO_PUBLICO"
   | "LINK_ENVIADO"
   | "ARTE_APROVADA"
-  | "ENTREGUE";
+  | "ENTREGUE"
+  | "ATENCAO";
 
 export interface LabelConfig {
   key: LabelType;
@@ -285,6 +286,13 @@ export const LABELS: LabelConfig[] = [
     label: "Entregue",
     color: "#0f766e",
     bgColor: "bg-teal-600",
+    textColor: "text-white",
+  },
+  {
+    key: "ATENCAO",
+    label: "Atenção!",
+    color: "#dc2626",
+    bgColor: "bg-red-600",
     textColor: "text-white",
   },
 ];
