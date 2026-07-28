@@ -132,12 +132,19 @@ export async function GET(request: NextRequest) {
   }
 
   // ═══ Lead: orçamentos do formulário público ═══
+  // A janela de 7 dias é dupla proteção. (1) A Meta recusa `event_time` mais
+  // antigo que 7 dias, então mandar histórico só geraria erro. (2) Impede que
+  // uma linha antiga com `meta_capi_sent_at` nulo — restore de backup, import,
+  // migration reaplicada — vire um Lead falsamente recente na otimização.
+  const leadCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
   const { data: quotes, error: quotesError } = await supabase
     .from("public_quotes")
     .select(
-      "id, client_name, client_email, client_phone, client_whatsapp, estimated_value, utm_source, utm_medium, utm_campaign",
+      "id, created_at, client_name, client_email, client_phone, client_whatsapp, estimated_value, utm_source, utm_medium, utm_campaign",
     )
     .is("meta_capi_sent_at", null)
+    .gte("created_at", leadCutoff)
     .order("created_at", { ascending: true })
     .limit(BATCH_SIZE);
 
@@ -165,6 +172,9 @@ export async function GET(request: NextRequest) {
       accessToken,
       enabled,
       testEventCode,
+      // Hora REAL do orçamento, não a do cron. O cron roda uma vez por dia, e
+      // carimbar tudo com "agora" faria a Meta atribuir o lead ao dia errado.
+      eventTimeUnix: Math.floor(new Date(quote.created_at).getTime() / 1000),
     });
 
     if (result.ok && result.mode === "live") {
