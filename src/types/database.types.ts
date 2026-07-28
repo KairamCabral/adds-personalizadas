@@ -2180,6 +2180,7 @@ export type Database = {
           internal_notes: string | null
           is_existing_client: boolean | null
           items: Json
+          meta_capi_sent_at: string | null
           order_id: string | null
           personalization: Json | null
           rep_id: string | null
@@ -2213,6 +2214,7 @@ export type Database = {
           internal_notes?: string | null
           is_existing_client?: boolean | null
           items: Json
+          meta_capi_sent_at?: string | null
           order_id?: string | null
           personalization?: Json | null
           rep_id?: string | null
@@ -2246,6 +2248,7 @@ export type Database = {
           internal_notes?: string | null
           is_existing_client?: boolean | null
           items?: Json
+          meta_capi_sent_at?: string | null
           order_id?: string | null
           personalization?: Json | null
           rep_id?: string | null

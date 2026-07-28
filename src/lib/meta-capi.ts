@@ -8,6 +8,7 @@ export const META_GRAPH_API_VERSION = "v21.0";
 type OrderRow = Database["public"]["Tables"]["orders"]["Row"];
 type OrderItemRow = Database["public"]["Tables"]["order_items"]["Row"];
 type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
+type PublicQuoteRow = Database["public"]["Tables"]["public_quotes"]["Row"];
 
 /**
  * Normaliza e aplica SHA-256 — formato exigido pela Meta para os campos de
@@ -56,13 +57,34 @@ export interface PurchaseInput {
   items: OrderItemForValue[];
 }
 
-export interface MetaCapiEvent {
-  event_name: "Purchase";
+interface MetaCapiEventBase {
   event_id: string;
-  action_source: "system_generated";
   user_data: Record<string, string[]>;
+}
+
+export interface PurchaseEvent extends MetaCapiEventBase {
+  event_name: "Purchase";
+  /** A NF é emitida pelo negócio, não pelo cliente — daí `system_generated`. */
+  action_source: "system_generated";
   custom_data: { currency: "BRL"; value: number; order_id: string };
 }
+
+export interface LeadEvent extends MetaCapiEventBase {
+  event_name: "Lead";
+  /** O orçamento FOI preenchido pelo cliente num formulário web. */
+  action_source: "website";
+  custom_data: {
+    currency: "BRL";
+    value?: number;
+    content_name: string;
+    quote_id: string;
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+  };
+}
+
+export type MetaCapiEvent = PurchaseEvent | LeadEvent;
 
 /**
  * Monta o evento Purchase da CAPI a partir de um pedido faturado. Função pura
@@ -71,7 +93,7 @@ export interface MetaCapiEvent {
  * `event_id = order_<order_number>` dá idempotência/dedupe no lado do Meta:
  * reenviar o mesmo pedido não conta a conversão duas vezes.
  */
-export function buildPurchaseEvent(input: PurchaseInput): MetaCapiEvent {
+export function buildPurchaseEvent(input: PurchaseInput): PurchaseEvent {
   const { order, client, items } = input;
 
   const user_data: Record<string, string[]> = {};
@@ -102,6 +124,80 @@ export function buildPurchaseEvent(input: PurchaseInput): MetaCapiEvent {
   };
 }
 
+export interface LeadInput {
+  quote: Pick<
+    PublicQuoteRow,
+    | "id"
+    | "client_name"
+    | "client_email"
+    | "client_phone"
+    | "client_whatsapp"
+    | "estimated_value"
+    | "utm_source"
+    | "utm_medium"
+    | "utm_campaign"
+  >;
+}
+
+/**
+ * Monta o evento Lead a partir de um orçamento público.
+ *
+ * Por que ESTE é o Lead que vale: o formulário traz nome, e-mail e telefone
+ * reais, então a correspondência no Meta é alta — muito acima do clique no
+ * botão de WhatsApp do quiz, que não carrega dado nenhum do usuário.
+ *
+ * O `value` é o `estimated_value` recalculado no servidor pelo pricing (ver
+ * api/quote/submit), então varia de verdade a cada orçamento. Isso importa: o
+ * Gerenciador de Eventos acusa "todos os eventos Lead enviando os mesmos dados
+ * de preço" justamente porque valor fixo não serve para calcular ROAS.
+ *
+ * `event_id = quote_<uuid>` dá idempotência: reprocessar não duplica conversão.
+ */
+export function buildLeadEvent(input: LeadInput): LeadEvent {
+  const { quote } = input;
+
+  const user_data: Record<string, string[]> = {};
+  const email = hashUserField(quote.client_email, "email");
+  // WhatsApp primeiro: é o canal que o dentista realmente usa, e costuma vir
+  // preenchido com mais frequência que o telefone fixo.
+  const phone = hashUserField(quote.client_whatsapp ?? quote.client_phone, "phone");
+  if (email) user_data.em = [email];
+  if (phone) user_data.ph = [phone];
+
+  const fullName = (quote.client_name ?? "").trim();
+  if (fullName) {
+    const [first, ...rest] = fullName.split(/\s+/);
+    const fn = hashUserField(first, "name");
+    const ln = hashUserField(rest.join(" "), "name");
+    if (fn) user_data.fn = [fn];
+    if (ln) user_data.ln = [ln];
+  }
+
+  const custom_data: LeadEvent["custom_data"] = {
+    currency: "BRL",
+    content_name: "orcamento_publico",
+    quote_id: quote.id,
+  };
+
+  // Só manda value quando há número utilizável. Zero ou null seria pior que
+  // omitir: o Meta passaria a calcular ROAS em cima de um valor falso.
+  if (quote.estimated_value != null && quote.estimated_value > 0) {
+    custom_data.value = Math.round(quote.estimated_value * 100) / 100;
+  }
+
+  if (quote.utm_source) custom_data.utm_source = quote.utm_source;
+  if (quote.utm_medium) custom_data.utm_medium = quote.utm_medium;
+  if (quote.utm_campaign) custom_data.utm_campaign = quote.utm_campaign;
+
+  return {
+    event_name: "Lead",
+    event_id: `quote_${quote.id}`,
+    action_source: "website",
+    user_data,
+    custom_data,
+  };
+}
+
 /** true quando o evento tem ao menos uma chave de match (email ou telefone). */
 export function hasMatchKey(event: MetaCapiEvent): boolean {
   return Boolean(event.user_data.em || event.user_data.ph);
@@ -128,11 +224,11 @@ export interface SendResult {
 }
 
 /**
- * Envia o Purchase à Meta CAPI. Se `enabled` for false, roda em DRY-RUN: não
- * faz nenhuma chamada externa, apenas devolve o payload que seria enviado —
- * a rede de segurança para não poluir o Meta antes de validarmos.
+ * Envia um evento (Purchase ou Lead) à Meta CAPI. Se `enabled` for false, roda
+ * em DRY-RUN: não faz nenhuma chamada externa, apenas devolve o payload que
+ * seria enviado — a rede de segurança para não poluir o Meta antes de validarmos.
  */
-export async function sendPurchaseToMeta(
+export async function sendEventToMeta(
   event: MetaCapiEvent,
   opts: SendOptions,
 ): Promise<SendResult> {
@@ -146,10 +242,15 @@ export async function sendPurchaseToMeta(
 
   const doFetch = opts.fetchImpl ?? fetch;
   const res = await doFetch(
-    `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${opts.pixelId}/events?access_token=${encodeURIComponent(opts.accessToken)}`,
+    `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${opts.pixelId}/events`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Token no header, nunca na query string: URL entra em log de servidor,
+        // proxy e APM, e este token dá acesso de escrita ao dataset do pixel.
+        Authorization: `Bearer ${opts.accessToken}`,
+      },
       body: JSON.stringify(payload),
     },
   );
