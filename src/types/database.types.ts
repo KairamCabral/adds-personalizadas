@@ -1616,6 +1616,77 @@ export type Database = {
         }
         Relationships: []
       }
+      leads: {
+        Row: {
+          client_id: string | null
+          contacted_at: string | null
+          contacted_by: string | null
+          created_at: string
+          email: string | null
+          id: string
+          last_submitted_at: string
+          lead_ref: string | null
+          name: string | null
+          notes: string | null
+          phone: string
+          source: string
+          status: Database["public"]["Enums"]["lead_status"]
+          submissions: number
+          updated_at: string
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          contacted_at?: string | null
+          contacted_by?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          last_submitted_at?: string
+          lead_ref?: string | null
+          name?: string | null
+          notes?: string | null
+          phone: string
+          source?: string
+          status?: Database["public"]["Enums"]["lead_status"]
+          submissions?: number
+          updated_at?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          contacted_at?: string | null
+          contacted_by?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          last_submitted_at?: string
+          lead_ref?: string | null
+          name?: string | null
+          notes?: string | null
+          phone?: string
+          source?: string
+          status?: Database["public"]["Enums"]["lead_status"]
+          submissions?: number
+          updated_at?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_labels: {
         Row: {
           added_by: string | null
@@ -3652,6 +3723,7 @@ export type Database = {
         | "RUSH"
         | "PROMOCIONAL"
         | "ORCAMENTO_PUBLICO"
+      lead_status: "NOVO" | "CONTATADO" | "CONVERTIDO" | "DESCARTADO"
       payment_term: "PIX_AVISTA" | "CARTAO" | "APROVACAO_ADDS"
       person_type: "FISICA" | "JURIDICA"
       quote_status:
@@ -3889,6 +3961,7 @@ export const Constants = {
         "PROMOCIONAL",
         "ORCAMENTO_PUBLICO",
       ],
+      lead_status: ["NOVO", "CONTATADO", "CONVERTIDO", "DESCARTADO"],
       payment_term: ["PIX_AVISTA", "CARTAO", "APROVACAO_ADDS"],
       person_type: ["FISICA", "JURIDICA"],
       quote_status: [

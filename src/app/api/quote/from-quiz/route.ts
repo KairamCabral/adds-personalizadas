@@ -1,37 +1,25 @@
 // src/app/api/quote/from-quiz/route.ts
 //
 // Recebe o WhatsApp que o dentista informou no quiz (protocolo.addsbrasil.com.br)
-// e cria um orçamento PENDENTE para o time trabalhar.
+// e grava em `leads`.
 //
-// Por que isso existe: até agora, quem clicava no botão do quiz e não mandava
-// mensagem sumia sem deixar rastro — era a maior perda do funil. Com o número
-// gravado aqui, alguém consegue retomar o contato depois.
+// Por que isso existe: até esta rota, quem clicava no botão do quiz e não
+// mandava mensagem sumia sem deixar rastro — a maior perda do funil. Com o
+// número gravado, alguém consegue retomar o contato depois.
 //
-// Este endpoint NÃO fala com a Meta. O quiz já dispara o `Lead` na CAPI no
-// mesmo instante, com o telefone e o fbc do clique no anúncio.
+// Antes gravava em `public_quotes`, o que estava errado: orçamento tem produtos
+// e valor; lead tem só um telefone. Ver a migration 20260729100000_leads_area.
+//
+// Este endpoint NÃO fala com a Meta. O quiz já dispara o `Lead` na CAPI no mesmo
+// instante, com o telefone e o fbc do clique no anúncio.
 
 import { NextRequest, NextResponse } from "next/server";
 
 import { safeCompare } from "@/lib/crypto-utils";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Database } from "@/types/database.types";
-
-type PublicQuoteInsert = Database["public"]["Tables"]["public_quotes"]["Insert"];
 
 export const dynamic = "force-dynamic";
-
-/** Formata para exibição na lista de orçamentos: `(48) 99999-8888`. */
-function formatBrPhone(digits: string): string {
-  const local = digits.startsWith("55") ? digits.slice(2) : digits;
-  if (local.length === 11) {
-    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
-  }
-  if (local.length === 10) {
-    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
-  }
-  return digits;
-}
 
 export async function POST(request: NextRequest) {
   const secret = process.env.QUIZ_LEAD_SECRET;
@@ -67,37 +55,55 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // Só temos o telefone, e `client_name` é o que a lista de orçamentos exibe.
-  // Usar o número formatado deixa cada linha identificável e clicável pelo
-  // time — um rótulo fixo faria todos os leads do quiz virarem a mesma linha.
-  const payload: PublicQuoteInsert = {
-    client_name: formatBrPhone(digits),
-    client_whatsapp: digits,
-    client_phone: digits,
-    items: [],
-    status: "PENDENTE",
-    internal_notes: leadRef
-      ? `Lead do quiz. Ref ${leadRef} — aparece na mensagem do WhatsApp.`
-      : "Lead do quiz.",
-    utm_source: "quiz",
-    utm_medium: "whatsapp",
-    utm_campaign: source,
-    // ⚠️ Marcado como enviado DE PROPÓSITO. O cron meta-capi-dispatch manda um
-    // `Lead` para todo orçamento pendente, mas o quiz já disparou o dele pela
-    // CAPI com event_id próprio. Sem isso a mesma pessoa contaria duas vezes.
-    meta_capi_sent_at: new Date().toISOString(),
-  };
+  // Mesma pessoa preenchendo de novo NÃO vira linha duplicada — vira sinal.
+  // Quem volta é o lead mais quente da lista, e o time precisa ver isso em vez
+  // de descobrir três registros iguais espalhados.
+  const { data: existente } = await supabase
+    .from("leads")
+    .select("id, submissions, status")
+    .eq("phone", digits)
+    .maybeSingle();
 
+  if (existente) {
+    const { error } = await supabase
+      .from("leads")
+      .update({
+        submissions: existente.submissions + 1,
+        last_submitted_at: new Date().toISOString(),
+        // Voltar a preencher o formulário é intenção nova: se já tinha sido
+        // descartado, volta para a fila. Um lead já CONTATADO ou CONVERTIDO
+        // mantém o status — quem está cuidando não perde o contexto.
+        ...(existente.status === "DESCARTADO" ? { status: "NOVO" as const } : {}),
+      })
+      .eq("id", existente.id);
+
+    if (error) {
+      console.error("[quote/from-quiz] erro ao atualizar lead", error);
+      return NextResponse.json({ error: "erro ao salvar" }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, lead_id: existente.id, repeat: true });
+  }
+
+  // O nome NÃO é gravado aqui. Ele é resolvido na leitura, cruzando o telefone
+  // com Contatos — assim, se o contato for cadastrado depois, o nome aparece
+  // sozinho, sem job de sincronização e sem risco de dado velho.
   const { data, error } = await supabase
-    .from("public_quotes")
-    .insert(payload)
+    .from("leads")
+    .insert({
+      phone: digits,
+      source: "quiz",
+      lead_ref: leadRef,
+      utm_source: "quiz",
+      utm_medium: "whatsapp",
+      utm_campaign: source,
+    })
     .select("id")
     .single();
 
   if (error) {
-    console.error("[quote/from-quiz] erro ao inserir", error);
+    console.error("[quote/from-quiz] erro ao inserir lead", error);
     return NextResponse.json({ error: "erro ao salvar" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, quote_id: data.id });
+  return NextResponse.json({ ok: true, lead_id: data.id });
 }

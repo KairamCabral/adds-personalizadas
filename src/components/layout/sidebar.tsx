@@ -27,6 +27,7 @@ import {
   Warehouse,
   Ticket,
   PackageCheck,
+  UserPlus,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Logo } from "@/components/brand/logo";
@@ -40,6 +41,15 @@ const NAV_SECTIONS = [
         href: "/pipeline",
         icon: Columns3,
         permission: "kanban.view" as const,
+      },
+      {
+        // Antes de "Orçamentos" de propósito: o lead vem antes na jornada, e a
+        // ordem do menu deve espelhar a ordem do trabalho.
+        label: "Leads",
+        href: "/leads",
+        icon: UserPlus,
+        // Mesma permissão de orçamentos — quem trabalha um, trabalha o outro.
+        permission: "quotes.view" as const,
       },
       {
         label: "Orçamentos",
