@@ -15,6 +15,7 @@ import {
   type LeadWithContact,
 } from "@/services/leads.service";
 
+import { LeadDetailSheet } from "./_components/lead-detail-sheet";
 import { LeadsOverview } from "./_components/leads-overview";
 import { LeadsTable } from "./_components/leads-table";
 
@@ -38,6 +39,7 @@ export default function LeadsPage() {
   const [carregando, setCarregando] = useState(true);
   const [periodo, setPeriodo] = useState<LeadPeriod>("7d");
   const [aba, setAba] = useState<Aba>("pendentes");
+  const [aberto, setAberto] = useState<LeadWithContact | null>(null);
 
   const carregar = useCallback(async (p: LeadPeriod) => {
     setCarregando(true);
@@ -158,9 +160,13 @@ export default function LeadsPage() {
             <LeadsTable
               leads={visiveis}
               onToggleContacted={alternarContato}
-              onOpen={() => {
-                /* detalhe entra numa próxima etapa */
-              }}
+              onOpen={setAberto}
+            />
+
+            <LeadDetailSheet
+              lead={aberto}
+              onClose={() => setAberto(null)}
+              onChanged={() => void carregar(periodo)}
             />
           </>
         )}

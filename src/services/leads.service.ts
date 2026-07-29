@@ -153,6 +153,22 @@ export async function setLeadContacted(id: string, contacted: boolean): Promise<
   if (error) throw error;
 }
 
+/**
+ * Contagem para o badge do menu. Traz só a coluna `status` — o badge precisa de
+ * um número, e puxar as linhas inteiras a cada revalidação seria desperdício
+ * numa consulta que roda em toda navegação.
+ */
+export async function getLeadCounts(): Promise<{ NOVO: number; TOTAL: number }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from("leads").select("status");
+  if (error) throw error;
+
+  return {
+    NOVO: (data ?? []).filter((l) => l.status === "NOVO").length,
+    TOTAL: data?.length ?? 0,
+  };
+}
+
 export async function setLeadStatus(id: string, status: LeadStatus): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from("leads").update({ status }).eq("id", id);
