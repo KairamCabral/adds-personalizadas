@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { getQuoteCounts } from "@/services/quotes.service";
+import { getLeadCounts } from "@/services/leads.service";
 import {
   Columns3,
   LayoutDashboard,
@@ -50,6 +51,7 @@ const NAV_SECTIONS = [
         icon: UserPlus,
         // Mesma permissão de orçamentos — quem trabalha um, trabalha o outro.
         permission: "quotes.view" as const,
+        showLeadsBadge: true,
       },
       {
         label: "Orçamentos",
@@ -163,6 +165,13 @@ export function Sidebar() {
   const { data: quoteCounts } = useQuery({
     queryKey: ["quote-counts"],
     queryFn: getQuoteCounts,
+    staleTime: 60 * 1000,
+  });
+  // Mesmo staleTime dos orçamentos: um lead novo aparece no menu em até um
+  // minuto, sem transformar a barra lateral em consulta constante.
+  const { data: leadCounts } = useQuery({
+    queryKey: ["lead-counts"],
+    queryFn: getLeadCounts,
     staleTime: 60 * 1000,
   });
 
@@ -332,9 +341,11 @@ export function Sidebar() {
                             !pathname.startsWith("/representantes/atividade"))));
                     const Icon = item.icon;
                     const pendingCount =
-                      "showPendingBadge" in item && item.showPendingBadge
-                        ? quoteCounts?.PENDENTE ?? 0
-                        : 0;
+                      "showLeadsBadge" in item && item.showLeadsBadge
+                        ? leadCounts?.NOVO ?? 0
+                        : "showPendingBadge" in item && item.showPendingBadge
+                          ? quoteCounts?.PENDENTE ?? 0
+                          : 0;
                     const hasPending = pendingCount > 0;
 
                     return (
