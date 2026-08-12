@@ -330,11 +330,16 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
           position: 0,
         };
 
+        // ignoreDuplicates: true → ON CONFLICT DO NOTHING para pedidos já
+        // existentes no CRM. O status, posição e etapas do Kanban são gerenciados
+        // exclusivamente pelo webhook (importTinyOrderFromApi). Sobrescrever aqui
+        // causaria regressões: p.ex. um pedido em FATURADO voltaria para FAZER
+        // se o Tiny ainda o vê como "Em aberto".
         const { data: upsertedOrder, error } = await supabase
           .from("orders")
           .upsert(orderData as any, {
             onConflict: "tiny_order_id",
-            ignoreDuplicates: false,
+            ignoreDuplicates: true,
           })
           .select("id")
           .single();

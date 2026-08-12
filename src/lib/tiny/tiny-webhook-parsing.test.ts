@@ -8,7 +8,7 @@ describe("mapTinySituacaoToCrmStatus", () => {
     expect(mapTinySituacaoToCrmStatus(1)).toBe("FINALIZADO");
     expect(mapTinySituacaoToCrmStatus(3)).toBe("CONFIRMACAO");
     expect(mapTinySituacaoToCrmStatus(2)).toBe("ARQUIVADO");
-    expect(mapTinySituacaoToCrmStatus(6)).toBe("FINALIZADO");
+    expect(mapTinySituacaoToCrmStatus(6)).toBe("ENTREGUE");
   });
 
   it("mapeia labels em português do webhook", () => {

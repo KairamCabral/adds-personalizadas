@@ -101,6 +101,37 @@ const TINY_SITUACAO_STRING_TO_STATUS: Record<
   Cancelado: "ARQUIVADO",
   /** Faturado: etapa = FINALIZADO; PAGO vem de applyPagoCrmFromTiny */
   Faturado: "FINALIZADO",
+  /** Entregue: avança para ENTREGUE (guard em importTinyOrderFromApi controla regressão) */
+  Entregue: "ENTREGUE",
+};
+
+/**
+ * Ordem das etapas do pipeline CRM — usada para a regra anti-regressão:
+ * Tiny nunca pode mover um pedido para uma etapa numericamente menor.
+ *
+ * Pipeline completo (inclui etapas de arte que o Tiny desconhece):
+ * AUTOMATICO → FAZER → AJUSTE → APROVACAO → LINK_ENVIADO →
+ * AGUARDANDO_APROVACAO → CONFIRMACAO → APROVADO → PRODUCAO →
+ * EXPEDICAO → FINALIZADO → ENTREGUE → FATURADO → ARQUIVADO
+ */
+export const STATUS_PIPELINE_RANK: Record<
+  Database["public"]["Enums"]["order_status"],
+  number
+> = {
+  AUTOMATICO: 0,
+  FAZER: 1,
+  AJUSTE: 2,
+  APROVACAO: 3,
+  LINK_ENVIADO: 4,
+  AGUARDANDO_APROVACAO: 5,
+  CONFIRMACAO: 6,
+  APROVADO: 7,
+  PRODUCAO: 8,
+  EXPEDICAO: 9,
+  FINALIZADO: 10,
+  ENTREGUE: 11,
+  FATURADO: 12,
+  ARQUIVADO: 13,
 };
 
 /** Mapeia código numérico de situação Tiny (API) → status CRM */
@@ -123,7 +154,9 @@ export function mapTinyNumericSituacaoToStatus(
     case 9:
       return "EXPEDICAO";
     case 6:
-      return "FINALIZADO";
+      // "Entregue" no Tiny → ENTREGUE no CRM.
+      // O guard em importTinyOrderFromApi garante que só avança (nunca regride).
+      return "ENTREGUE";
     case 2:
       return "ARQUIVADO";
     default:
@@ -609,32 +642,73 @@ export async function importTinyOrderFromApi(
   const isNewOrder = !existingOrder;
   let status: Database["public"]["Enums"]["order_status"] = isNewOrder
     ? entregueNaApi
-      ? "FINALIZADO"
+      ? "ENTREGUE"
       : "AUTOMATICO"
     : mapTinySituacaoToCrmStatus(situacao);
-  // Re-sync: Tiny "Em aberto" NÃO movimenta etapa do CRM. O CRM tem etapas
-  // internas (AUTOMATICO, AJUSTE, APROVACAO, AGUARDANDO_APROVACAO,
-  // ARTE_APROVADA, CONFIRMACAO) que não existem no Tiny — sem essa guarda,
-  // o mapeamento "Em aberto" → FAZER atropelaria essas etapas.
-  if (!isNewOrder && existingOrder && isTinySituacaoAberto(situacao)) {
-    status = existingOrder.status;
+
+  // ── Lógica de proteção de status para re-sync (pedidos existentes) ────────
+  //
+  // Regras, em ordem de prioridade:
+  //
+  // 1. CANCELADO: preserva etapa atual (o pedido será arquivado via
+  //    applyCanceladoCrmFromTiny, que registra a label PEDIDO_CANCELADO).
+  //    Ao desarquivar o pedido volta para a mesma coluna.
+  //
+  // 2. EM ABERTO (0/8): não move — o CRM tem etapas internas (AJUSTE,
+  //    APROVACAO, AGUARDANDO_APROVACAO, CONFIRMACAO) que o Tiny desconhece.
+  //    "Em aberto" no Tiny não pode regredir um card que está em PRODUCAO.
+  //
+  // 3. PAGO (1/3): preserva; applyPagoCrmFromTiny cuida da transição
+  //    CONFIRMACAO → APROVADO de forma idempotente com gate de arte.
+  //
+  // 4. ENTREGUE (6): avança para ENTREGUE se a etapa atual for anterior;
+  //    preserva se já estiver em ENTREGUE, FATURADO ou ARQUIVADO.
+  //    Isso permite que pedidos "parados" em FAZER (importados antes do CRM)
+  //    avancem corretamente ao serem marcados como entregues no Tiny.
+  //
+  // 5. REGRA ANTI-REGRESSÃO (demais códigos — PRODUCAO/EXPEDICAO/etc.):
+  //    nunca regride o CRM para uma etapa numericamente anterior. Se o Tiny
+  //    dissesse "Em andamento" (PRODUCAO) mas o pedido já está em FATURADO,
+  //    o status é preservado.
+  if (!isNewOrder && existingOrder) {
+    if (canceladoNaApi) {
+      // Regra 1 — cancelado arquiva via applyCanceladoCrmFromTiny
+      status = existingOrder.status;
+    } else if (isTinySituacaoAberto(situacao)) {
+      // Regra 2 — "Em aberto" no Tiny não desfaz etapas do CRM
+      status = existingOrder.status;
+    } else if (pagoNaApi) {
+      // Regra 3 — pago: applyPagoCrmFromTiny gerencia a transição
+      status = existingOrder.status;
+    } else if (entregueNaApi) {
+      // Regra 4 — entregue: avança se ainda não chegou em ENTREGUE
+      const ENTREGUE_OU_ALEM = new Set<Database["public"]["Enums"]["order_status"]>([
+        "ENTREGUE",
+        "FATURADO",
+        "ARQUIVADO",
+      ]);
+      if (!ENTREGUE_OU_ALEM.has(existingOrder.status)) {
+        status = "ENTREGUE";
+      } else {
+        status = existingOrder.status;
+      }
+    } else {
+      // Regra 5 — anti-regressão geral
+      const currentRank = STATUS_PIPELINE_RANK[existingOrder.status] ?? 0;
+      const mappedRank = STATUS_PIPELINE_RANK[status] ?? 0;
+      if (mappedRank < currentRank) {
+        status = existingOrder.status;
+      }
+    }
   }
-  if (!isNewOrder && pagoNaApi && existingOrder) {
-    status = existingOrder.status;
-  }
-  if (!isNewOrder && entregueNaApi && existingOrder) {
-    status = existingOrder.status;
-  }
-  // Cancelado no Tiny não regride a etapa: o pedido vai para Arquivados
-  // (archived_at) com a coluna do Kanban preservada — ao desarquivar manualmente
-  // o pedido volta para a mesma etapa onde estava antes do cancelamento.
-  if (!isNewOrder && canceladoNaApi && existingOrder) {
-    status = existingOrder.status;
-  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Posição no Kanban: preservar quando status não muda; calcular nova posição
+  // quando o card vai mudar de coluna.
   let position: number;
   if (isNewOrder) {
     position = await nextPositionForOrderStatus(supabase, status);
-  } else if (pagoNaApi && existingOrder) {
+  } else if (existingOrder && status === existingOrder.status) {
     position = existingOrder.position;
   } else {
     position = await nextPositionForOrderStatus(supabase, status);

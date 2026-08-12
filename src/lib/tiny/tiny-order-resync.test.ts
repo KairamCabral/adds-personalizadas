@@ -303,6 +303,12 @@ describe("computeTinyOrderHash", () => {
     expect(a).not.toBe(b);
   });
 
+  it("muda quando situacao muda de aprovado (3) para entregue (6)", () => {
+    const a = computeTinyOrderHash(baseRaw); // situacao: 3
+    const b = computeTinyOrderHash({ ...baseRaw, situacao: 6 });
+    expect(a).not.toBe(b);
+  });
+
   it("aceita itens sem aninhamento `item`", () => {
     const flatItens = [
       { produto: { id: 1, sku: "X" }, quantidade: 1, valorUnitario: 1 },
