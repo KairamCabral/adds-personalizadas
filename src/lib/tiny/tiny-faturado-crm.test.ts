@@ -6,6 +6,11 @@ import {
   isTinySituacaoFaturado,
   isTinySituacaoPago,
 } from "./tiny-faturado-crm";
+import {
+  mapTinyNumericSituacaoToStatus,
+  mapTinySituacaoToCrmStatus,
+  STATUS_PIPELINE_RANK,
+} from "./tiny-order-import";
 
 describe("isTinySituacaoPago", () => {
   it("aceita código 1 (Faturado)", () => {
@@ -131,5 +136,76 @@ describe("isTinySituacaoEntregue", () => {
   it("não confunde com faturado (1) ou fazer (0)", () => {
     expect(isTinySituacaoEntregue(1)).toBe(false);
     expect(isTinySituacaoEntregue(0)).toBe(false);
+  });
+});
+
+// ── Testes de mapeamento e rank do pipeline ──────────────────────────────────
+
+describe("mapTinyNumericSituacaoToStatus", () => {
+  it("código 6 (Entregue) mapeia para ENTREGUE — não FINALIZADO", () => {
+    expect(mapTinyNumericSituacaoToStatus(6)).toBe("ENTREGUE");
+  });
+
+  it("código 1 (Faturado) mapeia para FINALIZADO", () => {
+    expect(mapTinyNumericSituacaoToStatus(1)).toBe("FINALIZADO");
+  });
+
+  it("código 0 e 8 (Em aberto) mapeiam para FAZER", () => {
+    expect(mapTinyNumericSituacaoToStatus(0)).toBe("FAZER");
+    expect(mapTinyNumericSituacaoToStatus(8)).toBe("FAZER");
+  });
+
+  it("código 3 (Aprovado) mapeia para CONFIRMACAO", () => {
+    expect(mapTinyNumericSituacaoToStatus(3)).toBe("CONFIRMACAO");
+  });
+
+  it("código 4 (Em andamento) mapeia para PRODUCAO", () => {
+    expect(mapTinyNumericSituacaoToStatus(4)).toBe("PRODUCAO");
+  });
+
+  it("códigos 5, 7, 9 (Enviada/Pronto/Não Entregue) mapeiam para EXPEDICAO", () => {
+    expect(mapTinyNumericSituacaoToStatus(5)).toBe("EXPEDICAO");
+    expect(mapTinyNumericSituacaoToStatus(7)).toBe("EXPEDICAO");
+    expect(mapTinyNumericSituacaoToStatus(9)).toBe("EXPEDICAO");
+  });
+
+  it("código 2 (Cancelado) mapeia para ARQUIVADO", () => {
+    expect(mapTinyNumericSituacaoToStatus(2)).toBe("ARQUIVADO");
+  });
+
+  it("código desconhecido mapeia para FAZER", () => {
+    expect(mapTinyNumericSituacaoToStatus(99)).toBe("FAZER");
+  });
+});
+
+describe("mapTinySituacaoToCrmStatus — string 'Entregue'", () => {
+  it("string 'Entregue' mapeia para ENTREGUE", () => {
+    expect(mapTinySituacaoToCrmStatus("Entregue")).toBe("ENTREGUE");
+  });
+
+  it("string 'entregue' (minúscula) mapeia para ENTREGUE via CI", () => {
+    expect(mapTinySituacaoToCrmStatus("entregue")).toBe("ENTREGUE");
+  });
+});
+
+describe("STATUS_PIPELINE_RANK — ordem do pipeline CRM", () => {
+  it("FAZER vem antes de CONFIRMACAO", () => {
+    expect(STATUS_PIPELINE_RANK["FAZER"]).toBeLessThan(
+      STATUS_PIPELINE_RANK["CONFIRMACAO"]
+    );
+  });
+
+  it("ENTREGUE vem depois de EXPEDICAO e antes de FATURADO", () => {
+    expect(STATUS_PIPELINE_RANK["ENTREGUE"]).toBeGreaterThan(
+      STATUS_PIPELINE_RANK["EXPEDICAO"]
+    );
+    expect(STATUS_PIPELINE_RANK["ENTREGUE"]).toBeLessThan(
+      STATUS_PIPELINE_RANK["FATURADO"]
+    );
+  });
+
+  it("ARQUIVADO é a última etapa", () => {
+    const allRanks = Object.values(STATUS_PIPELINE_RANK);
+    expect(STATUS_PIPELINE_RANK["ARQUIVADO"]).toBe(Math.max(...allRanks));
   });
 });
