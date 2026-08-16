@@ -52,6 +52,18 @@ export async function updateEdition(id: string, data: EventEditionUpdate) {
   return edition;
 }
 
+export async function toggleEditionActive(id: string, is_active: boolean) {
+  const { data: edition, error } = await supabase
+    .from("event_editions")
+    .update({ is_active })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return edition;
+}
+
 export async function deleteEdition(id: string) {
   const { error } = await supabase.from("event_editions").delete().eq("id", id);
   if (error) throw error;

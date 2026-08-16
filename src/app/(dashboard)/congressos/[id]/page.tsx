@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { ScanLine, TicketX } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ScanLine, TicketX, Pencil, QrCode } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -17,8 +18,14 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/use-permissions";
-import { getEditionById } from "@/services/congressos.service";
+import {
+  getEditionById,
+  toggleEditionActive,
+} from "@/services/congressos.service";
 import { getEditionRegistrations } from "@/services/congressos-gifts.service";
+import type { EventEdition } from "@/types/database.types";
+import { EditionForm } from "../_components/edition-form";
+import { EditionQrDialog } from "../_components/edition-qr-dialog";
 import { GiftStats } from "./_components/gift-stats";
 import { RegistrationsTable } from "./_components/registrations-table";
 import { CreditsTable } from "./_components/credits-table";
@@ -28,8 +35,12 @@ export default function EditionDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { can, isLoading: permissionsLoading } = usePermissions();
   const hasPermission = can("congressos.manage");
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
 
   useEffect(() => {
     if (!permissionsLoading && !hasPermission) router.replace("/pipeline");
@@ -54,6 +65,16 @@ export default function EditionDetailPage() {
     refetchInterval: 30000,
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: (e: EventEdition) => toggleEditionActive(e.id, !e.is_active),
+    onSuccess: (updated) => {
+      toast.success(updated.is_active ? "Edição ativada." : "Edição desativada.");
+      queryClient.invalidateQueries({ queryKey: ["event_edition", id] });
+      queryClient.invalidateQueries({ queryKey: ["event_editions"] });
+    },
+    onError: () => toast.error("Erro ao alterar status da edição."),
+  });
+
   if (permissionsLoading) {
     return (
       <div className="flex min-h-[200px] items-center justify-center p-6">
@@ -66,6 +87,13 @@ export default function EditionDetailPage() {
   return (
     <div className="min-w-0 space-y-6 p-6">
       <div>
+        <Link
+          href="/congressos"
+          className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Congressos
+        </Link>
         <PageHeader
           title={edition?.name ?? "Edição"}
           description={
@@ -78,9 +106,26 @@ export default function EditionDetailPage() {
         >
           {edition && (
             <>
-              <Badge variant={edition.is_active ? "default" : "outline"}>
-                {edition.is_active ? "Ativa" : "Inativa"}
+              <Badge
+                variant={edition.is_active ? "default" : "outline"}
+                className="cursor-pointer select-none"
+                onClick={() => toggleActiveMutation.mutate(edition)}
+                title={edition.is_active ? "Clique para desativar" : "Clique para ativar"}
+              >
+                {toggleActiveMutation.isPending
+                  ? "Salvando..."
+                  : edition.is_active
+                    ? "Ativa"
+                    : "Inativa"}
               </Badge>
+              <Button variant="outline" size="sm" onClick={() => setQrOpen(true)}>
+                <QrCode className="mr-2 h-4 w-4" />
+                Link e QR
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setFormOpen(true)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Editar
+              </Button>
               <Button asChild>
                 <Link href={`/congressos/retirada?edition=${edition.id}`}>
                   <ScanLine className="mr-2 h-4 w-4" />
@@ -91,6 +136,17 @@ export default function EditionDetailPage() {
           )}
         </PageHeader>
       </div>
+
+      <EditionForm
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        initialData={edition ?? undefined}
+      />
+      <EditionQrDialog
+        edition={edition ?? null}
+        open={qrOpen}
+        onOpenChange={setQrOpen}
+      />
 
       {editionError ? (
         <EmptyState

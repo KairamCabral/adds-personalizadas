@@ -8,7 +8,11 @@ import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/use-permissions";
-import { getEditions, deleteEdition } from "@/services/congressos.service";
+import {
+  getEditions,
+  deleteEdition,
+  toggleEditionActive,
+} from "@/services/congressos.service";
 import type { EventEdition } from "@/types/database.types";
 import { EditionsTable } from "./_components/editions-table";
 import { EditionForm } from "./_components/edition-form";
@@ -29,6 +33,18 @@ export default function CongressosPage() {
     queryKey: ["event_editions"],
     queryFn: getEditions,
     enabled: !permissionsLoading && hasPermission,
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
+      toggleEditionActive(id, is_active),
+    onSuccess: (updated) => {
+      toast.success(
+        updated.is_active ? "Edição ativada." : "Edição desativada."
+      );
+      queryClient.invalidateQueries({ queryKey: ["event_editions"] });
+    },
+    onError: () => toast.error("Erro ao alterar status da edição."),
   });
 
   const deleteMutation = useMutation({
@@ -65,6 +81,10 @@ export default function CongressosPage() {
     setFormOpen(open);
     if (!open) setEditing(null);
   };
+  const handleToggleActive = (edition: EventEdition) => {
+    toggleActiveMutation.mutate({ id: edition.id, is_active: !edition.is_active });
+  };
+
   const handleShowLink = (edition: EventEdition) => {
     setQrEdition(edition);
     setQrOpen(true);
@@ -87,6 +107,7 @@ export default function CongressosPage() {
         isLoading={isLoading}
         onEdit={handleEdit}
         onShowLink={handleShowLink}
+        onToggleActive={handleToggleActive}
         onDelete={(id) => deleteMutation.mutate(id)}
       />
 

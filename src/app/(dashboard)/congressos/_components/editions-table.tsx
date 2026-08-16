@@ -23,6 +23,8 @@ import {
   QrCode,
   ClipboardList,
   ScanLine,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 
 interface EditionsTableProps {
@@ -30,6 +32,7 @@ interface EditionsTableProps {
   isLoading?: boolean;
   onEdit: (edition: EventEdition) => void;
   onShowLink: (edition: EventEdition) => void;
+  onToggleActive: (edition: EventEdition) => void;
   onDelete: (id: string) => void;
 }
 
@@ -56,6 +59,7 @@ export function EditionsTable({
   isLoading,
   onEdit,
   onShowLink,
+  onToggleActive,
   onDelete,
 }: EditionsTableProps) {
   const router = useRouter();
@@ -142,7 +146,7 @@ export function EditionsTable({
                 <span className="sr-only">Abrir menu</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" onClick={(ev) => ev.stopPropagation()}>
               <DropdownMenuItem asChild>
                 <Link href={`/congressos/${e.id}`}>
                   <ClipboardList className="mr-2 h-4 w-4" />
@@ -154,6 +158,19 @@ export function EditionsTable({
                   <ScanLine className="mr-2 h-4 w-4" />
                   Retirada (estande)
                 </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onToggleActive(e)}>
+                {e.is_active ? (
+                  <>
+                    <ToggleLeft className="mr-2 h-4 w-4" />
+                    Desativar
+                  </>
+                ) : (
+                  <>
+                    <ToggleRight className="mr-2 h-4 w-4 text-primary" />
+                    Ativar
+                  </>
+                )}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(e)}>
                 <Pencil className="mr-2 h-4 w-4" />
