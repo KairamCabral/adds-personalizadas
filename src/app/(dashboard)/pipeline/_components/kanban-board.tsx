@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useQueryState, parseAsString } from "nuqs";
 import {
   DndContext,
@@ -33,6 +33,7 @@ import {
   restoreOrder,
   tryAutoAssignOnAutomativoToFazer,
 } from "@/services/orders.service";
+import { getPersonalizedProducts } from "@/services/products.service";
 import { ArchiveCancelDialog } from "@/components/pipeline/archive-cancel-dialog";
 import { KanbanColumn } from "./kanban-column";
 import { KanbanCard } from "./kanban-card";
@@ -54,6 +55,17 @@ function sortOrdersByPositionThenId(
   const dp = (a.position ?? 0) - (b.position ?? 0);
   if (dp !== 0) return dp;
   return String(a.id).localeCompare(String(b.id));
+}
+
+/** Compara nomes de produto ignorando caixa, acentos e espaços extras (pt-BR). */
+function sameProductName(
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean {
+  if (!a || !b) return false;
+  return (
+    a.trim().localeCompare(b.trim(), "pt-BR", { sensitivity: "base" }) === 0
+  );
 }
 
 export function KanbanBoard() {
@@ -166,6 +178,7 @@ export function KanbanBoard() {
   const [prioridade, setPrioridade] = useQueryState("prioridade", parseAsString);
   const [tipo, setTipo] = useQueryState("tipo", parseAsString);
   const [etiqueta, setEtiqueta] = useQueryState("etiqueta", parseAsString);
+  const [produto, setProduto] = useQueryState("produto", parseAsString);
   const [orderParam, setOrderParam] = useQueryState("order", parseAsString);
   const [archiveCancelTarget, setArchiveCancelTarget] = useState<{
     id: string;
@@ -189,6 +202,23 @@ export function KanbanBoard() {
   });
   const orders = ordersQuery.data ?? [];
   const { isLoading, error } = ordersQuery;
+
+  // Lista de produtos personalizados (mesma queryKey do popover de filtros —
+  // o cache é compartilhado). Só é usada para resolver o NOME do produto
+  // filtrado: itens vindos do Tiny podem ter `product_id` nulo e só o nome.
+  const { data: produtosPersonalizados = [] } = useQuery({
+    queryKey: ["products", "personalizados"],
+    queryFn: getPersonalizedProducts,
+    staleTime: 5 * 60 * 1000,
+    enabled: !!produto,
+  });
+  const produtoNome = useMemo(
+    () =>
+      produto
+        ? (produtosPersonalizados.find((p) => p.id === produto)?.name ?? null)
+        : null,
+    [produto, produtosPersonalizados]
+  );
 
   const archiveMutation = useMutation({
     mutationFn: (orderId: string) => archiveOrder(orderId),
@@ -495,6 +525,17 @@ export function KanbanBoard() {
             const hasLabel = labels.some((l: { label: string }) => l.label === etiqueta);
             if (!hasLabel) return false;
           }
+          if (produto) {
+            // Casa por product_id; itens importados do Tiny podem vir sem ele,
+            // então cai no nome normalizado.
+            const items = o.items ?? [];
+            const hasProduct = items.some(
+              (i: { product_id?: string | null; product_name?: string | null }) =>
+                i.product_id === produto ||
+                sameProductName(i.product_name, produtoNome)
+            );
+            if (!hasProduct) return false;
+          }
           if (busca?.trim()) {
             const q = busca.trim().toLowerCase();
             const title = (o.title ?? "").toLowerCase();
@@ -512,7 +553,7 @@ export function KanbanBoard() {
           return String(a.id).localeCompare(String(b.id));
         });
     },
-    [orders, busca, responsavel, prioridade, tipo, etiqueta]
+    [orders, busca, responsavel, prioridade, tipo, etiqueta, produto, produtoNome]
   );
 
   function handleDragStart(event: DragStartEvent) {
@@ -578,7 +619,12 @@ export function KanbanBoard() {
     const overIdStr = String(over.id);
 
     const noKanbanFilters =
-      !busca?.trim() && !responsavel && !prioridade && !tipo && !etiqueta;
+      !busca?.trim() &&
+      !responsavel &&
+      !prioridade &&
+      !tipo &&
+      !etiqueta &&
+      !produto;
 
     const targetOrders = (orders as any[])
       .filter((o: any) => o.id !== active.id && o.status === targetStatus)
@@ -703,7 +749,8 @@ export function KanbanBoard() {
     (acc, s) => acc + getOrdersByStatus(s.key).length,
     0
   );
-  const hasActiveFilters = !!busca || !!responsavel || !!prioridade || !!tipo || !!etiqueta;
+  const hasActiveFilters =
+    !!busca || !!responsavel || !!prioridade || !!tipo || !!etiqueta || !!produto;
 
   const clearPipelineFilters = () => {
     void setBusca(null);
@@ -711,6 +758,7 @@ export function KanbanBoard() {
     void setPrioridade(null);
     void setTipo(null);
     void setEtiqueta(null);
+    void setProduto(null);
   };
 
   return (

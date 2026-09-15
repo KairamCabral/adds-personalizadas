@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import {
   getDashboardCrmData,
+  getDashboardProdutosPersonalizados,
   getPeriodRange,
   formatPeriodLabel,
   formatRangeFromDates,
@@ -190,6 +191,18 @@ export default function DashboardPage() {
     queryFn: () => getDashboardCrmData(range),
     staleTime: 5 * 60 * 1000,
     enabled: canView,
+  });
+
+  const {
+    data: produtos,
+    isLoading: produtosLoading,
+    isError: produtosError,
+  } = useQuery({
+    queryKey: ["dashboard", "produtos-personalizados", range.from, range.to],
+    queryFn: () => getDashboardProdutosPersonalizados(range),
+    staleTime: 5 * 60 * 1000,
+    enabled: canView,
+    retry: false,
   });
 
   const handlePeriodChange = (p: PeriodValue) => {
@@ -648,6 +661,180 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Produtos personalizados no período */}
+            <Card className="overflow-hidden border border-border/60 bg-card shadow-md">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-3 text-xl font-bold">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-dashboard-primary/15">
+                    <Package className="h-5 w-5 text-dashboard-primary" />
+                  </div>
+                  Produtos personalizados
+                </CardTitle>
+                <p className="text-base font-medium text-foreground/70">
+                  Unidades por produto nos pedidos criados no período
+                  {produtos && produtos.totalUnidades > 0
+                    ? ` — ${produtos.totalUnidades.toLocaleString("pt-BR")} unidades em ${produtos.totalPedidos} pedido${produtos.totalPedidos !== 1 ? "s" : ""}`
+                    : ""}
+                </p>
+              </CardHeader>
+              <CardContent>
+                {produtosLoading ? (
+                  <Skeleton className="h-[260px] w-full rounded-xl" />
+                ) : produtosError || !produtos ? (
+                  <div className="flex flex-col items-center justify-center py-14 text-center">
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                      <AlertTriangle className="h-7 w-7 text-muted-foreground" />
+                    </div>
+                    <p className="text-base font-semibold">
+                      Não foi possível carregar o resumo por produto
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Tente recarregar a página.
+                    </p>
+                  </div>
+                ) : produtos.produtos.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-14 text-center">
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                      <Package className="h-7 w-7 text-muted-foreground" />
+                    </div>
+                    <p className="text-base font-semibold">
+                      Nenhum produto personalizado no período
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Os itens dos pedidos criados no período não casaram com
+                      produtos personalizados do catálogo.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    <div
+                      style={{
+                        height: Math.max(
+                          200,
+                          produtos.produtos.length * 44 + 40
+                        ),
+                      }}
+                    >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={produtos.produtos}
+                          layout="vertical"
+                          margin={{ top: 4, right: 24, left: 8, bottom: 4 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="hsl(var(--border))"
+                            horizontal={false}
+                          />
+                          <XAxis
+                            type="number"
+                            allowDecimals={false}
+                            tick={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              fill: "hsl(var(--foreground))",
+                            }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="produto"
+                            width={140}
+                            tick={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              fill: "hsl(var(--foreground))",
+                            }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            cursor={{ fill: "hsl(var(--muted) / 0.5)" }}
+                            contentStyle={{
+                              backgroundColor: "hsl(var(--card))",
+                              border: "2px solid hsl(var(--border))",
+                              borderRadius: "12px",
+                              boxShadow:
+                                "0 8px 24px hsl(var(--foreground) / 0.12)",
+                              padding: "14px 18px",
+                              fontSize: "14px",
+                              fontWeight: 600,
+                            }}
+                            labelStyle={{
+                              fontWeight: 700,
+                              marginBottom: 6,
+                              fontSize: 15,
+                            }}
+                          />
+                          <Bar
+                            dataKey="unidades"
+                            name="Unidades"
+                            fill="hsl(var(--dashboard-primary))"
+                            radius={[0, 8, 8, 0]}
+                            maxBarSize={28}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="min-w-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Produto</TableHead>
+                            <TableHead className="text-right">
+                              Unidades
+                            </TableHead>
+                            <TableHead className="text-right">
+                              Pedidos
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {produtos.produtos.map((p) => (
+                            <TableRow
+                              key={p.produtoId ?? p.produto}
+                              className={
+                                p.produtoId
+                                  ? "cursor-pointer hover:bg-muted/50"
+                                  : undefined
+                              }
+                              onClick={
+                                p.produtoId
+                                  ? () =>
+                                      router.push(
+                                        `/pipeline?produto=${p.produtoId}`
+                                      )
+                                  : undefined
+                              }
+                            >
+                              <TableCell className="font-medium">
+                                {p.produto}
+                              </TableCell>
+                              <TableCell className="text-right font-semibold tabular-nums">
+                                {p.unidades.toLocaleString("pt-BR")}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums text-muted-foreground">
+                                {p.pedidos}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        Clique numa linha para abrir o Pipeline já filtrado por
+                        esse produto.
+                        {produtos.naoIdentificados > 0
+                          ? ` ${produtos.naoIdentificados.toLocaleString("pt-BR")} unidade${produtos.naoIdentificados !== 1 ? "s" : ""} de itens que não casaram com nenhum produto do catálogo ficaram de fora.`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* ROW 3: Tempo por etapa + Funil real */}
             <div className="grid gap-6 lg:grid-cols-2">

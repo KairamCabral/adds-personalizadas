@@ -23,7 +23,7 @@ export async function getOrders() {
       labels:order_labels(id, label),
       watchers:order_watchers(user_id, profile:profiles(id, full_name, avatar_url)),
       bling_logs:supplier_data_logs(id, sent_at, status, error_message, fields_sent, supplier_id, suppliers(name)),
-      items:order_items(product_name, quantity),
+      items:order_items(product_id, product_name, quantity),
       attachments:attachments(id)
     `)
     .is("is_pipeline_managed", true)
@@ -63,7 +63,7 @@ export async function getArchivedOrders() {
       assigned_user:profiles!orders_assigned_to_fkey(id, full_name, avatar_url),
       created_user:profiles!orders_created_by_fkey(id, full_name, avatar_url),
       labels:order_labels(id, label),
-      items:order_items(product_name, quantity),
+      items:order_items(product_id, product_name, quantity),
       attachments:attachments(id)
     `)
     .not("archived_at", "is", null)
@@ -82,7 +82,7 @@ export async function getTrashedOrders() {
       client:clients(id, name, company, logo_url),
       assigned_user:profiles!orders_assigned_to_fkey(id, full_name, avatar_url),
       labels:order_labels(id, label),
-      items:order_items(product_name, quantity)
+      items:order_items(product_id, product_name, quantity)
     `)
     .not("deleted_at", "is", null)
     .order("deleted_at", { ascending: false });

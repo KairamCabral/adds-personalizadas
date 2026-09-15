@@ -24,6 +24,12 @@ describe("classifyRedeemOutcome", () => {
     expect(classifyRedeemOutcome("SEM_PERMISSAO").tone).toBe("error");
   });
 
+  it("CODIGO_INVALIDO → warning (dá para tentar de novo)", () => {
+    const f = classifyRedeemOutcome("CODIGO_INVALIDO");
+    expect(f.tone).toBe("warning");
+    expect(f.title).toBeTruthy();
+  });
+
   it("outcome desconhecido ou null → fallback de erro", () => {
     expect(classifyRedeemOutcome(null).tone).toBe("error");
     expect(classifyRedeemOutcome(undefined).tone).toBe("error");

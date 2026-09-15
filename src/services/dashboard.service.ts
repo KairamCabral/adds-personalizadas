@@ -194,6 +194,59 @@ export interface DashboardCrmData {
   pedidosCanceladosRecentes?: PedidoCanceladoRecente[];
 }
 
+// ============================================
+// PRODUTOS PERSONALIZADOS
+// ============================================
+
+export interface ProdutoPersonalizadoItem {
+  /** id do produto no catálogo; null quando o item só casou por nome */
+  produtoId: string | null;
+  produto: string;
+  unidades: number;
+  pedidos: number;
+}
+
+export interface ProdutosPersonalizadosData {
+  produtos: ProdutoPersonalizadoItem[];
+  totalUnidades: number;
+  totalPedidos: number;
+  /** unidades de itens que não casaram com nenhum produto do catálogo */
+  naoIdentificados: number;
+}
+
+/**
+ * Unidades personalizadas por produto nos pedidos CRIADOS no período — mesmo
+ * universo de `get_dashboard_crm` (pipeline-managed, não excluídos, corte
+ * 01/03/2026 ou com `status_changed`).
+ */
+export async function getDashboardProdutosPersonalizados(
+  range: PeriodRange
+): Promise<ProdutosPersonalizadosData> {
+  const supabase = createClient();
+
+  // TODO(types): a migration 20260915120000 já está aplicada — o cast sai
+  // assim que `pnpm db:types` rodar e o RPC entrar em database.types.ts.
+  const rpc = supabase.rpc as unknown as (
+    fn: string,
+    args: Record<string, unknown>
+  ) => Promise<{ data: unknown; error: { message: string } | null }>;
+
+  const { data, error } = await rpc("get_dashboard_produtos_personalizados", {
+    p_from: range.from,
+    p_to: range.to,
+  });
+
+  if (error) throw new Error(error.message);
+
+  const r = (data ?? null) as Partial<ProdutosPersonalizadosData> | null;
+  return {
+    produtos: r?.produtos ?? [],
+    totalUnidades: r?.totalUnidades ?? 0,
+    totalPedidos: r?.totalPedidos ?? 0,
+    naoIdentificados: r?.naoIdentificados ?? 0,
+  };
+}
+
 export async function getDashboardCrmData(
   range: PeriodRange
 ): Promise<DashboardCrmData> {

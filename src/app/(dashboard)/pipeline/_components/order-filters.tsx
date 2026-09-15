@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryState, parseAsString } from "nuqs";
+import { useQuery } from "@tanstack/react-query";
 import { Filter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,14 +21,24 @@ import { LABELS, ORDER_TYPES, PRIORITIES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getPersonalizedProducts } from "@/services/products.service";
 export function OrderFilters() {
   const [responsavel, setResponsavel] = useQueryState("responsavel", parseAsString);
   const [prioridade, setPrioridade] = useQueryState("prioridade", parseAsString);
   const [tipo, setTipo] = useQueryState("tipo", parseAsString);
   const [etiqueta, setEtiqueta] = useQueryState("etiqueta", parseAsString);
+  const [produto, setProduto] = useQueryState("produto", parseAsString);
   const [busca, setBusca] = useQueryState("busca", parseAsString);
   const [open, setOpen] = useState(false);
   const [profiles, setProfiles] = useState<{ id: string; full_name: string }[]>([]);
+
+  // Produtos personalizados (Escova ADDS Ultra, Raspador de Língua, ...) —
+  // cacheado pelo TanStack Query: a lista muda muito pouco.
+  const { data: produtos = [] } = useQuery({
+    queryKey: ["products", "personalizados"],
+    queryFn: getPersonalizedProducts,
+    staleTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
     const supabase = createClient();
@@ -45,6 +56,7 @@ export function OrderFilters() {
     !!prioridade,
     !!tipo,
     !!etiqueta,
+    !!produto,
     !!busca,
   ].filter(Boolean).length;
 
@@ -53,6 +65,7 @@ export function OrderFilters() {
     setPrioridade(null);
     setTipo(null);
     setEtiqueta(null);
+    setProduto(null);
     setBusca(null);
     setOpen(false);
   };
@@ -173,6 +186,33 @@ export function OrderFilters() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              Produto
+            </label>
+            <Select
+              value={produto ?? "__all__"}
+              onValueChange={(v) => setProduto(v === "__all__" ? null : v)}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__" className="text-xs">
+                  Todos
+                </SelectItem>
+                {produtos.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              Mostra só os cards que têm esse produto personalizado.
+            </p>
           </div>
 
           <div className="space-y-2">
