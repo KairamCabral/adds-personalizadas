@@ -27,6 +27,23 @@ export async function getActiveProducts() {
   return data;
 }
 
+/**
+ * Produtos personalizados ativos (id + nome) — alimenta o filtro "Produto" do
+ * Pipeline. `product_type = 'personalizado'` é o mesmo critério usado pela
+ * importação de pedidos do Tiny (`src/lib/tiny/tiny-order-import.ts`).
+ */
+export async function getPersonalizedProducts() {
+  const { data, error } = await supabase
+    .from("products")
+    .select("id, name")
+    .eq("product_type", "personalizado")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function getProductById(id: string) {
   const { data, error } = await supabase
     .from("products")

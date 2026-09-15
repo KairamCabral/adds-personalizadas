@@ -113,14 +113,19 @@ export interface RedeemSearchResult {
   short_code: string;
   status: GiftStatus;
   redeemed_at: string | null;
+  /** id do pré-cadastro — necessário para corrigir o telefone no balcão */
+  registration_id: string;
   name: string | null;
   document: string | null;
+  phone: string | null;
   contact_type: ContactType;
 }
 
 interface RegEmbed {
+  id: string;
   name: string | null;
   document: string | null;
+  phone: string | null;
   contact_type: ContactType;
 }
 interface RedemptionSearchRow {
@@ -128,24 +133,66 @@ interface RedemptionSearchRow {
   short_code: string;
   status: GiftStatus;
   redeemed_at: string | null;
+  registration_id: string;
   event_registrations: RegEmbed | RegEmbed[] | null;
 }
 interface RegistrationSearchRow {
+  id: string;
   name: string | null;
   document: string | null;
+  phone: string | null;
   contact_type: ContactType;
   event_gift_redemptions: RedemptionEmbed | RedemptionEmbed[] | null;
 }
 
 const REDEMPTION_SELECT =
-  "token, short_code, status, redeemed_at, event_registrations(name, document, contact_type)";
+  "token, short_code, status, redeemed_at, registration_id, event_registrations(id, name, document, phone, contact_type)";
 const REGISTRATION_SELECT =
-  "name, document, contact_type, event_gift_redemptions(token, short_code, status, redeemed_at)";
+  "id, name, document, phone, contact_type, event_gift_redemptions(token, short_code, status, redeemed_at)";
+
+/**
+ * Busca por sufixo de telefone (`phone_digits`, coluna gerada na migration
+ * 20260915130000_congressos_confirm_code.sql).
+ *
+ * Falha de forma isolada: no balcão, um erro aqui não pode derrubar os outros
+ * caminhos de busca (código, CPF, nome) que rodam na mesma consulta.
+ */
+async function searchByPhone(
+  editionId: string,
+  digits: string
+): Promise<RedeemSearchResult[]> {
+  const { data, error } = await supabase
+    .from("event_registrations")
+    .select(REGISTRATION_SELECT)
+    .eq("edition_id", editionId)
+    // TODO(types): tirar o cast depois de `pnpm db:types`.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .like("phone_digits" as any, `%${digits}`)
+    .order("name", { ascending: true })
+    .limit(10);
+  if (error) {
+    console.warn("[congressos/retirada] busca por telefone:", error.message);
+    return [];
+  }
+  return fromRegistrationRows(data);
+}
+
+/** Junta resultados de caminhos diferentes sem repetir o mesmo brinde. */
+function mergeResults(...lists: RedeemSearchResult[][]): RedeemSearchResult[] {
+  const byToken = new Map<string, RedeemSearchResult>();
+  for (const list of lists) {
+    for (const r of list) if (!byToken.has(r.token)) byToken.set(r.token, r);
+  }
+  return [...byToken.values()];
+}
 
 /**
  * Resolve o brinde a partir do que o operador digitou/escaneou: token (QR),
- * código de 6 dígitos, CPF/CNPJ ou nome. Um leitor de código de barras USB
- * "digita" o valor e dá Enter — cai aqui igual.
+ * código de 6 dígitos, CPF/CNPJ, telefone ou nome. Um leitor de código de
+ * barras USB "digita" o valor e dá Enter — cai aqui igual.
+ *
+ * CPF e celular têm os mesmos 11 dígitos: nesse caso os dois caminhos rodam e
+ * os resultados são unidos (dedup por token).
  */
 export async function searchGiftForRedeem(
   editionId: string,
@@ -166,7 +213,8 @@ export async function searchGiftForRedeem(
     return fromRedemptionRows(data);
   }
 
-  // Código de 6 dígitos (único por edição)
+  // Código de 6 dígitos (único por edição). Se não achar, ainda pode ser um
+  // pedaço de telefone — cai no bloco de dígitos abaixo.
   if (digits.length === 6) {
     const { data, error } = await supabase
       .from("event_gift_redemptions")
@@ -174,18 +222,31 @@ export async function searchGiftForRedeem(
       .eq("edition_id", editionId)
       .eq("short_code", digits);
     if (error) throw error;
-    return fromRedemptionRows(data);
+    const found = fromRedemptionRows(data);
+    if (found.length > 0) return found;
   }
 
-  // CPF (11) ou CNPJ (14)
-  if (digits.length === 11 || digits.length === 14) {
-    const { data, error } = await supabase
-      .from("event_registrations")
-      .select(REGISTRATION_SELECT)
-      .eq("edition_id", editionId)
-      .eq("document", digits);
-    if (error) throw error;
-    return fromRegistrationRows(data);
+  // CPF/CNPJ e/ou telefone
+  if (digits.length >= 6 && digits.length <= 14) {
+    const lists: RedeemSearchResult[][] = [];
+
+    if (digits.length === 11 || digits.length === 14) {
+      const { data, error } = await supabase
+        .from("event_registrations")
+        .select(REGISTRATION_SELECT)
+        .eq("edition_id", editionId)
+        .eq("document", digits);
+      if (error) throw error;
+      lists.push(fromRegistrationRows(data));
+    }
+
+    // 6–13 dígitos: sufixo do telefone (com ou sem DDD/DDI).
+    if (digits.length <= 13) {
+      lists.push(await searchByPhone(editionId, digits));
+    }
+
+    const merged = mergeResults(...lists);
+    if (merged.length > 0 || digits.length === q.length) return merged;
   }
 
   // Nome (mín. 2 chars)
@@ -213,8 +274,10 @@ function fromRedemptionRows(data: unknown): RedeemSearchResult[] {
       short_code: r.short_code,
       status: r.status,
       redeemed_at: r.redeemed_at,
+      registration_id: r.registration_id,
       name: reg?.name ?? null,
       document: reg?.document ?? null,
+      phone: reg?.phone ?? null,
       contact_type: reg?.contact_type ?? null,
     };
   });
@@ -231,26 +294,118 @@ function fromRegistrationRows(data: unknown): RedeemSearchResult[] {
       short_code: red.short_code,
       status: red.status,
       redeemed_at: red.redeemed_at,
+      registration_id: r.id,
       name: r.name,
       document: r.document,
+      phone: r.phone,
       contact_type: r.contact_type,
     });
   }
   return out;
 }
 
-// ---- Retirada (RPC SECURITY DEFINER) ----
+// ---- Confirmação por WhatsApp (RPC SECURITY DEFINER) ----
 
-export type RedeemResult =
-  Database["public"]["Functions"]["redeem_gift"]["Returns"][number];
+/**
+ * TODO(types): a migration 20260915130000 já está aplicada — os RPCs abaixo
+ * entram em `database.types.ts` assim que `pnpm db:types` rodar. Até lá, uma
+ * única porta de entrada não-tipada, aqui.
+ */
+type LooseRpc = (
+  fn: string,
+  args: Record<string, unknown>
+) => Promise<{ data: unknown; error: { message: string } | null }>;
 
-/** Marca o brinde como RETIRADO de forma atômica. Retorna o outcome do RPC. */
-export async function redeemGift(token: string): Promise<RedeemResult | null> {
-  const { data, error } = await supabase.rpc("redeem_gift", {
+export interface IssueConfirmCodeResult {
+  success: boolean;
+  /** OK · SEM_TELEFONE · JA_RETIRADO · CANCELADO · NAO_ENCONTRADO · SEM_PERMISSAO */
+  outcome: string;
+  code: string | null;
+  phone: string | null;
+  participant_name: string | null;
+  edition_name: string | null;
+  gift_name: string | null;
+}
+
+/**
+ * Emite (ou reaproveita, se tiver menos de 10 min e for o mesmo telefone) o
+ * código de 4 dígitos que o operador manda pelo WhatsApp.
+ */
+export async function issueGiftConfirmCode(
+  token: string
+): Promise<IssueConfirmCodeResult | null> {
+  const rpc = supabase.rpc as unknown as LooseRpc;
+  const { data, error } = await rpc("issue_gift_confirm_code", {
     p_token: token,
   });
-  if (error) throw error;
-  return data?.[0] ?? null;
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as IssueConfirmCodeResult[];
+  return rows[0] ?? null;
+}
+
+// ---- Retirada (RPC SECURITY DEFINER) ----
+
+export interface RedeemResult {
+  success: boolean;
+  /** RETIRADO · JA_RETIRADO · CANCELADO · CODIGO_INVALIDO · NAO_ENCONTRADO · SEM_PERMISSAO */
+  outcome: string;
+  redeemed_at: string | null;
+  redeemed_by_name: string | null;
+  /** CODIGO quando conferido no WhatsApp; SEM_CODIGO quando entregue direto */
+  verification: string | null;
+}
+
+/**
+ * Marca o brinde como RETIRADO de forma atômica. Com `confirmCode`, o RPC só
+ * entrega se o código conferir (senão devolve CODIGO_INVALIDO sem consumir
+ * nada). Sem código, a entrega acontece e fica registrada como SEM_CODIGO.
+ */
+export async function redeemGift(
+  token: string,
+  confirmCode?: string | null
+): Promise<RedeemResult | null> {
+  const rpc = supabase.rpc as unknown as LooseRpc;
+  const { data, error } = await rpc("redeem_gift", {
+    p_token: token,
+    p_confirm_code: confirmCode ?? null,
+  });
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as RedeemResult[];
+  return rows[0] ?? null;
+}
+
+// ---- Correção de telefone no balcão ----
+
+export interface UpdatePhoneResult {
+  success: boolean;
+  phone: string;
+  /** true quando o contato já foi sincronizado com o Tiny com o número antigo */
+  tinyAlreadySynced: boolean;
+}
+
+/**
+ * Corrige o telefone do pré-cadastro. Passa por rota de API (service role):
+ * PRESTADOR só tem SELECT em `event_registrations` pela RLS.
+ */
+export async function updateRegistrationPhone(
+  registrationId: string,
+  phone: string
+): Promise<UpdatePhoneResult> {
+  const res = await fetch(
+    `/api/congressos/registrations/${registrationId}/phone`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    }
+  );
+  const json = (await res.json().catch(() => null)) as
+    | (UpdatePhoneResult & { error?: string })
+    | null;
+  if (!res.ok || !json?.success) {
+    throw new Error(json?.error ?? "Não foi possível salvar o telefone.");
+  }
+  return json;
 }
 
 // ---- Edições ativas (para o picker do console de retirada) ----

@@ -11,17 +11,42 @@ import {
   XCircle,
   ArrowRight,
   PackageCheck,
+  MessageCircle,
+  Pencil,
+  Phone,
+  ShieldCheck,
+  ShieldOff,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { cn, formatPhoneInput, maskPhone } from "@/lib/utils";
 import {
   searchGiftForRedeem,
   redeemGift,
+  issueGiftConfirmCode,
+  updateRegistrationPhone,
   type RedeemSearchResult,
 } from "@/services/congressos-gifts.service";
 import { classifyRedeemOutcome } from "@/lib/congressos/redeem-outcome";
+import {
+  buildGiftCodeMessage,
+  buildGiftCodeWaUrl,
+  isPhoneComplete,
+  isValidConfirmCode,
+  sanitizeConfirmCode,
+} from "@/lib/congressos/confirm-code";
 
 interface RedeemConsoleProps {
   editionId: string;
@@ -33,6 +58,14 @@ interface SessionEntry {
   name: string;
   shortCode: string;
   at: string; // HH:mm
+  comCodigo: boolean;
+}
+
+/** Código emitido para o participante ativo (vive só enquanto o card está aberto). */
+interface IssuedCode {
+  code: string;
+  phone: string;
+  waUrl: string | null;
 }
 
 function maskDoc(doc: string | null): string {
@@ -69,7 +102,20 @@ export function RedeemConsole({
   const [sessionCount, setSessionCount] = useState(0);
   const [sessionLog, setSessionLog] = useState<SessionEntry[]>([]);
 
+  // Confirmação por WhatsApp do participante ativo
+  const [issued, setIssued] = useState<IssuedCode | null>(null);
+  const [issuing, setIssuing] = useState(false);
+  const [typedCode, setTypedCode] = useState("");
+  const [askNoCode, setAskNoCode] = useState(false);
+
+  // Correção de telefone
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [tinyWarning, setTinyWarning] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
   const focusInput = () => inputRef.current?.focus();
 
   // Refoca o campo ao trocar de edição (tablet no estande).
@@ -81,18 +127,35 @@ export function RedeemConsole({
     focusInput();
   }, [editionId]);
 
+  /** Zera tudo que é específico do participante ao trocar de card. */
+  const resetConfirmState = () => {
+    setIssued(null);
+    setIssuing(false);
+    setTypedCode("");
+    setEditingPhone(false);
+    setPhoneDraft("");
+    setSavingPhone(false);
+    setTinyWarning(false);
+    setAskNoCode(false);
+  };
+
+  const selectActive = (r: RedeemSearchResult | null) => {
+    resetConfirmState();
+    setActive(r);
+  };
+
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const q = query.trim();
     if (!q || searching) return;
     setSearching(true);
     setSearched(false);
-    setActive(null);
+    selectActive(null);
     try {
       const found = await searchGiftForRedeem(editionId, q);
       setResults(found);
       setSearched(true);
-      if (found.length === 1) setActive(found[0]);
+      if (found.length === 1) selectActive(found[0]);
     } catch {
       toast.error("Não foi possível buscar agora. Tente de novo.");
     } finally {
@@ -103,19 +166,97 @@ export function RedeemConsole({
   const resetForNext = () => {
     setQuery("");
     setResults([]);
-    setActive(null);
+    selectActive(null);
     setSearched(false);
     focusInput();
   };
 
-  const handleRedeem = async (r: RedeemSearchResult) => {
+  const handleIssueCode = async () => {
+    if (!active || issuing) return;
+    setIssuing(true);
+    try {
+      const res = await issueGiftConfirmCode(active.token);
+      if (!res?.success || !res.code) {
+        if (res?.outcome === "SEM_TELEFONE") {
+          toast.error("Sem telefone no cadastro", {
+            description: "Corrija o número ao lado para poder enviar o código.",
+          });
+          setEditingPhone(true);
+          setPhoneDraft(formatPhoneInput(active.phone ?? ""));
+        } else {
+          const fb = classifyRedeemOutcome(res?.outcome);
+          toast.error(fb.title, { description: fb.description });
+        }
+        return;
+      }
+      const message = buildGiftCodeMessage({
+        participantName: res.participant_name ?? active.name,
+        editionName: res.edition_name ?? editionName,
+        giftName: res.gift_name ?? giftName,
+        code: res.code,
+      });
+      setIssued({
+        code: res.code,
+        phone: res.phone ?? active.phone ?? "",
+        waUrl: buildGiftCodeWaUrl(res.phone ?? active.phone, message),
+      });
+      setTypedCode("");
+      setTimeout(() => codeRef.current?.focus(), 50);
+    } catch {
+      toast.error("Não foi possível gerar o código. Tente de novo.");
+    } finally {
+      setIssuing(false);
+    }
+  };
+
+  const handleSavePhone = async () => {
+    if (!active || savingPhone) return;
+    if (!isPhoneComplete(phoneDraft)) {
+      toast.error("Telefone incompleto", {
+        description: "Informe DDD + número.",
+      });
+      return;
+    }
+    setSavingPhone(true);
+    try {
+      const res = await updateRegistrationPhone(
+        active.registration_id,
+        phoneDraft
+      );
+      // O código vigente foi para o número antigo — a rota já o invalidou.
+      setIssued(null);
+      setTypedCode("");
+      setActive({ ...active, phone: res.phone });
+      setResults((rs) =>
+        rs.map((r) =>
+          r.registration_id === active.registration_id
+            ? { ...r, phone: res.phone }
+            : r
+        )
+      );
+      setEditingPhone(false);
+      setTinyWarning(res.tinyAlreadySynced);
+      toast.success("Telefone atualizado.");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao salvar o telefone."
+      );
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
+  const handleRedeem = async (r: RedeemSearchResult, confirmCode?: string) => {
     if (redeeming) return;
     setRedeeming(true);
     try {
-      const res = await redeemGift(r.token);
+      const res = await redeemGift(r.token, confirmCode ?? null);
       const fb = classifyRedeemOutcome(res?.outcome);
       if (res?.success) {
-        toast.success(fb.title, { description: `${r.name ?? "Participante"}` });
+        const comCodigo = res.verification === "CODIGO";
+        toast.success(fb.title, {
+          description: `${r.name ?? "Participante"}${comCodigo ? " · confirmado no WhatsApp" : " · sem confirmação por código"}`,
+        });
         setSessionCount((c) => c + 1);
         setSessionLog((log) =>
           [
@@ -126,14 +267,20 @@ export function RedeemConsole({
                 hour: "2-digit",
                 minute: "2-digit",
               }),
+              comCodigo,
             },
             ...log,
           ].slice(0, 8)
         );
         resetForNext();
+      } else if (res?.outcome === "CODIGO_INVALIDO") {
+        toast(fb.title, { description: fb.description });
+        setTypedCode("");
+        codeRef.current?.focus();
       } else {
         // JA_RETIRADO / CANCELADO / NAO_ENCONTRADO / SEM_PERMISSAO
-        if (fb.tone === "warning") toast(fb.title, { description: fb.description });
+        if (fb.tone === "warning")
+          toast(fb.title, { description: fb.description });
         else toast.error(fb.title, { description: fb.description });
         // Reflete o estado real no card (ex.: já retirado).
         setActive({
@@ -163,7 +310,7 @@ export function RedeemConsole({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Código de 6 dígitos, CPF ou nome"
+              placeholder="Código de 6 dígitos, telefone, CPF ou nome"
               className="h-14 pl-12 pr-28 text-lg"
               autoComplete="off"
               autoCorrect="off"
@@ -196,11 +343,29 @@ export function RedeemConsole({
             result={active}
             giftName={giftName}
             redeeming={redeeming}
-            onRedeem={() => handleRedeem(active)}
+            issuing={issuing}
+            issued={issued}
+            typedCode={typedCode}
+            codeRef={codeRef}
+            editingPhone={editingPhone}
+            phoneDraft={phoneDraft}
+            savingPhone={savingPhone}
+            tinyWarning={tinyWarning}
+            onTypedCodeChange={(v) => setTypedCode(sanitizeConfirmCode(v))}
+            onIssueCode={handleIssueCode}
+            onStartEditPhone={() => {
+              setPhoneDraft(formatPhoneInput(active.phone ?? ""));
+              setEditingPhone(true);
+            }}
+            onPhoneDraftChange={(v) => setPhoneDraft(formatPhoneInput(v))}
+            onCancelEditPhone={() => setEditingPhone(false)}
+            onSavePhone={handleSavePhone}
+            onRedeemWithCode={() => handleRedeem(active, typedCode)}
+            onAskNoCode={() => setAskNoCode(true)}
           />
         )}
 
-        {/* Vários resultados (busca por nome) → escolher */}
+        {/* Vários resultados (busca por nome/telefone) → escolher */}
         {!active && results.length > 1 && (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
@@ -210,13 +375,14 @@ export function RedeemConsole({
               <button
                 key={r.token}
                 type="button"
-                onClick={() => setActive(r)}
+                onClick={() => selectActive(r)}
                 className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-secondary/60"
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium">{r.name ?? "—"}</p>
                   <p className="text-xs text-muted-foreground">
                     {maskDoc(r.document)} · código {r.short_code}
+                    {r.phone ? ` · ${maskPhone(r.phone)}` : ""}
                   </p>
                 </div>
                 <StatusPill status={r.status} />
@@ -233,7 +399,7 @@ export function RedeemConsole({
             </div>
             <p className="font-medium">Nenhum brinde encontrado</p>
             <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-              Confira o código, o CPF ou o nome e tente novamente.
+              Confira o código, o telefone, o CPF ou o nome e tente novamente.
             </p>
           </div>
         )}
@@ -278,8 +444,13 @@ export function RedeemConsole({
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium">{s.name}</p>
-                  <p className="font-mono text-[11px] text-muted-foreground">
+                  <p className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
                     {s.shortCode}
+                    {s.comCodigo ? (
+                      <ShieldCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <ShieldOff className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                    )}
                   </p>
                 </div>
                 <span className="shrink-0 text-xs text-muted-foreground">
@@ -290,6 +461,30 @@ export function RedeemConsole({
           </div>
         )}
       </aside>
+
+      <AlertDialog open={askNoCode} onOpenChange={setAskNoCode}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Entregar sem confirmação?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O participante não confirmou o código enviado pelo WhatsApp. A
+              entrega pode ser feita assim mesmo, mas fica registrada como{" "}
+              <strong>sem confirmação</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setAskNoCode(false);
+                if (active) void handleRedeem(active);
+              }}
+            >
+              Entregar assim mesmo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -320,20 +515,55 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+interface ResultCardProps {
+  result: RedeemSearchResult;
+  giftName: string | null;
+  redeeming: boolean;
+  issuing: boolean;
+  issued: IssuedCode | null;
+  typedCode: string;
+  codeRef: React.RefObject<HTMLInputElement | null>;
+  editingPhone: boolean;
+  phoneDraft: string;
+  savingPhone: boolean;
+  tinyWarning: boolean;
+  onTypedCodeChange: (v: string) => void;
+  onIssueCode: () => void;
+  onStartEditPhone: () => void;
+  onPhoneDraftChange: (v: string) => void;
+  onCancelEditPhone: () => void;
+  onSavePhone: () => void;
+  onRedeemWithCode: () => void;
+  onAskNoCode: () => void;
+}
+
 function ResultCard({
   result,
   giftName,
   redeeming,
-  onRedeem,
-}: {
-  result: RedeemSearchResult;
-  giftName: string | null;
-  redeeming: boolean;
-  onRedeem: () => void;
-}) {
+  issuing,
+  issued,
+  typedCode,
+  codeRef,
+  editingPhone,
+  phoneDraft,
+  savingPhone,
+  tinyWarning,
+  onTypedCodeChange,
+  onIssueCode,
+  onStartEditPhone,
+  onPhoneDraftChange,
+  onCancelEditPhone,
+  onSavePhone,
+  onRedeemWithCode,
+  onAskNoCode,
+}: ResultCardProps) {
   const pendente = result.status === "PENDENTE";
   const retirado = result.status === "RETIRADO";
   const cancelado = result.status === "CANCELADO";
+
+  const temTelefone = isPhoneComplete(result.phone);
+  const codigoOk = isValidConfirmCode(typedCode);
 
   return (
     <div
@@ -364,26 +594,204 @@ function ResultCard({
         <StatusPill status={result.status} />
       </div>
 
+      {pendente && (
+        <div className="mt-5 rounded-xl border bg-background/70 p-4">
+          <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <MessageCircle className="h-3.5 w-3.5" />
+            Confirmação por WhatsApp
+          </p>
+
+          {/* Telefone: exibição + edição inline */}
+          <div className="mt-3">
+            {editingPhone ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={phoneDraft}
+                  onChange={(e) => onPhoneDraftChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      onSavePhone();
+                    }
+                    if (e.key === "Escape") onCancelEditPhone();
+                  }}
+                  placeholder="(11) 91234-5678"
+                  inputMode="numeric"
+                  autoFocus
+                  className="h-10 w-[180px] text-base"
+                />
+                <Button
+                  size="sm"
+                  onClick={onSavePhone}
+                  disabled={savingPhone || !isPhoneComplete(phoneDraft)}
+                >
+                  {savingPhone ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Salvar"
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onCancelEditPhone}
+                  disabled={savingPhone}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Phone className="h-4 w-4 text-muted-foreground" />
+                <span
+                  className={cn(
+                    "text-base font-semibold tabular-nums",
+                    !temTelefone && "text-muted-foreground"
+                  )}
+                >
+                  {temTelefone ? maskPhone(result.phone ?? "") : "Sem telefone"}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 gap-1 px-2 text-xs"
+                  onClick={onStartEditPhone}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {temTelefone ? "Editar" : "Informar"}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {tinyWarning && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Este contato já foi sincronizado com o Tiny — ajuste o número por
+              lá também.
+            </p>
+          )}
+
+          {/* Estado A: ainda não gerou código */}
+          {!issued && (
+            <Button
+              variant="outline"
+              className="mt-4 h-11 w-full gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+              onClick={onIssueCode}
+              disabled={issuing || !temTelefone || editingPhone}
+            >
+              {issuing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageCircle className="h-4 w-4" />
+              )}
+              Enviar código no WhatsApp
+            </Button>
+          )}
+
+          {/* Estado B: código gerado — abrir conversa + conferir */}
+          {issued && (
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs text-muted-foreground">
+                  Código gerado:
+                </span>
+                <span className="rounded-lg bg-muted px-3 py-1 font-mono text-lg font-bold tracking-[0.3em]">
+                  {issued.code}
+                </span>
+              </div>
+
+              {issued.waUrl ? (
+                <a
+                  href={issued.waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Abrir WhatsApp com {maskPhone(issued.phone)}
+                </a>
+              ) : (
+                <p className="text-xs text-destructive">
+                  Telefone inválido para o WhatsApp — corrija o número acima.
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor="confirm-code"
+                  className="text-xs text-muted-foreground"
+                >
+                  Código informado pelo participante:
+                </label>
+                <Input
+                  id="confirm-code"
+                  ref={codeRef}
+                  value={typedCode}
+                  onChange={(e) => onTypedCodeChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && codigoOk && !redeeming) {
+                      e.preventDefault();
+                      onRedeemWithCode();
+                    }
+                  }}
+                  placeholder="0000"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className="h-11 w-[110px] text-center font-mono text-lg tracking-[0.3em]"
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 text-xs"
+                  onClick={onIssueCode}
+                  disabled={issuing}
+                >
+                  Reenviar
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="mt-5">
         {pendente && (
-          <Button
-            size="lg"
-            className="h-14 w-full text-base"
-            onClick={onRedeem}
-            disabled={redeeming}
-          >
-            {redeeming ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Confirmando...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="mr-2 h-5 w-5" />
-                Confirmar retirada
-              </>
-            )}
-          </Button>
+          <div className="space-y-2">
+            <Button
+              size="lg"
+              className="h-14 w-full text-base"
+              onClick={onRedeemWithCode}
+              disabled={redeeming || !codigoOk}
+            >
+              {redeeming ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Confirmando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-5 w-5" />
+                  Confirmar retirada
+                </>
+              )}
+            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-1 text-xs text-muted-foreground">
+              <span>
+                {issued
+                  ? "Participante não recebeu o código?"
+                  : "Sem WhatsApp na mão?"}
+              </span>
+              <Button
+                variant="link"
+                className="h-auto p-0 text-xs"
+                onClick={onAskNoCode}
+                disabled={redeeming}
+              >
+                Entregar sem confirmação
+              </Button>
+            </div>
+          </div>
         )}
 
         {retirado && (

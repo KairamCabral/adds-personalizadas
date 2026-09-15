@@ -3,7 +3,8 @@
  * Função pura (testável) — sem React, sem side-effects.
  *
  * Outcomes possíveis (ver `redeem_gift` na migration do módulo Congressos):
- * RETIRADO · JA_RETIRADO · CANCELADO · NAO_ENCONTRADO · SEM_PERMISSAO.
+ * RETIRADO · JA_RETIRADO · CANCELADO · NAO_ENCONTRADO · SEM_PERMISSAO ·
+ * CODIGO_INVALIDO (código de confirmação do WhatsApp não confere).
  */
 export type RedeemTone = "success" | "warning" | "error";
 
@@ -34,6 +35,13 @@ export function classifyRedeemOutcome(
         tone: "error",
         title: "Brinde cancelado",
         description: "Este brinde foi cancelado e não pode ser entregue.",
+      };
+    case "CODIGO_INVALIDO":
+      return {
+        tone: "warning",
+        title: "Código não confere",
+        description:
+          "Confira o código na mensagem do WhatsApp ou envie um novo.",
       };
     case "NAO_ENCONTRADO":
       return {
