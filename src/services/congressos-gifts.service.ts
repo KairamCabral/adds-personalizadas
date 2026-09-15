@@ -316,6 +316,17 @@ type LooseRpc = (
   args: Record<string, unknown>
 ) => Promise<{ data: unknown; error: { message: string } | null }>;
 
+/**
+ * Chama um RPC ainda ausente de `database.types.ts`.
+ *
+ * ⚠️ Tem que ser chamado como MÉTODO de `supabase`. Guardar `supabase.rpc`
+ * numa variável desanexa o método e perde o `this` — o corpo do rpc faz
+ * `return this.rest.rpc(...)` e estoura TypeError em runtime (o build passa).
+ */
+function looseRpc(fn: string, args: Record<string, unknown>) {
+  return (supabase as unknown as { rpc: LooseRpc }).rpc(fn, args);
+}
+
 export interface IssueConfirmCodeResult {
   success: boolean;
   /** OK · SEM_TELEFONE · JA_RETIRADO · CANCELADO · NAO_ENCONTRADO · SEM_PERMISSAO */
@@ -334,8 +345,7 @@ export interface IssueConfirmCodeResult {
 export async function issueGiftConfirmCode(
   token: string
 ): Promise<IssueConfirmCodeResult | null> {
-  const rpc = supabase.rpc as unknown as LooseRpc;
-  const { data, error } = await rpc("issue_gift_confirm_code", {
+  const { data, error } = await looseRpc("issue_gift_confirm_code", {
     p_token: token,
   });
   if (error) throw new Error(error.message);
@@ -364,8 +374,7 @@ export async function redeemGift(
   token: string,
   confirmCode?: string | null
 ): Promise<RedeemResult | null> {
-  const rpc = supabase.rpc as unknown as LooseRpc;
-  const { data, error } = await rpc("redeem_gift", {
+  const { data, error } = await looseRpc("redeem_gift", {
     p_token: token,
     p_confirm_code: confirmCode ?? null,
   });
