@@ -202,8 +202,12 @@ export function RedeemConsole({
       });
       setTypedCode("");
       setTimeout(() => codeRef.current?.focus(), 50);
-    } catch {
-      toast.error("Não foi possível gerar o código. Tente de novo.");
+    } catch (err) {
+      // O motivo real importa no balcão: sem ele o operador não sabe se é
+      // conexão, permissão ou banco — e eu não consigo diagnosticar remoto.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[congressos/retirada] issue_gift_confirm_code:", msg);
+      toast.error("Não foi possível gerar o código", { description: msg });
     } finally {
       setIssuing(false);
     }

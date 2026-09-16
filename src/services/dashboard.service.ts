@@ -226,12 +226,18 @@ export async function getDashboardProdutosPersonalizados(
 
   // TODO(types): a migration 20260915120000 já está aplicada — o cast sai
   // assim que `pnpm db:types` rodar e o RPC entrar em database.types.ts.
-  const rpc = supabase.rpc as unknown as (
+  //
+  // ⚠️ O cast é no OBJETO, não no método: guardar `supabase.rpc` numa variável
+  // desanexa o método e perde o `this` (o corpo faz `this.rest.rpc(...)`),
+  // estourando TypeError em runtime sem o build reclamar.
+  type LooseRpc = (
     fn: string,
     args: Record<string, unknown>
   ) => Promise<{ data: unknown; error: { message: string } | null }>;
 
-  const { data, error } = await rpc("get_dashboard_produtos_personalizados", {
+  const { data, error } = await (
+    supabase as unknown as { rpc: LooseRpc }
+  ).rpc("get_dashboard_produtos_personalizados", {
     p_from: range.from,
     p_to: range.to,
   });
