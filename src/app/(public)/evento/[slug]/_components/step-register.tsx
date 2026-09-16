@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatPhoneInput } from "@/lib/utils";
+import { phoneIssueMessage, validateBrMobile } from "@/lib/congressos/phone-br";
+import { useState } from "react";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { ConsentCheckbox } from "./consent-checkbox";
 import { TurnstileWidget, TURNSTILE_ENABLED } from "./turnstile-widget";
@@ -52,9 +54,18 @@ export function StepRegister({
   error,
 }: StepRegisterProps) {
   const whatsappDigits = form.whatsapp.replace(/\D/g, "");
+  const whatsappCheck = validateBrMobile(form.whatsapp);
+  // Só reclama depois que a pessoa completou o número ou saiu do campo — nada
+  // de erro em vermelho enquanto ela ainda está digitando o DDD.
+  const [whatsappTouched, setWhatsappTouched] = useState(false);
+  const whatsappError =
+    !whatsappCheck.ok && (whatsappTouched || whatsappDigits.length >= 11)
+      ? phoneIssueMessage(whatsappCheck.reason)
+      : null;
+
   const baseReady =
     form.name.trim().length >= 2 &&
-    whatsappDigits.length >= 10 &&
+    whatsappCheck.ok &&
     !!form.contactType &&
     consent;
   // Turnstile exige o token só quando configurado (env) E habilitado na edição
@@ -102,9 +113,17 @@ export function StepRegister({
             onChange={(e) =>
               onFormChange({ whatsapp: formatPhoneInput(e.target.value) })
             }
+            onBlur={() => setWhatsappTouched(true)}
             placeholder="(00) 00000-0000"
-            className="h-12"
+            className={cn("h-12", whatsappError && "border-destructive")}
+            aria-invalid={!!whatsappError}
+            aria-describedby={whatsappError ? "whatsapp-erro" : undefined}
           />
+          {whatsappError && (
+            <p id="whatsapp-erro" className="text-sm text-destructive">
+              {whatsappError}
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasPermission } from "@/lib/permissions";
+import { phoneIssueMessage, validateBrMobile } from "@/lib/congressos/phone-br";
 import type { UserRole } from "@/lib/constants";
 
 /**
@@ -26,10 +27,17 @@ const bodySchema = z.object({
   phone: z
     .string()
     .trim()
-    .refine((v) => {
-      const d = v.replace(/\D/g, "");
-      return d.length === 10 || d.length === 11;
-    }, "Telefone deve ter DDD + 8 ou 9 dígitos."),
+    .superRefine((v, ctx) => {
+      // Mesma regra do cadastro público: o balcão não pode ser a porta de
+      // entrada do lixo que o wizard barra.
+      const res = validateBrMobile(v);
+      if (!res.ok) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: phoneIssueMessage(res.reason),
+        });
+      }
+    }),
 });
 
 export async function PATCH(
@@ -76,6 +84,13 @@ export async function PATCH(
     const admin = createAdminClient();
     const phone = parsed.data.phone;
 
+    // Telefone anterior: é o que vira `old_data` no log da correção.
+    const { data: antes } = await admin
+      .from("event_registrations")
+      .select("phone")
+      .eq("id", id)
+      .maybeSingle();
+
     const { data: updated, error: updateErr } = await admin
       .from("event_registrations")
       .update({ phone })
@@ -88,6 +103,25 @@ export async function PATCH(
       return NextResponse.json(
         { error: "Pré-cadastro não encontrado." },
         { status: 404 }
+      );
+    }
+
+    // Registra a correção. É a métrica de qualidade do telefone: depois do
+    // congresso, contar estas linhas contra o total de retiradas responde se
+    // vale investir em verificação por SMS/WhatsApp API.
+    // Best-effort: falha aqui não pode travar a entrega do brinde no balcão.
+    const { error: auditErr } = await admin.from("audit_logs").insert({
+      user_id: user.id,
+      action: "UPDATE",
+      entity_type: "event_registration",
+      entity_id: id,
+      old_data: { phone: antes?.phone ?? null },
+      new_data: { phone },
+    });
+    if (auditErr) {
+      console.error(
+        "[congressos/registrations/phone] audit:",
+        auditErr.message
       );
     }
 

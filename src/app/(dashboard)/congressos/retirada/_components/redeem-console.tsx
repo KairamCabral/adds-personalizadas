@@ -47,6 +47,11 @@ import {
   isValidConfirmCode,
   sanitizeConfirmCode,
 } from "@/lib/congressos/confirm-code";
+import {
+  brMobileError,
+  phoneIssueMessage,
+  validateBrMobile,
+} from "@/lib/congressos/phone-br";
 
 interface RedeemConsoleProps {
   editionId: string;
@@ -215,9 +220,10 @@ export function RedeemConsole({
 
   const handleSavePhone = async () => {
     if (!active || savingPhone) return;
-    if (!isPhoneComplete(phoneDraft)) {
-      toast.error("Telefone incompleto", {
-        description: "Informe DDD + número.",
+    const check = validateBrMobile(phoneDraft);
+    if (!check.ok) {
+      toast.error("Telefone inválido", {
+        description: phoneIssueMessage(check.reason),
       });
       return;
     }
@@ -568,6 +574,10 @@ function ResultCard({
 
   const temTelefone = isPhoneComplete(result.phone);
   const codigoOk = isValidConfirmCode(typedCode);
+  // Cadastro antigo pode ter fixo ou número fora da regra atual: mostrar o que
+  // está lá e dizer o que há de errado é mais útil que rotular "Sem telefone".
+  const telefoneRuim = !temTelefone && !!result.phone?.trim();
+  const motivoTelefone = telefoneRuim ? brMobileError(result.phone) : null;
 
   return (
     <div
@@ -653,7 +663,9 @@ function ResultCard({
                     !temTelefone && "text-muted-foreground"
                   )}
                 >
-                  {temTelefone ? maskPhone(result.phone ?? "") : "Sem telefone"}
+                  {result.phone?.trim()
+                    ? maskPhone(result.phone)
+                    : "Sem telefone"}
                 </span>
                 <Button
                   size="sm"
@@ -667,6 +679,13 @@ function ResultCard({
               </div>
             )}
           </div>
+
+          {motivoTelefone && !editingPhone && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-destructive">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {motivoTelefone} Corrija para poder enviar o código.
+            </p>
+          )}
 
           {tinyWarning && (
             <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">

@@ -6,16 +6,21 @@
  *
  * Funções puras (testáveis) — sem React, sem side-effects.
  */
+import { isValidBrMobile, onlyDigits } from "./phone-br";
 
 /** Só os dígitos do telefone (a origem do pré-cadastro grava formatado ou cru). */
 export function phoneDigits(phone: string | null | undefined): string {
-  return (phone ?? "").replace(/\D/g, "");
+  return onlyDigits(phone);
 }
 
-/** Telefone BR utilizável: 10 (fixo) ou 11 (celular) dígitos com DDD. */
+/**
+ * Telefone utilizável para mandar o código.
+ *
+ * Delega para `validateBrMobile` — a regra vive num lugar só (`phone-br.ts`),
+ * compartilhada com o wizard público e com o schema do servidor.
+ */
 export function isPhoneComplete(phone: string | null | undefined): boolean {
-  const d = phoneDigits(phone);
-  return d.length === 10 || d.length === 11;
+  return isValidBrMobile(phone);
 }
 
 /**

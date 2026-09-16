@@ -22,14 +22,18 @@ describe("phoneDigits", () => {
 });
 
 describe("isPhoneComplete", () => {
-  it("aceita fixo (10) e celular (11) com DDD", () => {
-    expect(isPhoneComplete("(11) 3456-7890")).toBe(true);
+  // Delega para validateBrMobile (phone-br.ts): o campo é WhatsApp, então
+  // exige celular. Fixo não serve — as regras de detalhe estão em phone-br.test.
+  it("aceita celular com DDD", () => {
     expect(isPhoneComplete("(11) 91234-5678")).toBe(true);
+    expect(isPhoneComplete("(47) 99187-8070")).toBe(true);
   });
 
-  it("recusa incompleto e vazio", () => {
+  it("recusa fixo, incompleto, falso e vazio", () => {
+    expect(isPhoneComplete("(11) 3456-7890")).toBe(false);
     expect(isPhoneComplete("91234-5678")).toBe(false);
     expect(isPhoneComplete("(11) 9123")).toBe(false);
+    expect(isPhoneComplete("(11) 99999-9999")).toBe(false);
     expect(isPhoneComplete(null)).toBe(false);
   });
 });
