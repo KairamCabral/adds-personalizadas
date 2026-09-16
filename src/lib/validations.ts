@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { phoneIssueMessage, validateBrMobile } from "@/lib/congressos/phone-br";
 
 // ============================================
 // AUTH
@@ -347,6 +348,16 @@ export const congressoRegisterSchema = z
         code: z.ZodIssueCode.custom,
         path: ["name"],
         message: "Nome é obrigatório",
+      });
+    }
+    // WhatsApp obrigatório e real. Até aqui a exigência existia só no wizard
+    // (cliente) — este é o gate que vale para qualquer chamada da API.
+    const phoneCheck = validateBrMobile(data.phone);
+    if (!phoneCheck.ok) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["phone"],
+        message: phoneIssueMessage(phoneCheck.reason),
       });
     }
   });
