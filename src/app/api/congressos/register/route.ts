@@ -194,10 +194,9 @@ export async function POST(request: NextRequest) {
       email = email ?? client.email ?? null;
       phone = phone ?? client.phone ?? null;
     } else if (tinyParticipant) {
-      // ⚠️ DECISÃO DE NEGÓCIO PENDENTE — contato só do Tiny NÃO conta como
-      // cliente existente. Até aqui essa pessoa não era achada e se inscrevia
-      // como NOVA, recebendo o cashback `NEW_ONLY`. Marcá-la como existente
-      // tiraria esse benefício. Puxamos os dados; a elegibilidade fica igual.
+      // Contato só do Tiny: `is_existing_client` segue significando "casou com
+      // um cliente do CRM" — coerente com `matched_client_id` nulo. No módulo
+      // de congressos esse campo só alimenta o cashback, que não é usado.
       // O worker de sync acha o contato pelo CPF e não duplica no Tiny.
       isExistingClient = false;
       contactType = contactType ?? tinyParticipant.salesChannel;
