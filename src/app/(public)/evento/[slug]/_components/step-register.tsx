@@ -20,7 +20,8 @@ export interface RegisterFormState {
   contactType: ContactTypeChoice | null;
 }
 
-const CHIPS: { value: ContactTypeChoice; label: string }[] = [
+/** Perfil do participante — usado aqui e no confirm de cadastro existente. */
+export const CONTACT_TYPE_CHIPS: { value: ContactTypeChoice; label: string }[] = [
   { value: "DENTISTA", label: "Dentista" },
   { value: "DISTRIBUIDORA", label: "Distribuidora" },
   { value: "CONSUMIDOR", label: "Outro" },
@@ -141,7 +142,7 @@ export function StepRegister({
         <div className="space-y-2">
           <Label>Você é *</Label>
           <div className="grid grid-cols-3 gap-2">
-            {CHIPS.map((chip) => (
+            {CONTACT_TYPE_CHIPS.map((chip) => (
               <button
                 key={chip.value}
                 type="button"

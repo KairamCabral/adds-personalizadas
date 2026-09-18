@@ -17,6 +17,12 @@ import {
   creditValidUntil,
 } from "@/lib/congressos/credit";
 import { formatBenefitLabel } from "@/lib/congressos/cashback-format";
+import { sameDocument } from "@/lib/congressos/participant-lookup";
+import {
+  resolveConfirmedTinyParticipant,
+  type ResolvedParticipant,
+} from "@/lib/congressos/participant-lookup.server";
+import { isValidBrMobile } from "@/lib/congressos/phone-br";
 import type { Client } from "@/types/database.types";
 
 export async function POST(request: NextRequest) {
@@ -117,29 +123,64 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve cliente existente (dedup por dígitos normalizados)
-    let matchedClientId: string | null = input.existing_client_id ?? null;
-    let isExistingClient = input.is_existing_client ?? false;
+    let matchedClientId: string | null = null;
+    // Decidido pelo SERVIDOR (achou cliente no CRM?), não pelo payload: ele
+    // define a elegibilidade do cashback `NEW_ONLY`.
+    let isExistingClient = false;
     let contactType = input.contact_type ?? null;
     let name = input.name?.trim() || null;
     let email = input.email ?? null;
     let phone = input.phone?.trim() || null;
 
-    // Prioriza o cliente que o participante confirmou (existing_client_id),
-    // buscando-o por id — determinístico. Só cai no lookup por documento quando
-    // não há id. Isso evita pegar uma DUPLICATA errada do mesmo CPF: como pode
-    // haver vários clients com o mesmo documento, `find_client_by_document`
-    // (LIMIT 1) podia retornar um registro SEM e-mail, deixando a confirmação
-    // por e-mail sem ser enfileirada.
+    // Cadastro que o participante confirmou no wizard. Abas abertas antes do
+    // deploy mandam só `existing_client_id` — tratado como origem CRM.
+    const confirmedSource =
+      input.existing_source ?? (input.existing_client_id ? "crm" : null);
+    const confirmedRef = input.existing_ref ?? input.existing_client_id ?? null;
+    // Wizard novo: sabe perguntar o WhatsApp no confirm, então aqui dá para
+    // exigir celular válido. O legado não tem esse campo — mantém como era.
+    const wizardNovo = !!input.existing_source;
+
+    // Prioriza o cliente que o participante confirmou, buscando-o por id —
+    // determinístico. Só cai no lookup por documento quando não há id. Isso
+    // evita pegar uma DUPLICATA errada do mesmo CPF: como pode haver vários
+    // clients com o mesmo documento, `find_client_by_document` (LIMIT 1) podia
+    // retornar um registro SEM e-mail, deixando a confirmação por e-mail sem ser
+    // enfileirada.
+    //
+    // O CPF do registro TEM que ser o digitado: sem essa conferência, bastava
+    // mandar o CPF de uma pessoa com o id de outra para herdar os dados dela.
     let client: Client | null = null;
-    if (matchedClientId) {
+    if (confirmedSource === "crm" && confirmedRef) {
       const { data } = await supabase
         .from("clients")
         .select("*")
-        .eq("id", matchedClientId)
+        .eq("id", confirmedRef)
         .maybeSingle();
-      client = data ?? null;
+      client = data && sameDocument(data.document, digits) ? data : null;
     }
-    if (!client) {
+
+    // Contato que só existe no Tiny. Revalidado no servidor (mesma regra do
+    // CPF). Se o Tiny falhar entre a consulta e o envio, não dá para montar a
+    // inscrição — o payload do confirm não traz nome.
+    let tinyParticipant: ResolvedParticipant | null = null;
+    if (confirmedSource === "tiny" && confirmedRef) {
+      tinyParticipant = await resolveConfirmedTinyParticipant(
+        confirmedRef,
+        digits
+      );
+      if (!tinyParticipant) {
+        return NextResponse.json(
+          {
+            error:
+              "Não conseguimos confirmar seu cadastro agora. Tente de novo em instantes ou volte e preencha seus dados.",
+          },
+          { status: 503 }
+        );
+      }
+    }
+
+    if (!client && !tinyParticipant) {
       const { data: clientRows } = await supabase.rpc("find_client_by_document", {
         doc_digits: digits,
       });
@@ -152,6 +193,36 @@ export async function POST(request: NextRequest) {
       name = name ?? client.name ?? null;
       email = email ?? client.email ?? null;
       phone = phone ?? client.phone ?? null;
+    } else if (tinyParticipant) {
+      // Contato só do Tiny: `is_existing_client` segue significando "casou com
+      // um cliente do CRM" — coerente com `matched_client_id` nulo. No módulo
+      // de congressos esse campo só alimenta o cashback, que não é usado.
+      // O worker de sync acha o contato pelo CPF e não duplica no Tiny.
+      isExistingClient = false;
+      contactType = contactType ?? tinyParticipant.salesChannel;
+      name = name ?? tinyParticipant.name;
+      email = email ?? tinyParticipant.email;
+      phone = phone ?? tinyParticipant.mobile;
+    }
+
+    // Confirmou um cadastro que não se sustentou (ref de outro CPF, ou cliente
+    // apagado entre a consulta e o envio) e ninguém foi achado pelo CPF: o
+    // payload do confirm não traz nome, então não dá para montar a inscrição.
+    if (input.is_existing_client && !client && !tinyParticipant) {
+      return NextResponse.json(
+        {
+          error:
+            "Não conseguimos confirmar seu cadastro. Volte e preencha seus dados.",
+        },
+        { status: 422 }
+      );
+    }
+
+    if (wizardNovo && !isValidBrMobile(phone)) {
+      return NextResponse.json(
+        { error: "Precisamos do seu WhatsApp para a retirada do brinde." },
+        { status: 400 }
+      );
     }
 
     const qualified =

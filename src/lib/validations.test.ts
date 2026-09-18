@@ -80,6 +80,28 @@ describe("congressoRegisterSchema — telefone", () => {
       expect(res.success).toBe(true);
     });
 
+    it("aceita a origem confirmada (CRM ou Tiny) do wizard novo", () => {
+      for (const existing_source of ["crm", "tiny"] as const) {
+        const res = congressoRegisterSchema.safeParse({
+          ...base,
+          is_existing_client: true,
+          existing_source,
+          existing_ref: "15158",
+        });
+        expect(res.success).toBe(true);
+      }
+    });
+
+    it("recusa origem desconhecida", () => {
+      const res = congressoRegisterSchema.safeParse({
+        ...base,
+        is_existing_client: true,
+        existing_source: "planilha",
+        existing_ref: "1",
+      });
+      expect(res.success).toBe(false);
+    });
+
     it("se o telefone vier informado, valida mesmo assim", () => {
       expect(
         phoneIssue({ ...existente, phone: "(11) 99999-9999" })

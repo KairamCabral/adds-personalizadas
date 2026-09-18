@@ -81,6 +81,22 @@ async function searchTinyContact(
   return null;
 }
 
+/**
+ * Só CONSULTA: id do contato no Tiny pelo CPF/CNPJ, ou null. Nunca cria.
+ *
+ * Existe porque `createOrFindTinyContact` cria o contato quando não acha — e
+ * uma consulta pública (ex.: "já tenho cadastro?" no congresso) jamais pode
+ * escrever no ERP. Busca só por documento: casar por celular aqui poderia
+ * devolver o contato de OUTRA pessoa com o mesmo número.
+ *
+ * Erros do Tiny são engolidos por `searchByParam` (retorna null).
+ */
+export async function findTinyContactIdByDocument(
+  docDigits: string
+): Promise<number | null> {
+  return searchTinyContact(docDigits.replace(/\D/g, ""), "");
+}
+
 /** Detecta o 400 recuperável "Contato com CPF/CNPJ ... já existe" do Tiny. */
 function isAlreadyExistsError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
