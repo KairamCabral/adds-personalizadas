@@ -35,19 +35,22 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null);
     const parsed = congressoRegisterSchema.safeParse(body);
     if (!parsed.success) {
+      // A primeira mensagem de validação vai para a tela ("Informe o WhatsApp
+      // com DDD", "CPF inválido"…). Um "Dados inválidos" genérico escondeu a
+      // regressão do #87: o participante não tinha como saber o que corrigir.
       return NextResponse.json(
-        { error: "Dados inválidos.", details: parsed.error.flatten() },
+        {
+          error: parsed.error.issues[0]?.message ?? "Dados inválidos.",
+          details: parsed.error.flatten(),
+        },
         { status: 400 }
       );
     }
     const input = parsed.data;
 
     const digits = input.document.replace(/\D/g, "");
-    if (digits.length !== 11 && digits.length !== 14) {
-      return NextResponse.json(
-        { error: "CPF/CNPJ inválido." },
-        { status: 400 }
-      );
+    if (digits.length !== 11) {
+      return NextResponse.json({ error: "CPF inválido." }, { status: 400 });
     }
 
     const { success: docOk } = rateLimit(`congress-doc:${digits}`, {

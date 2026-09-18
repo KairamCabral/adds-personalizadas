@@ -104,6 +104,73 @@ export function phoneIssueMessage(reason: PhoneIssue): string {
   }
 }
 
+/** Menos que isso casa com gente demais para ser útil no balcão. */
+export const MIN_PHONE_SEARCH_DIGITS = 4;
+
+/**
+ * Um termo da busca por telefone no balcão.
+ * - `contains`: o que o operador digitou, que pode vir sem DDD ("99916").
+ * - `prefix`: variante construída a partir de um DDD — sempre começa com ele,
+ *   então é buscada como "começa com". Como "contém", um trecho curto como
+ *   "48916" casaria no MEIO de números de outro DDD ((47) 99148-9160).
+ */
+export interface PhoneSearchTerm {
+  value: string;
+  mode: "contains" | "prefix";
+}
+
+/**
+ * Termos a procurar no telefone do cadastro a partir do que o operador digitou
+ * no balcão — o número inteiro ou só o começo.
+ *
+ * Cobre o "9 a mais" nos dois sentidos:
+ *  - digitou SEM o 9 (formato antigo): `(48) 9916-8070` também procura
+ *    `48 9 9916-8070`;
+ *  - digitou COM o 9, mas o cadastro antigo está sem ele: `(48) 99916-8070`
+ *    também procura `48 9916-8070`.
+ *
+ * As variantes só entram quando dá para ler DDD + parte do número (6+
+ * dígitos). Com menos, "99916" poderia ser DDD 99 + "916". O DDI 55 só é
+ * removido com 12+ dígitos — 55 também é DDD (RS).
+ */
+export function phoneSearchTerms(
+  value: string | null | undefined
+): PhoneSearchTerm[] {
+  let d = onlyDigits(value);
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  if (d.length < MIN_PHONE_SEARCH_DIGITS) return [];
+
+  const terms: PhoneSearchTerm[] = [{ value: d, mode: "contains" }];
+  const ddd = d.slice(0, 2);
+  const resto = d.slice(2);
+
+  if (d.length >= 6 && DDDS_VALIDOS.has(ddd)) {
+    // Sem o 9 → acrescenta. Com 11 dígitos já está completo, não cabe outro.
+    if (d.length <= 10) terms.push({ value: `${ddd}9${resto}`, mode: "prefix" });
+    // Com o 9 → também tenta sem, para cadastro antigo de 10 dígitos.
+    if (resto.startsWith("9")) {
+      terms.push({ value: `${ddd}${resto.slice(1)}`, mode: "prefix" });
+    }
+  }
+
+  return terms.filter((t) => t.value.length >= MIN_PHONE_SEARCH_DIGITS);
+}
+
+/**
+ * Mesma semântica do filtro SQL, em memória. Serve aos testes e documenta a
+ * regra num lugar só: `contains` = LIKE '%x%', `prefix` = LIKE 'x%'.
+ */
+export function phoneMatchesSearch(
+  storedPhone: string | null | undefined,
+  typed: string
+): boolean {
+  const stored = onlyDigits(storedPhone);
+  if (!stored) return false;
+  return phoneSearchTerms(typed).some((t) =>
+    t.mode === "prefix" ? stored.startsWith(t.value) : stored.includes(t.value)
+  );
+}
+
 /** Atalho: valida e já devolve a mensagem, ou null quando está tudo certo. */
 export function brMobileError(value: string | null | undefined): string | null {
   const res = validateBrMobile(value);

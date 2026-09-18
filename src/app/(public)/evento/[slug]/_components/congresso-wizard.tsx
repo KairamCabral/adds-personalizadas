@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { formatDocumentInput, isValidCPF, isValidCNPJ } from "@/lib/utils";
+import { formatDocumentInput, isValidCPF } from "@/lib/utils";
 import { CONSENT_VERSION } from "@/lib/congressos/consent";
 import type { Client } from "@/types/database.types";
 import {
@@ -57,6 +57,8 @@ export function CongressoWizard({
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [result, setResult] = useState<RegisterResult | null>(null);
   const [hadEmail, setHadEmail] = useState(false);
+  // Telefone que vale para a retirada no estande — exibido na tela final.
+  const [submittedPhone, setSubmittedPhone] = useState<string | null>(null);
 
   const [lookupLoading, setLookupLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -121,12 +123,8 @@ export function CongressoWizard({
 
   const handleLookup = async () => {
     const digits = documentValue.replace(/\D/g, "");
-    if (digits.length === 11 && !isValidCPF(digits)) {
+    if (digits.length !== 11 || !isValidCPF(digits)) {
       setError("CPF inválido. Confira os números.");
-      return;
-    }
-    if (digits.length === 14 && !isValidCNPJ(digits)) {
-      setError("CNPJ inválido. Confira os números.");
       return;
     }
     setLookupLoading(true);
@@ -185,6 +183,7 @@ export function CongressoWizard({
 
   const handleConfirm = () => {
     if (!foundClient) return;
+    setSubmittedPhone(foundClient.phone ?? null);
     doSubmit(
       {
         slug,
@@ -207,6 +206,7 @@ export function CongressoWizard({
 
   const handleRegister = () => {
     const email = form.email.trim() || null;
+    setSubmittedPhone(form.whatsapp.trim() || null);
     doSubmit(
       {
         slug,
@@ -234,7 +234,13 @@ export function CongressoWizard({
       {step === "cpf" && (
         <StepCpf
           value={documentValue}
-          onChange={(v) => setDocumentValue(formatDocumentInput(v))}
+          onChange={(v) =>
+            // Corta em 11 dígitos: só CPF. Sem o corte, o formatador compartilhado
+            // passa a mascarar como CNPJ a partir do 12º dígito.
+            setDocumentValue(
+              formatDocumentInput(v.replace(/\D/g, "").slice(0, 11))
+            )
+          }
           onSubmit={handleLookup}
           loading={lookupLoading}
           error={error}
@@ -278,7 +284,11 @@ export function CongressoWizard({
       )}
 
       {step === "success" && result && (
-        <StepSuccess result={result} hasEmail={hadEmail} />
+        <StepSuccess
+          result={result}
+          hasEmail={hadEmail}
+          phone={submittedPhone}
+        />
       )}
     </div>
   );

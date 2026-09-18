@@ -3,9 +3,60 @@ import {
   brMobileError,
   isValidBrMobile,
   phoneIssueMessage,
+  phoneMatchesSearch,
+  phoneSearchTerms,
   validateBrMobile,
   type PhoneIssue,
 } from "./phone-br";
+
+describe("busca por telefone no balcão", () => {
+  // Cadastro do exemplo: (48) 99916-8070
+  const cadastro = "(48) 99916-8070";
+
+  it.each([
+    ["(48) 99916-8070", "número completo"],
+    ["4899916", "só o começo, com o 9"],
+    ["489916", "só o começo, SEM o 9"],
+    ["4899168070", "completo SEM o 9 (formato antigo)"],
+    ["99916", "sem DDD"],
+    ["+55 (48) 99916-8070", "com DDI"],
+  ])("acha digitando %s (%s)", (digitado) => {
+    expect(phoneMatchesSearch(cadastro, digitado)).toBe(true);
+  });
+
+  it("acha cadastro ANTIGO sem o 9 quando o operador digita com o 9", () => {
+    expect(phoneMatchesSearch("(48) 9916-8070", "(48) 99916-8070")).toBe(true);
+  });
+
+  it("variante sem o 9 NÃO casa no meio de número de outro DDD", () => {
+    // "489916" gera a variante "48916". Como "contém", ela casaria dentro de
+    // (47) 99148-9160 — ruído no balcão. Como "começa com", não casa.
+    expect(phoneMatchesSearch("(47) 99148-9160", "489916")).toBe(false);
+  });
+
+  it("variantes são 'começa com'; só o digitado é 'contém'", () => {
+    expect(phoneSearchTerms("489916")).toEqual([
+      { value: "489916", mode: "contains" },
+      { value: "4899916", mode: "prefix" },
+      { value: "48916", mode: "prefix" },
+    ]);
+  });
+
+  it("não inventa variante com menos de 6 dígitos (evita abrir demais)", () => {
+    expect(phoneSearchTerms("99916")).toEqual([
+      { value: "99916", mode: "contains" },
+    ]);
+  });
+
+  it("não tira '55' de número curto — 55 também é DDD do RS", () => {
+    expect(phoneSearchTerms("55991234567")[0].value).toBe("55991234567");
+  });
+
+  it("menos de 4 dígitos não busca", () => {
+    expect(phoneSearchTerms("489")).toEqual([]);
+    expect(phoneSearchTerms("")).toEqual([]);
+  });
+});
 
 describe("validateBrMobile — aceita", () => {
   const validos: Array<[string, string]> = [

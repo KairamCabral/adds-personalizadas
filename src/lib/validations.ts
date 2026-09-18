@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { phoneIssueMessage, validateBrMobile } from "@/lib/congressos/phone-br";
+import { isValidCPF } from "@/lib/utils";
 
 // ============================================
 // AUTH
@@ -319,7 +320,12 @@ export type EventEditionFormData = z.infer<typeof eventEditionSchema>;
 export const congressoRegisterSchema = z
   .object({
     slug: z.string().min(1),
-    document: z.string().min(1),
+    // Só CPF: a inscrição é por participante (pessoa física). CNPJ saiu do
+    // wizard e é recusado aqui para valer também em chamada direta à API.
+    document: z
+      .string()
+      .min(1)
+      .refine((v) => isValidCPF(v), "CPF inválido. Confira os números."),
     is_existing_client: z.boolean().optional().default(false),
     existing_client_id: z.string().uuid().nullable().optional(),
     name: z.string().nullable().optional(),

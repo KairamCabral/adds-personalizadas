@@ -8,8 +8,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  *
  * O fake abaixo registra se `rpc` foi invocado como método do client.
  */
-const { fakeClient, calls } = vi.hoisted(() => {
+const { fakeClient, calls, queries } = vi.hoisted(() => {
   const calls: Array<{ fn: string; args: unknown; boundToClient: boolean }> =
+    [];
+  /** Cada `.from()` registra a tabela e os filtros aplicados na cadeia. */
+  const queries: Array<{ table: string; filters: Array<[string, unknown[]]> }> =
     [];
   const client = {
     __isSupabaseClient: true,
@@ -23,16 +26,68 @@ const { fakeClient, calls } = vi.hoisted(() => {
       });
       return Promise.resolve({ data: [], error: null });
     },
-    from: () => ({}),
+    from(table: string) {
+      const q = { table, filters: [] as Array<[string, unknown[]]> };
+      queries.push(q);
+      const b: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "or", "ilike", "order", "limit"]) {
+        b[m] = (...args: unknown[]) => {
+          q.filters.push([m, args]);
+          return b;
+        };
+      }
+      b.then = (res: (v: unknown) => unknown) =>
+        Promise.resolve({ data: [], error: null }).then(res);
+      return b;
+    },
   };
-  return { fakeClient: client, calls };
+  return { fakeClient: client, calls, queries };
 });
 
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => fakeClient,
 }));
 
-import { issueGiftConfirmCode, redeemGift } from "./congressos-gifts.service";
+import {
+  issueGiftConfirmCode,
+  redeemGift,
+  searchGiftForRedeem,
+} from "./congressos-gifts.service";
+
+describe("busca no balcão", () => {
+  beforeEach(() => {
+    queries.length = 0;
+  });
+
+  const orDoTelefone = () =>
+    queries
+      .flatMap((q) => q.filters)
+      .find(([m]) => m === "or")?.[1][0] as string | undefined;
+
+  it("monta o filtro: digitado como 'contém', variantes como 'começa com'", async () => {
+    await searchGiftForRedeem("ed-1", "489916");
+    // Sintaxe do PostgREST: `coluna.like.*x*` (contém) e `coluna.like.x*`
+    // (começa com), separados por vírgula. Um erro aqui quebra a busca por
+    // telefone sem nenhum aviso.
+    expect(orDoTelefone()).toBe(
+      "phone_digits.like.*489916*,phone_digits.like.4899916*,phone_digits.like.48916*"
+    );
+  });
+
+  it("6 dígitos consultam código E telefone (antes só o código)", async () => {
+    await searchGiftForRedeem("ed-1", "489916");
+    const codigo = queries.some((q) =>
+      q.filters.some(([m, a]) => m === "eq" && a[0] === "short_code")
+    );
+    expect(codigo).toBe(true);
+    expect(orDoTelefone()).toBeDefined();
+  });
+
+  it("nome não dispara busca por telefone", async () => {
+    await searchGiftForRedeem("ed-1", "Maysa");
+    expect(orDoTelefone()).toBeUndefined();
+  });
+});
 
 describe("RPCs de congressos preservam o `this` do client", () => {
   beforeEach(() => {

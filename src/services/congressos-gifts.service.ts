@@ -1,4 +1,8 @@
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import {
+  MIN_PHONE_SEARCH_DIGITS,
+  phoneSearchTerms,
+} from "@/lib/congressos/phone-br";
 import type { Database } from "@/types/database.types";
 
 /**
@@ -150,26 +154,43 @@ const REDEMPTION_SELECT =
 const REGISTRATION_SELECT =
   "id, name, document, phone, contact_type, event_gift_redemptions(token, short_code, status, redeemed_at)";
 
+/** Teto de resultados da busca por telefone — acima disso, pedir mais dígitos. */
+export const PHONE_SEARCH_LIMIT = 10;
+
 /**
- * Busca por sufixo de telefone (`phone_digits`, coluna gerada na migration
- * 20260915130000_congressos_confirm_code.sql).
+ * Busca por telefone no balcão: o número inteiro ou só o começo, com ou sem o
+ * 9 a mais — regra em `phoneSearchTerms` (espelhada por `phoneMatchesSearch`
+ * nos testes). Usa `phone_digits`, coluna gerada na migration
+ * 20260915130000_congressos_confirm_code.sql.
  *
  * Falha de forma isolada: no balcão, um erro aqui não pode derrubar os outros
  * caminhos de busca (código, CPF, nome) que rodam na mesma consulta.
  */
 async function searchByPhone(
   editionId: string,
-  digits: string
+  raw: string
 ): Promise<RedeemSearchResult[]> {
+  const terms = phoneSearchTerms(raw);
+  if (terms.length === 0) return [];
+
+  // PostgREST: `*` é o curinga do LIKE. `contains` → *x*, `prefix` → x*.
+  // `.or()` recebe string, então dispensa o cast da coluna que ainda não está
+  // em database.types.ts. Os termos são só dígitos — nada para escapar.
+  const filtro = terms
+    .map((t) =>
+      t.mode === "prefix"
+        ? `phone_digits.like.${t.value}*`
+        : `phone_digits.like.*${t.value}*`
+    )
+    .join(",");
+
   const { data, error } = await supabase
     .from("event_registrations")
     .select(REGISTRATION_SELECT)
     .eq("edition_id", editionId)
-    // TODO(types): tirar o cast depois de `pnpm db:types`.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .like("phone_digits" as any, `%${digits}`)
+    .or(filtro)
     .order("name", { ascending: true })
-    .limit(10);
+    .limit(PHONE_SEARCH_LIMIT);
   if (error) {
     console.warn("[congressos/retirada] busca por telefone:", error.message);
     return [];
@@ -187,12 +208,13 @@ function mergeResults(...lists: RedeemSearchResult[][]): RedeemSearchResult[] {
 }
 
 /**
- * Resolve o brinde a partir do que o operador digitou/escaneou: token (QR),
- * código de 6 dígitos, CPF/CNPJ, telefone ou nome. Um leitor de código de
- * barras USB "digita" o valor e dá Enter — cai aqui igual.
+ * Resolve o brinde a partir do que o operador digitou/escaneou: telefone
+ * (inteiro ou só o começo), CPF, nome, código de 6 dígitos ou token do QR. Um
+ * leitor de código de barras USB "digita" o valor e dá Enter — cai aqui igual.
  *
- * CPF e celular têm os mesmos 11 dígitos: nesse caso os dois caminhos rodam e
- * os resultados são unidos (dedup por token).
+ * Quando o que foi digitado é número, os caminhos que fazem sentido rodam
+ * JUNTOS e os resultados são unidos (dedup por token): 6 dígitos podem ser
+ * código ou começo de telefone; 11 podem ser CPF ou celular.
  */
 export async function searchGiftForRedeem(
   editionId: string,
@@ -202,7 +224,8 @@ export async function searchGiftForRedeem(
   if (!q) return [];
   const digits = q.replace(/\D/g, "");
 
-  // Token do QR (hex, 16+ chars)
+  // Token do QR (hex, 16+ chars) — legado: o QR saiu da tela e do e-mail, mas
+  // quem ainda tiver o antigo continua sendo atendido.
   if (/^[a-f0-9]{16,}$/i.test(q)) {
     const { data, error } = await supabase
       .from("event_gift_redemptions")
@@ -213,23 +236,24 @@ export async function searchGiftForRedeem(
     return fromRedemptionRows(data);
   }
 
-  // Código de 6 dígitos (único por edição). Se não achar, ainda pode ser um
-  // pedaço de telefone — cai no bloco de dígitos abaixo.
-  if (digits.length === 6) {
-    const { data, error } = await supabase
-      .from("event_gift_redemptions")
-      .select(REDEMPTION_SELECT)
-      .eq("edition_id", editionId)
-      .eq("short_code", digits);
-    if (error) throw error;
-    const found = fromRedemptionRows(data);
-    if (found.length > 0) return found;
-  }
+  // Número: só dígitos e pontuação de telefone/CPF.
+  const soNumero = /^[\d\s().+\-]+$/.test(q);
 
-  // CPF/CNPJ e/ou telefone
-  if (digits.length >= 6 && digits.length <= 14) {
+  if (digits.length >= MIN_PHONE_SEARCH_DIGITS) {
     const lists: RedeemSearchResult[][] = [];
 
+    // Código de 6 dígitos (legado, único por edição).
+    if (digits.length === 6) {
+      const { data, error } = await supabase
+        .from("event_gift_redemptions")
+        .select(REDEMPTION_SELECT)
+        .eq("edition_id", editionId)
+        .eq("short_code", digits);
+      if (error) throw error;
+      lists.push(fromRedemptionRows(data));
+    }
+
+    // CPF (ou CNPJ de edições antigas, antes de o cadastro virar só CPF).
     if (digits.length === 11 || digits.length === 14) {
       const { data, error } = await supabase
         .from("event_registrations")
@@ -240,13 +264,11 @@ export async function searchGiftForRedeem(
       lists.push(fromRegistrationRows(data));
     }
 
-    // 6–13 dígitos: sufixo do telefone (com ou sem DDD/DDI).
-    if (digits.length <= 13) {
-      lists.push(await searchByPhone(editionId, digits));
-    }
+    lists.push(await searchByPhone(editionId, digits));
 
     const merged = mergeResults(...lists);
-    if (merged.length > 0 || digits.length === q.length) return merged;
+    // Número que não achou nada não cai na busca por nome — seria só ruído.
+    if (merged.length > 0 || soNumero) return merged;
   }
 
   // Nome (mín. 2 chars)

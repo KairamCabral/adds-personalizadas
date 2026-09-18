@@ -91,7 +91,7 @@ function RetiradaContent() {
     <div className="min-w-0 space-y-6 p-6">
       <PageHeader
         title="Retirada de brindes"
-        description="Busque pelo código, telefone, CPF ou nome, confirme o código enviado no WhatsApp e entregue o brinde."
+        description="Busque pelo telefone (pode ser só o começo), CPF ou nome, confirme o código enviado no WhatsApp e entregue o brinde."
       >
         {editions.length > 1 && (
           <Select

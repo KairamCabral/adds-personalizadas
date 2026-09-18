@@ -24,7 +24,8 @@ export function StepCpf({
   giftName,
 }: StepCpfProps) {
   const digits = value.replace(/\D/g, "");
-  const canSubmit = digits.length === 11 || digits.length === 14;
+  // Só pessoa física: o brinde e o contato comercial são por participante.
+  const canSubmit = digits.length === 11;
 
   return (
     <div className="mx-auto max-w-md space-y-8 text-center">
@@ -37,7 +38,7 @@ export function StepCpf({
         </h1>
         {giftName && <p className="text-base text-muted-foreground">{giftName}</p>}
         <p className="text-sm text-muted-foreground">
-          Comece informando seu CPF ou CNPJ.
+          Comece informando seu CPF.
         </p>
       </div>
 
@@ -55,7 +56,7 @@ export function StepCpf({
           onChange={(e) => onChange(e.target.value)}
           placeholder="000.000.000-00"
           className="h-14 text-center text-lg"
-          aria-label="CPF ou CNPJ"
+          aria-label="CPF"
         />
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button
