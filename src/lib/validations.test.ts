@@ -21,6 +21,34 @@ function phoneIssue(payload: Record<string, unknown>) {
   return res.error.issues.find((i) => i.path[0] === "phone") ?? null;
 }
 
+describe("congressoRegisterSchema — documento", () => {
+  const novo = {
+    ...base,
+    is_existing_client: false,
+    name: "Ana Souza",
+    phone: "(47) 99187-8070",
+  };
+  const docIssue = (document: string) => {
+    const res = congressoRegisterSchema.safeParse({ ...novo, document });
+    if (res.success) return null;
+    return res.error.issues.find((i) => i.path[0] === "document") ?? null;
+  };
+
+  it("aceita CPF válido (com ou sem máscara)", () => {
+    expect(docIssue("529.982.247-25")).toBeNull();
+    expect(docIssue("52998224725")).toBeNull();
+  });
+
+  it("recusa CNPJ — o cadastro do congresso é só pessoa física", () => {
+    expect(docIssue("11.222.333/0001-81")).not.toBeNull();
+  });
+
+  it("recusa CPF com dígito verificador errado ou repetido", () => {
+    expect(docIssue("529.982.247-26")).not.toBeNull();
+    expect(docIssue("111.111.111-11")).not.toBeNull();
+  });
+});
+
 describe("congressoRegisterSchema — telefone", () => {
   describe("cadastro novo", () => {
     const novo = { ...base, is_existing_client: false, name: "Ana Souza" };

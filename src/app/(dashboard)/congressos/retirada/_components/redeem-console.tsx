@@ -37,6 +37,7 @@ import {
   redeemGift,
   issueGiftConfirmCode,
   updateRegistrationPhone,
+  PHONE_SEARCH_LIMIT,
   type RedeemSearchResult,
 } from "@/services/congressos-gifts.service";
 import { classifyRedeemOutcome } from "@/lib/congressos/redeem-outcome";
@@ -320,7 +321,7 @@ export function RedeemConsole({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Código de 6 dígitos, telefone, CPF ou nome"
+              placeholder="Telefone (pode ser só o começo), CPF ou nome"
               className="h-14 pl-12 pr-28 text-lg"
               autoComplete="off"
               autoCorrect="off"
@@ -379,7 +380,9 @@ export function RedeemConsole({
         {!active && results.length > 1 && (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              {results.length} participantes encontrados — selecione:
+              {results.length >= PHONE_SEARCH_LIMIT
+                ? `Mostrando os ${results.length} primeiros — digite mais números para refinar, ou selecione:`
+                : `${results.length} participantes encontrados — selecione:`}
             </p>
             {results.map((r) => (
               <button
@@ -409,7 +412,7 @@ export function RedeemConsole({
             </div>
             <p className="font-medium">Nenhum brinde encontrado</p>
             <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-              Confira o código, o telefone, o CPF ou o nome e tente novamente.
+              Confira o telefone, o CPF ou o nome e tente novamente.
             </p>
           </div>
         )}

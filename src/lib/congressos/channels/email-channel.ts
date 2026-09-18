@@ -46,11 +46,9 @@ export const emailChannel: MessagingChannel = {
           participantFirstName: message.participantFirstName,
           editionName: message.editionName,
           giftName: message.giftName,
-          shortCode: message.shortCode,
           cashbackLabel: message.cashbackLabel,
           raffleNumber: message.raffleNumber,
           logoUrl: `${APP_URL}/Logo-cor-PNG.png`,
-          qrUrl: `${APP_URL}/api/congressos/qr/${message.giftToken}`,
         }),
       );
       const subject = message.editionName
