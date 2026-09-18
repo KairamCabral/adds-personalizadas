@@ -350,15 +350,20 @@ export const congressoRegisterSchema = z
         message: "Nome é obrigatório",
       });
     }
-    // WhatsApp obrigatório e real. Até aqui a exigência existia só no wizard
-    // (cliente) — este é o gate que vale para qualquer chamada da API.
-    const phoneCheck = validateBrMobile(data.phone);
-    if (!phoneCheck.ok) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["phone"],
-        message: phoneIssueMessage(phoneCheck.reason),
-      });
+    // WhatsApp real: obrigatório no cadastro NOVO. No confirm de cliente
+    // existente o wizard não envia telefone — o servidor usa o do cliente
+    // (register/route.ts). Exigir aqui barrava TODO cliente existente com 400.
+    // Se o telefone vier informado, valida sempre.
+    const phoneInformado = !!data.phone?.trim();
+    if (!data.is_existing_client || phoneInformado) {
+      const phoneCheck = validateBrMobile(data.phone);
+      if (!phoneCheck.ok) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["phone"],
+          message: phoneIssueMessage(phoneCheck.reason),
+        });
+      }
     }
   });
 
