@@ -1,8 +1,6 @@
 "use client";
 
 import { CheckCircle2, Phone } from "lucide-react";
-import { maskPhone } from "@/lib/utils";
-import { isValidBrMobile } from "@/lib/congressos/phone-br";
 import type { RegisterResult } from "@/services/congressos-public.service";
 
 /**
@@ -16,22 +14,22 @@ import type { RegisterResult } from "@/services/congressos-public.service";
 export function StepSuccess({
   result,
   hasEmail,
-  phone,
+  phoneDisplay,
 }: {
   result: RegisterResult;
   hasEmail: boolean;
-  /** Telefone informado NESTA inscrição. Null quando não se sabe qual vale. */
-  phone: string | null;
+  /**
+   * Celular desta inscrição, já pronto para exibir: formatado quando a pessoa
+   * digitou, mascarado quando manteve o do cadastro. Null = não mostrar.
+   */
+  phoneDisplay: string | null;
 }) {
   const firstName = result.participant_first_name;
   const brinde = result.gift_name ? `o seu ${result.gift_name}` : "o seu brinde";
 
   // No recadastro, o telefone que vale é o da PRIMEIRA inscrição — que pode ser
-  // diferente do digitado agora. Mostrar o novo induziria a informar o errado.
-  // E só exibe celular válido: cliente antigo pode ter fixo no cadastro, que
-  // não recebe o código no WhatsApp.
-  const telefoneParaMostrar =
-    !result.alreadyRegistered && isValidBrMobile(phone) ? maskPhone(phone!) : null;
+  // diferente do informado agora. Mostrar este induziria a informar o errado.
+  const telefoneParaMostrar = result.alreadyRegistered ? null : phoneDisplay;
 
   return (
     <div className="mx-auto max-w-md space-y-6 py-6 text-center">

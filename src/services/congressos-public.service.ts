@@ -1,10 +1,13 @@
-import type { Client } from "@/types/database.types";
+import type { ParticipantLookupResponse } from "@/lib/congressos/participant-lookup";
 
 export interface RegisterPayload {
   slug: string;
   document: string;
   is_existing_client?: boolean;
   existing_client_id?: string | null;
+  /** cadastro confirmado no passo "Encontramos seu cadastro" */
+  existing_source?: "crm" | "tiny" | null;
+  existing_ref?: string | null;
   name?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -31,14 +34,23 @@ export interface RegisterResult {
 }
 
 /** Passo do CPF — reusa o endpoint público existente. Retorna o cliente ou null. */
-export async function findClientByDocument(
+/**
+ * "Já tenho cadastro?" — procura o CPF no CRM e, se não achar, no Tiny.
+ * Devolve só dados mascarados. Qualquer falha vira "não achou": o wizard segue
+ * para o cadastro manual, nunca trava a inscrição.
+ */
+export async function lookupParticipant(
+  slug: string,
   document: string
-): Promise<Client | null> {
-  const res = await fetch(
-    `/api/clients/find-by-document?document=${encodeURIComponent(document)}`
-  );
-  const json = (await res.json().catch(() => ({}))) as { client?: Client | null };
-  return json?.client ?? null;
+): Promise<ParticipantLookupResponse> {
+  try {
+    const params = new URLSearchParams({ slug, document });
+    const res = await fetch(`/api/congressos/lookup?${params.toString()}`);
+    if (!res.ok) return { found: false };
+    return (await res.json()) as ParticipantLookupResponse;
+  } catch {
+    return { found: false };
+  }
 }
 
 /** Submete o pré-cadastro público. Lança em erro para o retry do wizard tratar. */

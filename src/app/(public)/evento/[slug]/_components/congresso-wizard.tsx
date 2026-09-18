@@ -2,18 +2,26 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { formatDocumentInput, isValidCPF } from "@/lib/utils";
+import { formatDocumentInput, isValidCPF, maskPhone } from "@/lib/utils";
 import { CONSENT_VERSION } from "@/lib/congressos/consent";
-import type { Client } from "@/types/database.types";
+import { isValidBrMobile } from "@/lib/congressos/phone-br";
 import {
-  findClientByDocument,
+  lookupParticipant,
   registerParticipant,
   type RegisterPayload,
   type RegisterResult,
 } from "@/services/congressos-public.service";
 import { StepCpf } from "./step-cpf";
-import { StepConfirm } from "./step-confirm";
-import { StepRegister, type RegisterFormState } from "./step-register";
+import {
+  StepConfirm,
+  type FoundParticipant,
+  type PhoneMode,
+} from "./step-confirm";
+import {
+  StepRegister,
+  type ContactTypeChoice,
+  type RegisterFormState,
+} from "./step-register";
 import { StepSuccess } from "./step-success";
 
 type Step = "cpf" | "confirm" | "register" | "success";
@@ -51,13 +59,19 @@ export function CongressoWizard({
 
   const [step, setStep] = useState<Step>("cpf");
   const [documentValue, setDocumentValue] = useState("");
-  const [foundClient, setFoundClient] = useState<Client | null>(null);
+  // Cadastro encontrado (CRM ou Tiny) — só dados mascarados.
+  const [found, setFound] = useState<FoundParticipant | null>(null);
+  const [confirmPhoneMode, setConfirmPhoneMode] = useState<PhoneMode>("keep");
+  const [confirmPhone, setConfirmPhone] = useState("");
+  const [confirmContactType, setConfirmContactType] =
+    useState<ContactTypeChoice | null>(null);
   const [form, setForm] = useState<RegisterFormState>(BLANK_FORM);
   const [consent, setConsent] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [result, setResult] = useState<RegisterResult | null>(null);
   const [hadEmail, setHadEmail] = useState(false);
-  // Telefone que vale para a retirada no estande — exibido na tela final.
+  // Telefone que vale para a retirada no estande, já formatado para exibir na
+  // tela final. Null quando não há celular válido para mostrar.
   const [submittedPhone, setSubmittedPhone] = useState<string | null>(null);
 
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -130,16 +144,18 @@ export function CongressoWizard({
     setLookupLoading(true);
     setError(null);
     try {
-      const client = await findClientByDocument(documentValue);
-      if (client) {
-        setFoundClient(client);
+      // CRM, senão Tiny. Falha na consulta vira "não achou" (cadastro manual).
+      const res = await lookupParticipant(slug, documentValue);
+      if (res.found) {
+        setFound(res);
+        setConfirmPhoneMode("keep");
+        setConfirmPhone("");
+        setConfirmContactType(null);
         goTo("confirm");
       } else {
-        setFoundClient(null);
+        setFound(null);
         goTo("register");
       }
-    } catch {
-      setError("Não foi possível verificar agora. Tente novamente.");
     } finally {
       setLookupLoading(false);
     }
@@ -182,15 +198,27 @@ export function CongressoWizard({
   );
 
   const handleConfirm = () => {
-    if (!foundClient) return;
-    setSubmittedPhone(foundClient.phone ?? null);
+    if (!found) return;
+    // Manda telefone só quando a pessoa trocou (ou o cadastro não tinha celular
+    // válido). Mantendo o do cadastro, o servidor usa o que ele já tem — o
+    // número cru nunca chegou ao navegador.
+    const enviaTelefone = !found.phoneValid || confirmPhoneMode === "change";
+    setSubmittedPhone(
+      enviaTelefone
+        ? isValidBrMobile(confirmPhone)
+          ? maskPhone(confirmPhone)
+          : null
+        : found.maskedPhone
+    );
     doSubmit(
       {
         slug,
         document: documentValue,
         is_existing_client: true,
-        existing_client_id: foundClient.id,
-        contact_type: foundClient.sales_channel ?? null,
+        existing_source: found.source,
+        existing_ref: found.ref,
+        phone: enviaTelefone ? confirmPhone.trim() : null,
+        contact_type: found.contactType ?? confirmContactType,
         consent: true,
         consent_version: CONSENT_VERSION,
         idempotency_key: idempotencyKey,
@@ -200,13 +228,15 @@ export function CongressoWizard({
         utm_campaign: utm.campaign,
         utm_content: utm.content,
       },
-      !!foundClient.email
+      !!found.maskedEmail
     );
   };
 
   const handleRegister = () => {
     const email = form.email.trim() || null;
-    setSubmittedPhone(form.whatsapp.trim() || null);
+    setSubmittedPhone(
+      isValidBrMobile(form.whatsapp) ? maskPhone(form.whatsapp) : null
+    );
     doSubmit(
       {
         slug,
@@ -249,9 +279,15 @@ export function CongressoWizard({
         />
       )}
 
-      {step === "confirm" && foundClient && (
+      {step === "confirm" && found && (
         <StepConfirm
-          client={foundClient}
+          participant={found}
+          phoneMode={confirmPhoneMode}
+          onPhoneMode={setConfirmPhoneMode}
+          phone={confirmPhone}
+          onPhone={setConfirmPhone}
+          contactType={confirmContactType}
+          onContactType={setConfirmContactType}
           consent={consent}
           onConsent={setConsent}
           onToken={setTurnstileToken}
@@ -259,7 +295,7 @@ export function CongressoWizard({
           turnstileEnabled={turnstileEnabled}
           onConfirm={handleConfirm}
           onBack={() => {
-            setFoundClient(null);
+            setFound(null);
             goTo("cpf");
           }}
           submitting={submitting}
@@ -287,7 +323,7 @@ export function CongressoWizard({
         <StepSuccess
           result={result}
           hasEmail={hadEmail}
-          phone={submittedPhone}
+          phoneDisplay={submittedPhone}
         />
       )}
     </div>

@@ -327,7 +327,12 @@ export const congressoRegisterSchema = z
       .min(1)
       .refine((v) => isValidCPF(v), "CPF inválido. Confira os números."),
     is_existing_client: z.boolean().optional().default(false),
+    // Legado: abas do wizard abertas antes do deploy ainda mandam só isto.
     existing_client_id: z.string().uuid().nullable().optional(),
+    // Cadastro confirmado pelo participante (CRM ou Tiny). O servidor revalida
+    // o `ref` e confere o CPF — nunca confia no que veio do navegador.
+    existing_source: z.enum(["crm", "tiny"]).nullable().optional(),
+    existing_ref: z.string().min(1).max(64).nullable().optional(),
     name: z.string().nullable().optional(),
     email: z
       .preprocess(emptyToNull, z.string().email("E-mail inválido").nullable())
