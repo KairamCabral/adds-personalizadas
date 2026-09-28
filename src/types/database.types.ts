@@ -1687,26 +1687,73 @@ export type Database = {
           },
         ]
       }
+      order_label_types: {
+        Row: {
+          color: string
+          created_at: string
+          created_by: string | null
+          is_active: boolean
+          is_system: boolean
+          name: string
+          slug: string
+          sort_order: number
+          text_color: string
+          updated_at: string
+        }
+        Insert: {
+          color: string
+          created_at?: string
+          created_by?: string | null
+          is_active?: boolean
+          is_system?: boolean
+          name: string
+          slug: string
+          sort_order?: number
+          text_color?: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          is_active?: boolean
+          is_system?: boolean
+          name?: string
+          slug?: string
+          sort_order?: number
+          text_color?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_label_types_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_labels: {
         Row: {
           added_by: string | null
           created_at: string
           id: string
-          label: Database["public"]["Enums"]["label_type"]
+          label: string
           order_id: string
         }
         Insert: {
           added_by?: string | null
           created_at?: string
           id?: string
-          label: Database["public"]["Enums"]["label_type"]
+          label: string
           order_id: string
         }
         Update: {
           added_by?: string | null
           created_at?: string
           id?: string
-          label?: Database["public"]["Enums"]["label_type"]
+          label?: string
           order_id?: string
         }
         Relationships: [
@@ -1716,6 +1763,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_labels_label_fkey"
+            columns: ["label"]
+            isOneToOne: false
+            referencedRelation: "order_label_types"
+            referencedColumns: ["slug"]
           },
           {
             foreignKeyName: "order_labels_order_id_fkey"

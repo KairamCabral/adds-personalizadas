@@ -7,7 +7,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn, getInitials, generateAvatarColor, formatDate } from "@/lib/utils";
-import { LABEL_MAP, type LabelType } from "@/lib/constants";
+import { useLabelTypeMap } from "@/hooks/use-label-types";
 import {
   AlignLeft,
   Clock,
@@ -259,6 +259,7 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
     transition: transition || undefined,
   };
 
+  const labelMap = useLabelTypeMap();
   const isHighPriority = order.priority === "ALTA";
   const isOverdue =
     order.due_date && new Date(order.due_date) < new Date();
@@ -330,18 +331,18 @@ export function KanbanCard({ order, onClick, isDragging, disabled, onArchive, on
       {order.labels.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           {order.labels.map(({ label }) => {
-            const config = LABEL_MAP[label as LabelType];
+            const config = labelMap.get(label);
             if (!config) return null;
             return (
               <span
                 key={label}
-                className={cn(
-                  "inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-                  config.bgColor,
-                  config.textColor
-                )}
+                style={{
+                  backgroundColor: config.color,
+                  color: config.text_color,
+                }}
+                className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
               >
-                {config.label}
+                {config.name}
               </span>
             );
           })}

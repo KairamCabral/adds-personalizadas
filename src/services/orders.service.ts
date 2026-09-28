@@ -620,7 +620,7 @@ export async function updateOrderContact(
 export async function addLabel(orderId: string, label: string) {
   const { data, error } = await supabase
     .from("order_labels")
-    .insert({ order_id: orderId, label: label as any })
+    .insert({ order_id: orderId, label })
     .select()
     .single();
 

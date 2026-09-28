@@ -1,8 +1,10 @@
-import { LABEL_MAP, type LabelType } from "@/lib/constants";
+"use client";
+
+import { useLabelTypeMap } from "@/hooks/use-label-types";
 import { cn } from "@/lib/utils";
 
 interface LabelBadgeProps {
-  label: LabelType;
+  label: string;
   size?: "sm" | "md";
   onRemove?: () => void;
   className?: string;
@@ -14,21 +16,21 @@ export function LabelBadge({
   onRemove,
   className,
 }: LabelBadgeProps) {
-  const config = LABEL_MAP[label];
+  const map = useLabelTypeMap();
+  const config = map.get(label);
   if (!config) return null;
 
   return (
     <span
+      style={{ backgroundColor: config.color, color: config.text_color }}
       className={cn(
         "inline-flex items-center gap-1 rounded-full font-semibold",
-        config.bgColor,
-        config.textColor,
         size === "sm" && "px-2.5 py-1 text-xs",
         size === "md" && "px-3 py-1.5 text-sm",
         className
       )}
     >
-      {config.label}
+      {config.name}
       {onRemove && (
         <button
           onClick={(e) => {
