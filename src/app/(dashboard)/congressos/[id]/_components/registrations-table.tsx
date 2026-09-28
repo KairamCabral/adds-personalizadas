@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/select";
 import { DataTable } from "@/components/shared/data-table";
 import { SearchInput } from "@/components/shared/search-input";
-import { cn } from "@/lib/utils";
+import { cn, maskPhone } from "@/lib/utils";
+import { CopyText } from "@/components/shared/copy-text";
 import type { RegistrationWithGift } from "@/services/congressos-gifts.service";
 
 // ---- labels / formatação ----
@@ -228,10 +229,12 @@ export function RegistrationsTable({
       const email = (r.email ?? "").toLowerCase();
       const doc = r.document ?? "";
       const code = r.short_code ?? "";
+      const phone = (r.phone ?? "").replace(/\D/g, "");
       return (
         name.includes(q) ||
         email.includes(q) ||
         (qDigits.length > 0 && doc.includes(qDigits)) ||
+        (qDigits.length > 0 && phone.includes(qDigits)) ||
         (qDigits.length > 0 && code.includes(qDigits))
       );
     });
@@ -245,11 +248,17 @@ export function RegistrationsTable({
         const r = row.original;
         return (
           <div className="min-w-0">
-            <p className="font-medium">{r.name ?? "—"}</p>
+            <CopyText value={r.name} label="Nome" className="font-medium">
+              {r.name ?? "—"}
+            </CopyText>
             {r.email && (
-              <p className="truncate text-xs text-muted-foreground">
+              <CopyText
+                value={r.email}
+                label="E-mail"
+                className="text-xs text-muted-foreground"
+              >
                 {r.email}
-              </p>
+              </CopyText>
             )}
           </div>
         );
@@ -259,14 +268,32 @@ export function RegistrationsTable({
       id: "document",
       header: "Documento",
       cell: ({ row }) => (
-        <span className="tabular-nums text-muted-foreground">
+        <CopyText
+          value={row.original.document?.replace(/\D/g, "")}
+          label="CPF"
+          className="tabular-nums text-muted-foreground"
+        >
           {formatDoc(row.original.document)}
-        </span>
+        </CopyText>
+      ),
+    },
+    {
+      id: "phone",
+      header: "Telefone",
+      cell: ({ row }) => (
+        <CopyText
+          value={row.original.phone?.replace(/\D/g, "")}
+          label="Telefone"
+          className="whitespace-nowrap tabular-nums"
+        >
+          {row.original.phone ? maskPhone(row.original.phone) : "—"}
+        </CopyText>
       ),
     },
     {
       id: "contact",
-      header: "Contato",
+      // "Contato" virou o telefone; esta coluna é o perfil do participante.
+      header: "Perfil",
       cell: ({ row }) => {
         const r = row.original;
         return (
@@ -298,9 +325,13 @@ export function RegistrationsTable({
           <div className="flex flex-col gap-0.5">
             <GiftBadge status={r.gift_status} />
             {r.short_code && (
-              <span className="font-mono text-[11px] text-muted-foreground">
+              <CopyText
+                value={r.short_code}
+                label="Código"
+                className="font-mono text-[11px] text-muted-foreground"
+              >
                 {r.short_code}
-              </span>
+              </CopyText>
             )}
           </div>
         );
@@ -334,7 +365,7 @@ export function RegistrationsTable({
           <SearchInput
             value={search}
             onChange={setSearch}
-            placeholder="Nome, CPF, e-mail ou código"
+            placeholder="Nome, CPF, telefone, e-mail ou código"
             className="w-full sm:max-w-xs"
           />
           <Select value={giftFilter} onValueChange={setGiftFilter}>
