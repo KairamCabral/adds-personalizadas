@@ -17,7 +17,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { LABELS, ORDER_TYPES, PRIORITIES } from "@/lib/constants";
+import { ORDER_TYPES, PRIORITIES } from "@/lib/constants";
+import { useActiveLabelTypes } from "@/hooks/use-label-types";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -29,6 +30,7 @@ export function OrderFilters() {
   const [etiqueta, setEtiqueta] = useQueryState("etiqueta", parseAsString);
   const [produto, setProduto] = useQueryState("produto", parseAsString);
   const [busca, setBusca] = useQueryState("busca", parseAsString);
+  const availableLabels = useActiveLabelTypes();
   const [open, setOpen] = useState(false);
   const [profiles, setProfiles] = useState<{ id: string; full_name: string }[]>([]);
 
@@ -232,9 +234,9 @@ export function OrderFilters() {
                 <SelectItem value="__all__" className="text-xs">
                   Todas
                 </SelectItem>
-                {LABELS.map((l) => (
-                  <SelectItem key={l.key} value={l.key} className="text-xs">
-                    {l.label}
+                {availableLabels.map((l) => (
+                  <SelectItem key={l.slug} value={l.slug} className="text-xs">
+                    {l.name}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { LABELS } from "@/lib/constants";
 import type { LabelType } from "@/lib/constants";
+import { useActiveLabelTypes } from "@/hooks/use-label-types";
 import { LabelBadge } from "@/components/shared/label-badge";
 import {
   Popover,
@@ -22,6 +22,7 @@ interface OrderLabelsProps {
 
 export function OrderLabels({ orderId, currentLabels, canEdit = true }: OrderLabelsProps) {
   const queryClient = useQueryClient();
+  const availableLabels = useActiveLabelTypes();
 
   const addMutation = useMutation({
     mutationFn: (label: LabelType) => addLabel(orderId, label),
@@ -84,13 +85,13 @@ export function OrderLabels({ orderId, currentLabels, canEdit = true }: OrderLab
               Etiquetas disponíveis
             </p>
             <div className="mt-1 space-y-0.5">
-              {LABELS.map((config) => {
-                const isActive = currentLabelKeys.has(config.key);
+              {availableLabels.map((config) => {
+                const isActive = currentLabelKeys.has(config.slug);
                 return (
                   <button
-                    key={config.key}
+                    key={config.slug}
                     type="button"
-                    onClick={() => toggleLabel(config.key)}
+                    onClick={() => toggleLabel(config.slug)}
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
                   >
                     {isActive ? (
@@ -98,7 +99,11 @@ export function OrderLabels({ orderId, currentLabels, canEdit = true }: OrderLab
                     ) : (
                       <span className="h-4 w-4 shrink-0" />
                     )}
-                    <span>{config.label}</span>
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: config.color }}
+                    />
+                    <span>{config.name}</span>
                   </button>
                 );
               })}

@@ -196,6 +196,10 @@ export const ORDER_STATUS_DROPDOWN = ORDER_STATUSES.filter(
 // LABELS (incl. ENTREGUE = envio concluído, sem coluna de etapa)
 // ============================================
 
+// Slugs das etiquetas de sistema (aplicadas por automação/SQL — não excluíveis).
+// A fonte da verdade das etiquetas agora é a tabela `order_label_types`; este
+// union mantém autocomplete dos slugs conhecidos, mas aceita qualquer string
+// (etiquetas criadas pela UI). `LABELS`/`LABEL_MAP` abaixo são fallback/seed.
 export type LabelType =
   | "BOLETO"
   | "AGUARDANDO_PAGAMENTO"
@@ -207,7 +211,22 @@ export type LabelType =
   | "LINK_ENVIADO"
   | "ARTE_APROVADA"
   | "ENTREGUE"
-  | "ATENCAO";
+  | "ATENCAO"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {});
+
+// Etiquetas de sistema: acopladas a automação (aprovação de arte, Tiny, cancelamento,
+// orçamento público) — a UI não permite excluí-las.
+export const SYSTEM_LABEL_SLUGS = [
+  "PAGO",
+  "ENTREGUE",
+  "LINK_ENVIADO",
+  "ARTE_APROVADA",
+  "PEDIDO_CANCELADO",
+  "AGUARDANDO_PAGAMENTO",
+  "APROV_AGUARDANDO_PAGAMENTO",
+  "ORCAMENTO_PUBLICO",
+] as const;
 
 export interface LabelConfig {
   key: LabelType;
