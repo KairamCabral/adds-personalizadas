@@ -324,7 +324,10 @@ function TinySearchPopover({
             {useVariationsMode && !loading && !error && (
               <>
                 {displayVariations.length === 0 && variations.length === 0 && (
-                  <CommandEmpty>Nenhuma variação encontrada. Conecte o produto pai primeiro.</CommandEmpty>
+                  <CommandEmpty>
+                    Este produto não tem variações no Tiny. Se for um produto
+                    simples, use &quot;Usar o produto pai&quot;.
+                  </CommandEmpty>
                 )}
                 {displayVariations.length === 0 && variations.length > 0 && (
                   <CommandEmpty>Nenhuma variação corresponde à busca.</CommandEmpty>
@@ -664,6 +667,30 @@ function TinyTab({
     setTinyCode(p.sku ?? "");
   }
 
+  // Produto simples (sem variações no Tiny): a(s) cor(es) herdam o produto pai.
+  // O tiny_id/SKU do pai vira o alvo de cada cor — o estoque passa a sincronizar
+  // pelo produto principal e o contador/badge ficam "conectados".
+  function applyParentToColors() {
+    const pid = Number(tinyId);
+    if (!Number.isFinite(pid) || pid <= 0) {
+      toast.error("Conecte um produto pai válido no Tiny primeiro.");
+      return;
+    }
+    setTinyColorMap((prev) => {
+      const next: TinyColorMap = { ...prev };
+      for (const c of colors) {
+        next[c.key] = {
+          ...next[c.key],
+          tiny_id: pid,
+          sku: tinyCode || null,
+          name: c.label,
+        };
+      }
+      return next;
+    });
+    toast.success("Cores vinculadas ao produto pai.");
+  }
+
   return (
     <Card>
       <CardHeader className="pb-4">
@@ -760,6 +787,26 @@ function TinyTab({
                 {mappedCount}/{colors.length} conectadas
               </Badge>
             </div>
+
+            {/* Atalho para produtos SIMPLES (sem variação no Tiny): vincula a(s)
+                cor(es) direto ao produto pai. */}
+            {tinyId && mappedCount < colors.length && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2">
+                <p className="text-xs text-muted-foreground">
+                  Produto sem variações no Tiny? Vincule a{colors.length > 1 ? "s cores" : " cor"} direto ao produto pai.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 gap-1.5 text-xs"
+                  onClick={applyParentToColors}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  Usar o produto pai
+                </Button>
+              </div>
+            )}
 
             <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
               {colors.map((color) => {
