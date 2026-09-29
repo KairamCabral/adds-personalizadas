@@ -63,6 +63,27 @@ export async function upsertPricingTier(input: {
   return data;
 }
 
+/**
+ * Remove uma faixa (product_id, channel, min_qty). Hard delete — preços são
+ * "snapshotados" no pedido, então apagar a faixa não afeta pedidos existentes.
+ * `pricing_tiers` é a fonte única da verdade: some da tela, do quiz público
+ * (/api/pricing/public filtra is_active mas a linha deixa de existir) e do rep-app.
+ */
+export async function deletePricingTier(input: {
+  product_id: string;
+  channel: SalesChannel;
+  min_qty: number;
+}) {
+  const { error } = await supabase
+    .from("pricing_tiers")
+    .delete()
+    .eq("product_id", input.product_id)
+    .eq("channel", input.channel)
+    .eq("min_qty", input.min_qty);
+
+  if (error) throw error;
+}
+
 // ============================================
 // Descontos por volume (pricing_volume_discounts)
 // ============================================

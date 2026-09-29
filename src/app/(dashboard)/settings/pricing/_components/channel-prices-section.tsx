@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Save } from "lucide-react";
+import { Save, Plus, Trash2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { getActiveProducts } from "@/services/products.service";
 import {
   getPricingTiers,
   upsertPricingTier,
+  deletePricingTier,
   type SalesChannel,
 } from "@/services/pricing.service";
 
@@ -51,6 +52,8 @@ export function ChannelPricesSection() {
   const queryClient = useQueryClient();
   const [productId, setProductId] = useState<string>("");
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [newQty, setNewQty] = useState("");
+  const [newPrice, setNewPrice] = useState("");
 
   const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ["products", "active"],
@@ -75,6 +78,8 @@ export function ChannelPricesSection() {
   // re-render, pois o default `= []` cria nova referência a cada render.)
   useEffect(() => {
     setEdits({});
+    setNewQty("");
+    setNewPrice("");
   }, [productId]);
 
   const original = useMemo(() => {
@@ -146,6 +151,62 @@ export function ChannelPricesSection() {
     onError: (err) =>
       toast.error(err instanceof Error ? err.message : "Erro ao salvar preços."),
   });
+
+  // ── Faixas do Dentista: adicionar / remover (por produto) ──
+  const addTierMutation = useMutation({
+    mutationFn: (v: { min_qty: number; unit_price: number }) =>
+      upsertPricingTier({
+        product_id: productId,
+        channel: "DENTISTA",
+        min_qty: v.min_qty,
+        unit_price: v.unit_price,
+      }),
+    onSuccess: () => {
+      toast.success("Faixa adicionada.");
+      queryClient.invalidateQueries({ queryKey: ["pricing-tiers", productId] });
+      setNewQty("");
+      setNewPrice("");
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Erro ao adicionar faixa."),
+  });
+
+  const deleteTierMutation = useMutation({
+    mutationFn: (minQty: number) =>
+      deletePricingTier({
+        product_id: productId,
+        channel: "DENTISTA",
+        min_qty: minQty,
+      }),
+    onSuccess: (_d, minQty) => {
+      toast.success("Faixa removida.");
+      setEdits((prev) => {
+        const next = { ...prev };
+        delete next[rowKey("DENTISTA", minQty)];
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ["pricing-tiers", productId] });
+    },
+    onError: () => toast.error("Erro ao remover faixa."),
+  });
+
+  function handleAddTier() {
+    const qty = parseInt(newQty.trim(), 10);
+    if (!Number.isInteger(qty) || qty < 1) {
+      toast.error("Quantidade inválida (use um número inteiro ≥ 1).");
+      return;
+    }
+    if (dentistMinQtys.includes(qty) && original[rowKey("DENTISTA", qty)] !== undefined) {
+      toast.error(`Já existe uma faixa a partir de ${qty} un.`);
+      return;
+    }
+    const price = parsePrice(newPrice);
+    if (price === null) {
+      toast.error("Preço inválido.");
+      return;
+    }
+    addTierMutation.mutate({ min_qty: qty, unit_price: price });
+  }
 
   return (
     <div className="space-y-6">
@@ -227,11 +288,68 @@ export function ChannelPricesSection() {
                           }
                           className="w-32 text-right"
                         />
+                        {/* Remover: só faixas reais do Dentista (não os fallbacks virtuais). */}
+                        {ct.channel === "DENTISTA" &&
+                        original[key] !== undefined ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => deleteTierMutation.mutate(minQty)}
+                            disabled={deleteTierMutation.isPending}
+                            aria-label={`Remover faixa a partir de ${minQty} un.`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          ct.channel === "DENTISTA" && (
+                            <span className="w-8 shrink-0" />
+                          )
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
+
+              {/* Adicionar faixa — só Dentista (faixas por produto). */}
+              {ct.channel === "DENTISTA" && (
+                <div className="flex flex-wrap items-end gap-3 border-t border-border bg-muted/20 px-4 py-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">A partir de (un.)</Label>
+                    <Input
+                      inputMode="numeric"
+                      value={newQty}
+                      placeholder="Ex: 5"
+                      onChange={(e) => setNewQty(e.target.value)}
+                      className="w-24"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Preço unitário</Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">R$</span>
+                      <Input
+                        inputMode="decimal"
+                        value={newPrice}
+                        placeholder="0,00"
+                        onChange={(e) => setNewPrice(e.target.value)}
+                        className="w-28 text-right"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    onClick={handleAddTier}
+                    disabled={addTierMutation.isPending}
+                  >
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    Adicionar faixa
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
