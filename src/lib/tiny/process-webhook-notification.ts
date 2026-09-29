@@ -174,12 +174,18 @@ async function handlePedido(
     .eq("tiny_order_id", tinyOrderId)
     .maybeSingle();
 
-  // PROTEÇÃO: não criar pedido antigo retroativamente via webhook.
+  // PROTEÇÃO: não criar pedido MUITO antigo retroativamente via webhook.
   // O Tiny pode enviar atualizacao_pedido para pedidos que nunca
   // chegaram ao CRM (ex.: webhook original perdido). Se o pedido for
   // antigo e não existir no CRM, ignoramos em vez de importá-lo agora.
+  //
+  // Janela de 60 dias: pedidos personalizados são lançados no Tiny com data
+  // retroativa (entrada tardia), então uma janela curta descartava pedidos
+  // novos legítimos em silêncio. 60 dias cobre esse fluxo e, como só
+  // personalizadas são de fato importadas (isPersonalizadasOrder), o risco de
+  // importar algo antigo indevido é baixo.
   if (!existing) {
-    const MAX_RETRO_DAYS = 7;
+    const MAX_RETRO_DAYS = 60;
     const orderDateRaw = dados.data as string | undefined;
     if (orderDateRaw) {
       // Tiny envia em DD/MM/YYYY

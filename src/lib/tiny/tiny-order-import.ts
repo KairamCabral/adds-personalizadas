@@ -24,19 +24,41 @@ import {
 
 /**
  * Verifica se o pedido é de personalizadas.
+ *
  * Critérios (OU, case-insensitive, subcadeia "personaliz"):
- * - Tag/marcador
- * - Categoria
- * - Depósito
+ * 1. Tag/marcador com "personaliz".
+ * 2. `categoria` (topo), `deposito` ou `pagamento` contêm "personaliz" em
+ *    QUALQUER campo — varredura tolerante à forma do objeto (o Tiny varia entre
+ *    string, `{nome}`, `{descricao}`, `{id}`). A categoria "Venda Dentistas
+ *    Personalizadas" chega dentro de `pagamento.categoria`, não no topo.
+ * 3. Algum item tem SKU com prefixo personalizado (`PERS-…`) ou contém "personaliz".
+ *
+ * Motivo do #2/#3: nos webhooks reais o pedido personalizado NÃO trazia
+ * `marcadores`/`tags`/`categoria` no topo — só `deposito` (numa forma que a
+ * checagem antiga por `.nome`/`.descricao` não pegava) e `pagamento.categoria`.
+ * Com isso pedidos legítimos caíam em "nenhum critério bateu" e não entravam no
+ * CRM (ex.: #17716 Katia, #17745 Tiago). Ver tiny-order-personalizadas.test.ts.
  */
-function isPersonalizadasOrder(raw: Record<string, unknown>): {
+export function isPersonalizadasOrder(raw: Record<string, unknown>): {
   isPersonalizadas: boolean;
   reason: string;
 } {
   const needle = "personaliz";
-  const contains = (s: unknown): boolean => {
-    if (typeof s !== "string") return false;
-    return s.toLowerCase().includes(needle);
+  const contains = (s: unknown): boolean =>
+    typeof s === "string" && s.toLowerCase().includes(needle);
+
+  // Varre recursivamente um valor (string | array | objeto) atrás de "personaliz".
+  // Profundidade limitada — os objetos do Tiny são rasos (ex.: categoria.descricao).
+  const deepContains = (v: unknown, depth = 0): boolean => {
+    if (v == null || depth > 4) return false;
+    if (typeof v === "string") return contains(v);
+    if (Array.isArray(v)) return v.some((x) => deepContains(x, depth + 1));
+    if (typeof v === "object") {
+      return Object.values(v as Record<string, unknown>).some((x) =>
+        deepContains(x, depth + 1)
+      );
+    }
+    return false;
   };
 
   // 1. Tags / marcadores (formatos comuns do Tiny V3)
@@ -60,29 +82,31 @@ function isPersonalizadasOrder(raw: Record<string, unknown>): {
     }
   }
 
-  // 2. Categoria
-  const categoria = raw.categoria as Record<string, unknown> | string | undefined;
-  if (typeof categoria === "string" && contains(categoria)) {
-    return { isPersonalizadas: true, reason: `categoria="${categoria}"` };
-  }
-  if (categoria && typeof categoria === "object") {
-    const nome = (categoria as { nome?: string; descricao?: string }).nome ??
-                 (categoria as { descricao?: string }).descricao;
-    if (contains(nome)) {
-      return { isPersonalizadas: true, reason: `categoria="${nome}"` };
+  // 2. Categoria (topo), depósito e pagamento — varredura tolerante à forma.
+  //    A categoria "Venda Dentistas Personalizadas" chega dentro de `pagamento`.
+  for (const field of ["categoria", "deposito", "pagamento"] as const) {
+    if (deepContains(raw[field])) {
+      return { isPersonalizadas: true, reason: `${field} contém "personaliz"` };
     }
   }
 
-  // 3. Depósito
-  const deposito = raw.deposito as Record<string, unknown> | string | undefined;
-  if (typeof deposito === "string" && contains(deposito)) {
-    return { isPersonalizadas: true, reason: `deposito="${deposito}"` };
-  }
-  if (deposito && typeof deposito === "object") {
-    const nome = (deposito as { nome?: string; descricao?: string }).nome ??
-                 (deposito as { descricao?: string }).descricao;
-    if (contains(nome)) {
-      return { isPersonalizadas: true, reason: `deposito="${nome}"` };
+  // 3. SKUs dos itens: prefixo personalizado (PERS-…) ou "personaliz" no código.
+  const itens = (raw.itens as unknown[]) ?? [];
+  if (Array.isArray(itens)) {
+    for (const ti of itens) {
+      const t = ti as Record<string, unknown>;
+      // Mesmos dois formatos suportados no parse de itens abaixo.
+      const lineItem = (t.item && typeof t.item === "object" ? t.item : t) as Record<string, unknown>;
+      const prodNested = lineItem?.produto as Record<string, unknown> | undefined;
+      const sku =
+        (typeof lineItem?.codigo === "string" ? lineItem.codigo : null) ??
+        (typeof lineItem?.sku === "string" ? lineItem.sku : null) ??
+        (typeof prodNested?.sku === "string" ? (prodNested.sku as string) : null) ??
+        (typeof prodNested?.codigo === "string" ? (prodNested.codigo as string) : null) ??
+        null;
+      if (sku && (/^PERS[-_]/i.test(sku) || contains(sku))) {
+        return { isPersonalizadas: true, reason: `item sku="${sku}"` };
+      }
     }
   }
 
