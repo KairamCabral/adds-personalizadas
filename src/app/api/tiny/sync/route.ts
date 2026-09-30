@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { tinyApiGet, TinyTokenExpiredError } from "@/lib/tiny-api";
 import { clientUpsertPayloadFromTinyContact } from "@/lib/tiny/contact-mapper";
-import {
-  buildOrderItemsFromTinyRaw,
-  mapTinySituacaoToCrmStatus,
-  parseTinyDate,
-} from "@/lib/tiny/tiny-order-import";
+import { importTinyOrderFromApi } from "@/lib/tiny/tiny-order-import";
 
 const LOG_PREFIX = "[Tiny Sync]";
 
@@ -287,94 +283,52 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
 
       for (const item of orders) {
         const raw = item.pedido ?? item;
-        const tinyOrderId = raw.id;
-        const clienteId = raw.cliente?.id ?? raw.idCliente;
-        const clienteNome = raw.cliente?.nome ?? raw.nomeCliente ?? "Cliente";
-        const numeroPedido = raw.numeroPedido ?? raw.numero ?? tinyOrderId;
-        const valor = raw.valor ?? raw.total ?? raw.valorTotal;
-        const dataPrevista = raw.dataPrevista ?? raw.data_prevista;
-        const dataPedido =
-          raw.dataPedido ?? raw.data_pedido ?? raw.data ?? raw.dataCriacao;
-        const situacao = raw.situacao ?? raw.status ?? 0;
+        const tinyOrderId = Number(raw.id);
 
-        if (!tinyOrderId) {
+        if (!Number.isFinite(tinyOrderId) || tinyOrderId <= 0) {
           console.warn(`${LOG_PREFIX} Pedido sem id, pulando`);
           skipped++;
           continue;
         }
 
-        const { data: clientRow } = await supabase
-          .from("clients")
+        // Pedido já no CRM: NÃO re-sincroniza pela lista. Status, posição e
+        // etapas do Kanban são geridos pelo webhook (importTinyOrderFromApi em
+        // atualizacao_pedido). Re-gravar aqui regrediria a etapa (ex.: um
+        // pedido em FATURADO voltaria para FAZER se o Tiny ainda o vê "Em aberto").
+        const { data: existing } = await supabase
+          .from("orders")
           .select("id")
-          .eq("tiny_id", clienteId)
-          .single();
+          .eq("tiny_order_id", tinyOrderId)
+          .maybeSingle();
 
-        if (!clientRow?.id) {
-          console.log(
-            `${LOG_PREFIX} Cliente tiny_id=${clienteId} não encontrado no CRM, pulando pedido ${tinyOrderId}`
-          );
+        if (existing) {
           skipped++;
           continue;
         }
 
-        const orderData = {
-          title: `Pedido #${numeroPedido} - ${clienteNome}`,
-          description: valor != null ? `Valor: R$ ${valor}` : null,
-          client_id: clientRow.id,
-          status: mapTinySituacaoToCrmStatus(situacao),
-          due_date: dataPrevista ? parseTinyDate(dataPrevista) : null,
-          order_date: dataPedido ? parseTinyDate(String(dataPedido)) : null,
-          tiny_order_id: tinyOrderId,
-          order_type: "PERSONALIZADO" as const,
-          priority: "NORMAL" as const,
-          position: 0,
-        };
-
-        // ignoreDuplicates: true → ON CONFLICT DO NOTHING para pedidos já
-        // existentes no CRM. O status, posição e etapas do Kanban são gerenciados
-        // exclusivamente pelo webhook (importTinyOrderFromApi). Sobrescrever aqui
-        // causaria regressões: p.ex. um pedido em FATURADO voltaria para FAZER
-        // se o Tiny ainda o vê como "Em aberto".
-        const { data: upsertedOrder, error } = await supabase
-          .from("orders")
-          .upsert(orderData as any, {
-            onConflict: "tiny_order_id",
-            ignoreDuplicates: true,
-          })
-          .select("id")
-          .single();
-
-        if (!error) synced++;
+        // Importa pelo caminho CANÔNICO (mesmo do webhook): busca o pedido
+        // completo em /pedidos/{id}, aplica o filtro de personalizadas
+        // (isPersonalizadasOrder) e cria cliente + pedido + itens/cores. Pedido
+        // que não é personalizada é ignorado de propósito — é isso que impede
+        // vendas comuns (ex.: ESC-ADDS-ULTRA) de poluírem o pipeline. A lista
+        // /pedidos não traz sinais suficientes (itens/pagamento/depósito) para
+        // classificar, por isso o fetch por id é necessário.
+        const imported = await importTinyOrderFromApi(supabase, tinyOrderId);
 
         await supabase.from("tiny_sync_logs").insert({
           entity_type: "order",
           tiny_id: tinyOrderId,
           direction: "tiny_to_crm",
-          status: error ? "error" : "success",
-          error_message: error?.message ?? null,
+          status: imported.ok ? "success" : "error",
+          error_message: imported.ok ? null : imported.message,
         });
 
-        if (error || !upsertedOrder?.id) continue;
-
-        const orderId = upsertedOrder.id;
-
-        const itemsToInsert = await buildOrderItemsFromTinyRaw(
-          supabase,
-          raw as Record<string, unknown>,
-          orderId
-        );
-
-        if (itemsToInsert.length > 0) {
-          await supabase.from("order_items").delete().eq("order_id", orderId);
-          const { error: insErr } = await supabase
-            .from("order_items")
-            .insert(itemsToInsert);
-          // UNIQUE INDEX serializa concorrência; 23505 = outro caller já gravou.
-          if (insErr && insErr.code !== "23505") {
-            console.error(
-              `${LOG_PREFIX} Erro ao inserir order_items para tiny_order=${tinyOrderId}: ${insErr.message}`
-            );
-          }
+        if (imported.orderId) {
+          // Importado de fato (personalizada).
+          synced++;
+        } else {
+          // ok:true sem orderId = não-personalizada (ignorado); ok:false = erro.
+          skipped++;
         }
       }
 
@@ -389,11 +343,11 @@ async function syncOrders(supabase: ReturnType<typeof getServiceClient>) {
   }
 
   console.log(
-    `${LOG_PREFIX} Sync pedidos concluído: ${synced} sincronizados, ${skipped} pulados`
+    `${LOG_PREFIX} Sync pedidos concluído: ${synced} importados, ${skipped} pulados (já existentes ou não-personalizadas)`
   );
   return NextResponse.json({
     success: true,
-    message: `${synced} pedidos sincronizados com sucesso.${skipped > 0 ? ` ${skipped} pulados (cliente não encontrado).` : ""}`,
+    message: `${synced} pedidos personalizados importados.${skipped > 0 ? ` ${skipped} pulados (já existentes ou não-personalizadas).` : ""}`,
     synced,
     skipped,
   });
