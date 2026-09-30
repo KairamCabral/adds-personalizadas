@@ -123,23 +123,29 @@ export async function storeTinyTokens(tokens: {
 async function getValidAccessToken(): Promise<string> {
   const supabase = getServiceClient();
 
-  const { data, error } = await supabase
+  // NÃO usar .single(): ele lança "Cannot coerce the result to a single JSON
+  // object" quando há 0 linhas (Tiny desconectado) OU 2+ (duplicatas), o que
+  // derrubava TODAS as chamadas Tiny com um erro críptico. Pega a linha mais
+  // recente e trata "sem linha" como desconexão (mensagem acionável).
+  const { data: rows, error } = await supabase
     .from("app_settings")
-    .select("value")
+    .select("value, updated_at")
     .eq("key", "tiny_oauth_tokens")
-    .single();
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .limit(1);
 
   if (error) {
     console.error("[Tiny API] Erro ao buscar tokens do banco:", error.message);
     throw new Error(`Erro ao buscar tokens: ${error.message}`);
   }
 
-  if (!data?.value) {
+  const row = rows?.[0];
+  if (!row?.value) {
     console.warn("[Tiny API] Nenhum token encontrado em app_settings");
     throw new TinyTokenExpiredError("Tiny ERP não conectado. Configure em Configurações > Integrações.");
   }
 
-  const tokens = data.value as {
+  const tokens = row.value as {
     access_token: string;
     refresh_token: string;
     expires_at: string;
