@@ -293,15 +293,23 @@ export async function buildOrderItemsFromTinyRaw(
 
   // Pré-carregar os produtos "casáveis" do CRM UMA VEZ (evita N queries).
   // Inclui os personalizados E qualquer produto linkado ao Tiny (tiny_id
-  // definido) — ex.: irrigador/fio cadastrados como "standard" mas vendidos
-  // DENTRO de pedidos personalizados. Antes o filtro era só product_type=
-  // 'personalizado', então a linha desses itens era descartada no import.
-  // O matcher casa por tiny_id/SKU, logo produtos não-linkados nunca batem
-  // (inócuos). Este caminho roda só no web (import Tiny→CRM); sem impacto no rep-app.
+  // definido) — ex.: o irrigador, cadastrado como "standard" mas vendido
+  // personalizado (SKU PERS-…) dentro de pedidos personalizados. O matcher
+  // casa por tiny_id/SKU; a decisão final de IMPORTAR a linha é feita depois
+  // (só itens personalizados entram — ver `itemIsPersonalizado`). Este caminho
+  // roda só no web (import Tiny→CRM); sem impacto no rep-app.
   const { data: matchableProducts } = await supabase
     .from("products")
-    .select("id, name, available_colors, tiny_id, bling_sku, bling_color_sku_map, tiny_color_map")
+    .select("id, name, product_type, available_colors, tiny_id, bling_sku, bling_color_sku_map, tiny_color_map")
     .or("product_type.eq.personalizado,tiny_id.not.is.null");
+
+  // IDs dos produtos personalizados (para gatear a importação por item: um item
+  // entra se o produto é personalizado OU se o SKU do item tem prefixo PERS-).
+  const personalizadoProductIds = new Set(
+    (matchableProducts ?? [])
+      .filter((p) => p.product_type === "personalizado")
+      .map((p) => p.id)
+  );
 
   type ProdMatcher = {
     id: string;
@@ -473,6 +481,20 @@ export async function buildOrderItemsFromTinyRaw(
     if (!match) {
       console.info(
         `[tiny-order-import] Item "${productName}" (sku=${itemSku ?? "—"}, tiny_id=${tinyProductId ?? "—"}) IGNORADO no CRM: não bateu com produto personalizado cadastrado.`
+      );
+      continue;
+    }
+
+    // Só importa a linha se for um item PERSONALIZADO: produto personalizado OU
+    // SKU com prefixo PERS- (ex.: irrigador PERS-IRRIG-ORAL-ADDS-A20). Produtos
+    // "standard" não-personalizados vendidos no mesmo pedido (ex.: fio dental
+    // FIO-EXPANDING-FC) ficam de fora do pipeline de personalizados.
+    const itemIsPersonalizado =
+      personalizadoProductIds.has(match.productId) ||
+      /^PERS[-_]/i.test(itemSku ?? "");
+    if (!itemIsPersonalizado) {
+      console.info(
+        `[tiny-order-import] Item "${productName}" (sku=${itemSku ?? "—"}) IGNORADO no CRM: produto não-personalizado (não entra no pipeline de personalizados).`
       );
       continue;
     }
