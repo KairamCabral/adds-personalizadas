@@ -291,12 +291,17 @@ export async function buildOrderItemsFromTinyRaw(
     return itemsToInsert;
   }
 
-  // Pré-carregar produtos personalizados do CRM UMA VEZ
-  // (evita N queries se o pedido tiver muitos itens)
-  const { data: personalizedProducts } = await supabase
+  // Pré-carregar os produtos "casáveis" do CRM UMA VEZ (evita N queries).
+  // Inclui os personalizados E qualquer produto linkado ao Tiny (tiny_id
+  // definido) — ex.: irrigador/fio cadastrados como "standard" mas vendidos
+  // DENTRO de pedidos personalizados. Antes o filtro era só product_type=
+  // 'personalizado', então a linha desses itens era descartada no import.
+  // O matcher casa por tiny_id/SKU, logo produtos não-linkados nunca batem
+  // (inócuos). Este caminho roda só no web (import Tiny→CRM); sem impacto no rep-app.
+  const { data: matchableProducts } = await supabase
     .from("products")
     .select("id, name, available_colors, tiny_id, bling_sku, bling_color_sku_map, tiny_color_map")
-    .eq("product_type", "personalizado");
+    .or("product_type.eq.personalizado,tiny_id.not.is.null");
 
   type ProdMatcher = {
     id: string;
@@ -309,7 +314,7 @@ export async function buildOrderItemsFromTinyRaw(
     tinyIdToColor: Map<number, string>;
   };
 
-  const matchers: ProdMatcher[] = (personalizedProducts ?? []).map((p) => {
+  const matchers: ProdMatcher[] = (matchableProducts ?? []).map((p) => {
     const skus = new Set<string>();
     const variationTinyIds = new Set<number>();
     const skuToColor = new Map<string, string>();
