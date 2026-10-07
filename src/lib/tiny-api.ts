@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
+import { enqueueTinyRequest } from "@/lib/tiny/rate-limiter";
 
 /** Erro quando o refresh token do Tiny está expirado ou revogado (invalid_grant). */
 export class TinyTokenExpiredError extends Error {
@@ -171,38 +172,48 @@ async function getValidAccessToken(): Promise<string> {
 }
 
 export async function tinyApiGet<T = any>(endpoint: string): Promise<T> {
-  const token = await getValidAccessToken();
-  const base = getTinyApiBase();
-  const url = `${base}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+  // Roteado pelo rate-limiter: throttle (~2 req/s por instância) + retry com
+  // backoff em 429. Antes era fetch direto e sem retry — um 429 no meio do
+  // import (webhook/sync em lote) perdia o pedido silenciosamente.
+  return enqueueTinyRequest(async () => {
+    const token = await getValidAccessToken();
+    const base = getTinyApiBase();
+    const url = `${base}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[Tiny API] URL final:", url);
-  }
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[Tiny API] URL final:", url);
+    }
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      console.error(
+        "[Tiny API] Erro",
+        res.status,
+        res.statusText,
+        "Body:",
+        text.slice(0, 500)
+      );
+      const err = new Error(
+        `Tiny API GET ${endpoint} failed: ${res.status} ${text}`
+      ) as Error & { status?: number };
+      // status permite ao rate-limiter reconhecer o 429 e retentar com backoff.
+      err.status = res.status;
+      throw err;
+    }
+
+    try {
+      const data = JSON.parse(text);
+      return data as T;
+    } catch {
+      console.error("[Tiny API] Resposta não é JSON válido:", text.slice(0, 300));
+      throw new Error(`Tiny API retornou resposta inválida: ${text.slice(0, 200)}`);
+    }
   });
-
-  const text = await res.text();
-
-  if (!res.ok) {
-    console.error(
-      "[Tiny API] Erro",
-      res.status,
-      res.statusText,
-      "Body:",
-      text.slice(0, 500)
-    );
-    throw new Error(`Tiny API GET ${endpoint} failed: ${res.status} ${text}`);
-  }
-
-  try {
-    const data = JSON.parse(text);
-    return data as T;
-  } catch {
-    console.error("[Tiny API] Resposta não é JSON válido:", text.slice(0, 300));
-    throw new Error(`Tiny API retornou resposta inválida: ${text.slice(0, 200)}`);
-  }
 }
 
 export async function tinyApiPost<T = any>(
