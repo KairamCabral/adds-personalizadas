@@ -21,8 +21,7 @@ export async function getOrders() {
       created_user:profiles!orders_created_by_fkey(id, full_name, avatar_url),
       rep:profiles!orders_rep_id_fkey(id, full_name),
       labels:order_labels(id, label),
-      watchers:order_watchers(user_id, profile:profiles(id, full_name, avatar_url)),
-      bling_logs:supplier_data_logs(id, sent_at, status, error_message, fields_sent, supplier_id, suppliers(name)),
+      bling_logs:supplier_data_logs(sent_at, status, error_message, fields_sent, supplier_id, suppliers(name)),
       items:order_items(product_id, product_name, quantity),
       attachments:attachments(id)
     `)
